@@ -25,7 +25,7 @@ namespace PPCAnalyst
 struct CodeOp  // 16B
 {
   UGeckoInstruction inst;
-  GekkoOPInfo* opinfo;
+  OpID opid;
   u32 address;
   u32 branchTo;  // if UINT32_MAX, not a branch
   BitSet32 regsOut;
@@ -213,7 +213,7 @@ private:
 
   void ReorderInstructionsCore(u32 instructions, CodeOp* code, bool reverse, ReorderType type);
   void ReorderInstructions(u32 instructions, CodeOp* code);
-  void SetInstructionStats(CodeBlock* block, CodeOp* code, const GekkoOPInfo* opinfo, u32 index);
+  void SetInstructionStats(CodeBlock* block, CodeOp* code, OpID opid, u32 index);
   bool IsBusyWaitLoop(CodeBlock* block, CodeOp* code, size_t instructions);
 
   // Options
