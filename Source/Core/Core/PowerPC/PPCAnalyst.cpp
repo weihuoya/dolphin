@@ -688,14 +688,14 @@ bool PPCAnalyzer::IsBusyWaitLoop(CodeBlock* block, CodeOp* code, size_t instruct
   std::bitset<32> written_regs;
   for (size_t i = 0; i <= instructions; ++i)
   {
-    if (code[i].opinfo->type == OpType::Branch)
+    if (PPCTables::Type(code[i].opid) == OpType::Branch)
     {
       if (code[i].branchUsesCtr)
         return false;
       if (code[i].branchTo == block->m_address && i == instructions)
         return true;
     }
-    else if (code[i].opinfo->type != OpType::Integer && code[i].opinfo->type != OpType::Load)
+    else if (PPCTables::Type(code[i].opid) != OpType::Integer && PPCTables::Type(code[i].opid) != OpType::Load)
     {
       // In the future, some subsets of other instruction types might get
       // supported. Right now, only try loops that have this very

@@ -51,7 +51,7 @@ constexpr std::array<OpDispatch, 30> dispatch_table = {{
 
 OpID GetOpID(UGeckoInstruction instruction)
 {
-  int subtable = 0;
+  size_t subtable = 0;
   while (true)
   {
     const auto& disp = dispatch_table[subtable];

@@ -10,6 +10,7 @@
 #include "Core/Core.h"
 #include "Core/CoreTiming.h"
 #include "Core/PowerPC/JitArm64/Jit.h"
+#include "Core/PowerPC/Interpreter/Interpreter.h"
 #include "Core/PowerPC/JitArm64/JitArm64_RegCache.h"
 #include "Core/PowerPC/PPCTables.h"
 #include "Core/PowerPC/PowerPC.h"
