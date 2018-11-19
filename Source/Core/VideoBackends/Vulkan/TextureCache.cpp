@@ -187,6 +187,7 @@ bool TextureCache::CompileShaders()
   std::string source = header + COPY_SHADER_SOURCE;
 
   m_copy_shader = Util::CompileAndCreateFragmentShader(source);
+
   return m_copy_shader != VK_NULL_HANDLE;
 }
 
@@ -297,7 +298,7 @@ void TextureCache::CopyEFBToCacheEntry(TCacheEntry* entry, bool is_depth_copy,
   UtilityShaderDraw draw(command_buffer,
                          g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD), render_pass,
                          g_shader_cache->GetPassthroughVertexShader(),
-                         VK_NULL_HANDLE, shader);
+                         g_shader_cache->GetPassthroughGeometryShader(), shader);
 
   u8* ubo_ptr = draw.AllocatePSUniforms(sizeof(PixelUniforms));
   std::memcpy(ubo_ptr, &uniforms, sizeof(PixelUniforms));

@@ -15,8 +15,6 @@
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
 
-#include "Core/ConfigManager.h"
-
 VideoConfig g_Config;
 VideoConfig g_ActiveConfig;
 static bool s_has_registered_callback = false;

@@ -368,14 +368,15 @@ void FramebufferManager::ReinterpretPixelData(int convtype)
 
   UtilityShaderDraw draw(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                          g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD),
-                         m_efb_load_render_pass, g_shader_cache->GetPassthroughVertexShader(),
-                         VK_NULL_HANDLE, pixel_shader);
+                         m_efb_load_render_pass, g_shader_cache->GetScreenQuadVertexShader(),
+                         g_shader_cache->GetScreenQuadGeometryShader(), pixel_shader);
 
   VkRect2D region = {{0, 0}, {GetEFBWidth(), GetEFBHeight()}};
   draw.SetMultisamplingState(GetEFBMultisamplingState());
   draw.BeginRenderPass(m_efb_convert_framebuffer, region);
   draw.SetPSSampler(0, m_efb_color_texture->GetView(), g_object_cache->GetPointSampler());
-  draw.DrawQuad(0, 0, GetEFBWidth(), GetEFBHeight());
+  draw.SetViewportAndScissor(0, 0, GetEFBWidth(), GetEFBHeight());
+  draw.DrawWithoutVertexBuffer(4);
   draw.EndRenderPass();
 
   // Swap EFB texture pointers
@@ -440,11 +441,13 @@ Texture2D* FramebufferManager::ResolveEFBDepthTexture(const VkRect2D& region)
   // Draw using resolve shader to write the minimum depth of all samples to the resolve texture.
   UtilityShaderDraw draw(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                          g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD),
-                         m_depth_resolve_render_pass, g_shader_cache->GetPassthroughVertexShader(),
-                         VK_NULL_HANDLE, m_ps_depth_resolve);
+                         m_depth_resolve_render_pass, g_shader_cache->GetScreenQuadVertexShader(),
+                         g_shader_cache->GetScreenQuadGeometryShader(), m_ps_depth_resolve);
   draw.BeginRenderPass(m_depth_resolve_framebuffer, region);
   draw.SetPSSampler(0, m_efb_depth_texture->GetView(), g_object_cache->GetPointSampler());
-  draw.DrawQuad(region.offset.x, region.offset.y, region.extent.width, region.extent.height);
+  draw.SetViewportAndScissor(region.offset.x, region.offset.y, region.extent.width,
+                             region.extent.height);
+  draw.DrawWithoutVertexBuffer(4);
   draw.EndRenderPass();
 
   // Restore MSAA texture ready for rendering again
@@ -626,13 +629,14 @@ bool FramebufferManager::PopulateColorReadbackTexture()
 
     UtilityShaderDraw draw(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                            g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD),
-                           m_copy_color_render_pass, g_shader_cache->GetPassthroughVertexShader(),
+                           m_copy_color_render_pass, g_shader_cache->GetScreenQuadVertexShader(),
                            VK_NULL_HANDLE, m_copy_color_shader);
 
     VkRect2D rect = {{0, 0}, {EFB_WIDTH, EFB_HEIGHT}};
     draw.BeginRenderPass(m_color_copy_framebuffer, rect);
     draw.SetPSSampler(0, src_texture->GetView(), g_object_cache->GetPointSampler());
-	  draw.DrawQuad(0, 0, EFB_WIDTH, EFB_HEIGHT);
+    draw.SetViewportAndScissor(0, 0, EFB_WIDTH, EFB_HEIGHT);
+    draw.DrawWithoutVertexBuffer(4);
     draw.EndRenderPass();
 
     // Restore EFB to color attachment, since we're done with it.
@@ -700,13 +704,14 @@ bool FramebufferManager::PopulateDepthReadbackTexture()
 
     UtilityShaderDraw draw(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                            g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD),
-                           m_copy_depth_render_pass, g_shader_cache->GetPassthroughVertexShader(),
+                           m_copy_depth_render_pass, g_shader_cache->GetScreenQuadVertexShader(),
                            VK_NULL_HANDLE, m_copy_depth_shader);
 
     VkRect2D rect = {{0, 0}, {EFB_WIDTH, EFB_HEIGHT}};
     draw.BeginRenderPass(m_depth_copy_framebuffer, rect);
     draw.SetPSSampler(0, src_texture->GetView(), g_object_cache->GetPointSampler());
-	  draw.DrawQuad(0, 0, EFB_WIDTH, EFB_HEIGHT);
+    draw.SetViewportAndScissor(0, 0, EFB_WIDTH, EFB_HEIGHT);
+    draw.DrawWithoutVertexBuffer(4);
     draw.EndRenderPass();
 
     // Restore EFB to depth attachment, since we're done with it.
@@ -763,7 +768,7 @@ bool FramebufferManager::CreateReadbackRenderPasses()
       g_vulkan_context->GetDeviceLimits().pointSizeRange[0] > 1 ||
       g_vulkan_context->GetDeviceLimits().pointSizeRange[1] < 16)
   {
-    m_poke_primitive = PrimitiveType::Triangles;
+    m_poke_primitive = PrimitiveType::TriangleStrip;
   }
   else
   {
@@ -965,10 +970,10 @@ void FramebufferManager::CreatePokeVertices(std::vector<EFBPokeVertex>* destinat
   float y2 = float(y + 1) * 2.0f / EFB_HEIGHT - 1.0f;
   destination_list->push_back({{x1, y1, z, 1.0f}, color});
   destination_list->push_back({{x2, y1, z, 1.0f}, color});
-  destination_list->push_back({{x2, y2, z, 1.0f}, color});
-  destination_list->push_back({{x1, y1, z, 1.0f}, color});
-  destination_list->push_back({{x2, y2, z, 1.0f}, color});
   destination_list->push_back({{x1, y2, z, 1.0f}, color});
+  destination_list->push_back({{x1, y2, z, 1.0f}, color});
+  destination_list->push_back({{x2, y1, z, 1.0f}, color});
+  destination_list->push_back({{x2, y2, z, 1.0f}, color});
 }
 
 void FramebufferManager::FlushEFBPokes()

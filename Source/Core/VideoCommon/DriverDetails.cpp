@@ -166,4 +166,4 @@ bool HasBug(Bug bug)
     return false;
   return it->second.m_hasbug;
 }
-}  // namespace DriverDetails
+}

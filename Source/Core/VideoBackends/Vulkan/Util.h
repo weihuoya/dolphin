@@ -125,7 +125,7 @@ public:
   UtilityShaderDraw(VkCommandBuffer command_buffer, VkPipelineLayout pipeline_layout,
                     VkRenderPass render_pass, VkShaderModule vertex_shader,
                     VkShaderModule geometry_shader, VkShaderModule pixel_shader,
-                    PrimitiveType primitive = PrimitiveType::Triangles);
+                    PrimitiveType primitive = PrimitiveType::TriangleStrip);
 
   UtilityShaderVertex* ReserveVertices(size_t count);
   void CommitVertices(size_t count);
@@ -169,6 +169,10 @@ public:
 
   void DrawColoredQuad(int x, int y, int width, int height, float r, float g, float b, float a,
                        float z = 0.0f);
+
+  // Draw without a vertex buffer. Assumes viewport has been initialized separately.
+  void SetViewportAndScissor(int x, int y, int width, int height);
+  void DrawWithoutVertexBuffer(u32 vertex_count);
 
 private:
   void BindVertexBuffer();

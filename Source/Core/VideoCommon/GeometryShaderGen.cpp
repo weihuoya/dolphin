@@ -14,8 +14,9 @@
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
 
-static constexpr std::array<const char*, 3> primitives_ogl = {{"points", "lines", "triangles"}};
-static constexpr std::array<const char*, 3> primitives_d3d = {{"point", "line", "triangle"}};
+constexpr std::array<const char*, 4> primitives_ogl = {
+    {"points", "lines", "triangles", "triangles"}};
+constexpr std::array<const char*, 4> primitives_d3d = {{"point", "line", "triangle", "triangle"}};
 
 bool geometry_shader_uid_data::IsPassthrough() const
 {
@@ -56,7 +57,8 @@ ShaderCode GenerateGeometryShaderCode(APIType ApiType, const ShaderHostConfig& h
   const PrimitiveType primitive_type = static_cast<PrimitiveType>(uid_data->primitive_type);
   const unsigned primitive_type_index = static_cast<unsigned>(uid_data->primitive_type);
   const unsigned vertex_in = std::min(static_cast<unsigned>(primitive_type_index) + 1, 3u);
-  unsigned vertex_out = primitive_type == PrimitiveType::Triangles ? 3 : 4;
+  unsigned vertex_out = primitive_type == PrimitiveType::TriangleStrip
+    || primitive_type == PrimitiveType::Triangles ? 3 : 4;
 
   if (wireframe)
     vertex_out++;
@@ -328,8 +330,7 @@ void EnumerateGeometryShaderUids(const std::function<void(const GeometryShaderUi
   std::memset(&uid, 0, sizeof(uid));
 
   const std::array<PrimitiveType, 3> primitive_lut = {
-      {PrimitiveType::Triangles,
-       PrimitiveType::Lines, PrimitiveType::Points}};
+      {PrimitiveType::Triangles, PrimitiveType::Lines, PrimitiveType::Points}};
   for (PrimitiveType primitive : primitive_lut)
   {
     auto* guid = uid.GetUidData<geometry_shader_uid_data>();

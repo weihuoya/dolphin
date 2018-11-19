@@ -290,7 +290,6 @@ void VulkanContext::PopulateBackendInfoFeatures(VideoConfig* config, VkPhysicalD
   const bool supports_bc = features.textureCompressionBC == VK_TRUE;
   config->backend_info.bSupportsST3CTextures = supports_bc;
   config->backend_info.bSupportsBPTCTextures = supports_bc;
-
 }
 
 void VulkanContext::PopulateBackendInfoMultisampleModes(
@@ -832,4 +831,4 @@ void VulkanContext::InitDriverDetails()
                       static_cast<double>(m_device_properties.driverVersion),
                       DriverDetails::Family::UNKNOWN);
 }
-}  // namespace Vulkan
+}

@@ -71,6 +71,9 @@ void SWVertexLoader::vFlush()
   case PrimitiveType::Triangles:
     primitiveType = OpcodeDecoder::GX_DRAW_TRIANGLES;
     break;
+  case PrimitiveType::TriangleStrip:
+    primitiveType = OpcodeDecoder::GX_DRAW_TRIANGLE_STRIP;
+    break;
   }
 
   m_setup_unit.Init(primitiveType);

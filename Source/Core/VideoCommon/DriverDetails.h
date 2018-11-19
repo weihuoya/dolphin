@@ -283,4 +283,4 @@ void Init(API api, Vendor vendor, Driver driver, const double version, const Fam
 // Once Vendor and driver version is set, this will return if it has the applicable bug passed to
 // it.
 bool HasBug(Bug bug);
-}  // namespace DriverDetails
+}

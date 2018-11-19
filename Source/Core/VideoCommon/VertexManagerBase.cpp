@@ -244,12 +244,12 @@ void VertexManagerBase::Flush()
   {
     LitChannel* ch = &xfmem.color[i];
     PRIM_LOG("colchan%u: matsrc=%u, light=0x%x, ambsrc=%u, diffunc=%u, attfunc=%u", i,
-             ch->matsource, ch->GetFullLightMask(), ch->ambsource,
-             ch->diffusefunc, ch->attnfunc);
+             ch->matsource.Value(), ch->GetFullLightMask(), ch->ambsource.Value(),
+             ch->diffusefunc.Value(), ch->attnfunc.Value());
     ch = &xfmem.alpha[i];
     PRIM_LOG("alpchan%u: matsrc=%u, light=0x%x, ambsrc=%u, diffunc=%u, attfunc=%u", i,
-             ch->matsource, ch->GetFullLightMask(), ch->ambsource,
-             ch->diffusefunc, ch->attnfunc);
+             ch->matsource.Value(), ch->GetFullLightMask(), ch->ambsource.Value(),
+             ch->diffusefunc.Value(), ch->attnfunc.Value());
   }
 
   for (u32 i = 0; i < xfmem.numTexGen.numTexGens; ++i)
@@ -262,10 +262,10 @@ void VertexManagerBase::Flush()
 
     PRIM_LOG("txgen%u: proj=%u, input=%u, gentype=%u, srcrow=%u, embsrc=%u, emblght=%u, "
              "postmtx=%u, postnorm=%u",
-             i, tinfo.projection, tinfo.inputform, tinfo.texgentype,
-             tinfo.sourcerow, tinfo.embosssourceshift,
-             tinfo.embosslightshift, xfmem.postMtxInfo[i].index,
-             xfmem.postMtxInfo[i].normalize);
+             i, tinfo.projection.Value(), tinfo.inputform.Value(), tinfo.texgentype.Value(),
+             tinfo.sourcerow.Value(), tinfo.embosssourceshift.Value(),
+             tinfo.embosslightshift.Value(), xfmem.postMtxInfo[i].index.Value(),
+             xfmem.postMtxInfo[i].normalize.Value());
   }
 
   PRIM_LOG("pixel: tev=%u, ind=%u, texgen=%u, dstalpha=%u, alphatest=0x%x",
@@ -361,7 +361,7 @@ void VertexManagerBase::Flush()
   if (xfmem.numTexGen.numTexGens != bpmem.genMode.numtexgens)
     ERROR_LOG(VIDEO,
               "xf.numtexgens (%d) does not match bp.numtexgens (%d). Error in command stream.",
-              xfmem.numTexGen.numTexGens, bpmem.genMode.numtexgens);
+              xfmem.numTexGen.numTexGens, bpmem.genMode.numtexgens.Value());
 
   m_is_flushed = true;
   m_cull_all = false;
@@ -379,7 +379,8 @@ void VertexManagerBase::CalculateZSlope(NativeVertexFormat* format)
   float viewOffset[2] = {xfmem.viewport.xOrig - bpmem.scissorOffset.x * 2,
                          xfmem.viewport.yOrig - bpmem.scissorOffset.y * 2};
 
-  if (m_current_primitive_type != PrimitiveType::Triangles)
+  if (m_current_primitive_type != PrimitiveType::Triangles &&
+      m_current_primitive_type != PrimitiveType::TriangleStrip)
   {
     return;
   }

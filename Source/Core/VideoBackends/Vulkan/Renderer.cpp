@@ -680,7 +680,7 @@ void Renderer::ClearScreen(const EFBRectangle& rc, bool color_enable, bool alpha
                          g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD),
                          FramebufferManager::GetInstance()->GetEFBLoadRenderPass(),
                          g_shader_cache->GetPassthroughVertexShader(),
-                         VK_NULL_HANDLE, m_clear_fragment_shader);
+                         g_shader_cache->GetPassthroughGeometryShader(), m_clear_fragment_shader);
 
   draw.SetMultisamplingState(FramebufferManager::GetInstance()->GetEFBMultisamplingState());
   draw.SetDepthState(depth_state);
