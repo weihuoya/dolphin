@@ -323,23 +323,3 @@ static void EndPrimitive(ShaderCode& out, const ShaderHostConfig& host_config,
   else
     out.Write("\toutput.RestartStrip();\n");
 }
-
-void EnumerateGeometryShaderUids(const std::function<void(const GeometryShaderUid&)>& callback)
-{
-  GeometryShaderUid uid;
-  std::memset(&uid, 0, sizeof(uid));
-
-  const std::array<PrimitiveType, 3> primitive_lut = {
-      {PrimitiveType::Triangles, PrimitiveType::Lines, PrimitiveType::Points}};
-  for (PrimitiveType primitive : primitive_lut)
-  {
-    auto* guid = uid.GetUidData<geometry_shader_uid_data>();
-    guid->primitive_type = static_cast<u32>(primitive);
-
-    for (u32 texgens = 0; texgens <= 8; texgens++)
-    {
-      guid->numTexGens = texgens;
-      callback(uid);
-    }
-  }
-}
