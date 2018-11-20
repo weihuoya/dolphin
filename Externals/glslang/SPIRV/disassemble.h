@@ -48,6 +48,9 @@ namespace spv {
     // disassemble with glslang custom disassembler
     void Disassemble(std::ostream& out, const std::vector<unsigned int>&);
 
+    // disassemble with SPIRV-Tools disassembler
+    void SpirvToolsDisassemble(std::ostream& out, const std::vector<unsigned int>& stream);
+
 };  // end namespace spv
 
 #endif // disassembler_H

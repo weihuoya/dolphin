@@ -359,7 +359,7 @@ struct TDefaultIoResolverBase : public glslang::TIoMapResolver
 {
     TDefaultIoResolverBase(const TIntermediate &intermediate) :
         intermediate(intermediate),
-        nextUniformLocation(intermediate.getUniformLocationBase()),
+        nextUniformLocation(0),
         nextInputLocation(0),
         nextOutputLocation(0)
     { }
@@ -434,7 +434,7 @@ struct TDefaultIoResolverBase : public glslang::TIoMapResolver
 
         return 0;
     }
-    int resolveUniformLocation(EShLanguage /*stage*/, const char* name, const glslang::TType& type, bool /*is_live*/) override
+    int resolveUniformLocation(EShLanguage /*stage*/, const char* /*name*/, const glslang::TType& type, bool /*is_live*/) override
     {
         // kick out of not doing this
         if (!doAutoLocationMapping())
@@ -455,11 +455,7 @@ struct TDefaultIoResolverBase : public glslang::TIoMapResolver
                 return -1;
         }
 
-        int location = intermediate.getUniformLocationOverride(name);
-        if (location != -1)
-                return location;
-
-        location = nextUniformLocation;
+        int location = nextUniformLocation;
 
         nextUniformLocation += TIntermediate::computeTypeUniformLocationSize(type);
 
