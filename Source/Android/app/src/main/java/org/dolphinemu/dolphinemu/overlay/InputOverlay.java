@@ -127,7 +127,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       defaultOverlay();
 
     sControllerScale = mPreferences.getInt(CONTROL_SCALE_PREF_KEY, 50);
-    sJoystickRelative = mPreferences.getBoolean(RELATIVE_PREF_KEY, false);
+    sJoystickRelative = mPreferences.getBoolean(RELATIVE_PREF_KEY, true);
     sControllerType = mPreferences.getInt(CONTROL_TYPE_PREF_KEY, CONTROLLER_WIINUNCHUK);
     sJoyStickSetting = mPreferences.getInt(JOYSTICK_PREF_KEY, JOYSTICK_EMULATE_NONE);
 
@@ -886,7 +886,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
   public void refreshControls()
   {
-  	boolean touchPointer = mPreferences.getBoolean(POINTER_PREF_KEY, false);
+    boolean touchPointer = mPreferences.getBoolean(POINTER_PREF_KEY, false);
     // Remove all the overlay buttons from the HashSet.
     overlayButtons.clear();
     overlayDpads.clear();
@@ -895,7 +895,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     // Add all the enabled overlay items back to the HashSet.
     if (EmulationActivity.isGameCubeGame() || sControllerType == CONTROLLER_GAMECUBE)
     {
-			touchPointer = false;
+      touchPointer = false;
       addGameCubeOverlayControls();
     }
     else if (sControllerType == COCONTROLLER_CLASSIC)
@@ -911,7 +911,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       }
     }
 
-		setTouchPointerEnabled(touchPointer);
+    setTouchPointerEnabled(touchPointer);
     invalidate();
   }
 

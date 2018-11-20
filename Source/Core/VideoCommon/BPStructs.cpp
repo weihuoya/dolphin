@@ -70,7 +70,7 @@ static void BPWritten(const BPCmd& bp)
   // check for invalid state, else unneeded configuration are built
   g_video_backend->CheckInvalidState();
 
-  if (((s32*)&bpmem)[bp.address] == bp.newvalue)
+  if (((u32*)&bpmem)[bp.address] == bp.newvalue)
   {
     if (!(bp.address == BPMEM_TRIGGER_EFB_COPY || bp.address == BPMEM_CLEARBBOX1 ||
           bp.address == BPMEM_CLEARBBOX2 || bp.address == BPMEM_SETDRAWDONE ||

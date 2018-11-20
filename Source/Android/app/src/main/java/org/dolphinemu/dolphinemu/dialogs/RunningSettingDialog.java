@@ -307,7 +307,7 @@ public class RunningSettingDialog extends DialogFragment
       }
 
       mJoystickRelative = PreferenceManager.getDefaultSharedPreferences(getContext())
-        .getBoolean(InputOverlay.RELATIVE_PREF_KEY, false) ? 1 : 0;
+        .getBoolean(InputOverlay.RELATIVE_PREF_KEY, true) ? 1 : 0;
       mSettings.add(new SettingsItem(SettingsItem.SEETING_JOYSTICK_RELATIVE, R.string.joystick_relative_center,
         SettingsItem.TYPE_CHECKBOX, mJoystickRelative));
 
