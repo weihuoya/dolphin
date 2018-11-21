@@ -223,7 +223,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
           }
         }
 
-        if(!isProcessed && mOverlayPointer != null)
+        if(!isProcessed && mOverlayPointer != null && mOverlayPointer.getTrackId() == -1)
           mOverlayPointer.onPointerDown(pointerId, pointerX, pointerY);
         break;
       }
@@ -278,10 +278,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
           if(mOverlayPointer != null && mOverlayPointer.getTrackId() == pointerId)
           {
-            if(isProcessed)
-              mOverlayPointer.onPointerUp(pointerId, pointerX, pointerY);
-            else
-              mOverlayPointer.onPointerMove(pointerId, pointerX, pointerY);
+            mOverlayPointer.onPointerMove(pointerId, pointerX, pointerY);
           }
         }
         break;

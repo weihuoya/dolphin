@@ -67,9 +67,6 @@ static void BPWritten(const BPCmd& bp)
   ----------------------------------------------------------------------------------------------------------------
   */
 
-  // check for invalid state, else unneeded configuration are built
-  g_video_backend->CheckInvalidState();
-
   if (((u32*)&bpmem)[bp.address] == bp.newvalue)
   {
     if (!(bp.address == BPMEM_TRIGGER_EFB_COPY || bp.address == BPMEM_CLEARBBOX1 ||
@@ -82,6 +79,9 @@ static void BPWritten(const BPCmd& bp)
       return;
     }
   }
+
+  // check for invalid state, else unneeded configuration are built
+  g_video_backend->CheckInvalidState();
 
   FlushPipeline();
 
@@ -695,13 +695,11 @@ void LoadBPReg(u32 value0)
   u32 newval = (oldval & ~bpmem.bpMask) | (value0 & bpmem.bpMask);
   u32 changes = (oldval ^ newval) & 0xFFFFFF;
 
-  BPCmd bp = {regNum, changes, newval};
-
   // Reset the mask register if we're not trying to set it ourselves.
   if (regNum != BPMEM_BP_MASK)
     bpmem.bpMask = 0xFFFFFF;
 
-  BPWritten(bp);
+  BPWritten({regNum, changes, newval});
 }
 
 void LoadBPRegPreprocess(u32 value0)
