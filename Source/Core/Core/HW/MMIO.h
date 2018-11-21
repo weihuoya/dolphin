@@ -61,13 +61,13 @@ class Mapping
 public:
   Mapping()
   {
-    memset(m_read8_handlers, ArraySize(m_read8_handlers), 0);
-    memset(m_read16_handlers, ArraySize(m_read16_handlers), 0);
-    memset(m_read32_handlers, ArraySize(m_read32_handlers), 0);
+    memset(m_read8_handlers, 0, ArraySize(m_read8_handlers));
+    memset(m_read16_handlers, 0, ArraySize(m_read16_handlers));
+    memset(m_read32_handlers, 0, ArraySize(m_read32_handlers));
 
-    memset(m_write8_handlers, ArraySize(m_write8_handlers), 0);
-    memset(m_write16_handlers, ArraySize(m_write16_handlers), 0);
-    memset(m_write32_handlers, ArraySize(m_write32_handlers), 0);
+    memset(m_write8_handlers, 0, ArraySize(m_write8_handlers));
+    memset(m_write16_handlers, 0, ArraySize(m_write16_handlers));
+    memset(m_write32_handlers, 0, ArraySize(m_write32_handlers));
   }
 
   ~Mapping()
