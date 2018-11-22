@@ -597,13 +597,13 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
           R.drawable.gcwii_dpad_pressed_two_directions,
           ButtonType.WIIMOTE_RIGHT, ButtonType.WIIMOTE_LEFT,
           ButtonType.WIIMOTE_UP, ButtonType.WIIMOTE_DOWN));
-        // joystick emulate
-        if (sJoyStickSetting != JOYSTICK_EMULATE_NONE)
-        {
-          overlayJoysticks.add(initializeOverlayJoystick(R.drawable.gcwii_joystick_range,
-            R.drawable.gcwii_joystick, R.drawable.gcwii_joystick_pressed,
-            ButtonType.NUNCHUK_STICK));
-        }
+      }
+
+      // joystick emulate
+      if(sJoyStickSetting != JOYSTICK_EMULATE_NONE)
+      {
+        overlayJoysticks.add(initializeOverlayJoystick(R.drawable.gcwii_joystick_range,
+          R.drawable.gcwii_joystick, R.drawable.gcwii_joystick_pressed, 0));
       }
     }
   }
@@ -1008,8 +1008,17 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     // The X and Y coordinates of the InputOverlayDrawableButton on the InputOverlay.
     // These were set in the input overlay configuration menu.
-    float x = mPreferences.getFloat(controller + "_" + joystick + "_X", 0f);
-    float y = mPreferences.getFloat(controller + "_" + joystick + "_Y", 0f);
+    float x, y;
+    if(joystick != 0)
+    {
+      x = mPreferences.getFloat(controller + "_" + joystick + "_X", 0f);
+      y = mPreferences.getFloat(controller + "_" + joystick + "_Y", 0f);
+    }
+    else
+    {
+      x = -0.3f;
+      y = 0.5f;
+    }
 
     // Decide inner scale based on joystick ID
     float innerScale;

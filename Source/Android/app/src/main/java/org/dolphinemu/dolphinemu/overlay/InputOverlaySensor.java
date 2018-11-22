@@ -5,6 +5,7 @@ import org.dolphinemu.dolphinemu.activities.EmulationActivity;
 
 public class InputOverlaySensor
 {
+  private final int[] mAxisIDs = {0, 0, 0, 0};
   private boolean mAccuracyChanged;
   private float mBaseYaw;
   private float mBasePitch;
@@ -13,6 +14,96 @@ public class InputOverlaySensor
   public InputOverlaySensor()
   {
     mAccuracyChanged = false;
+  }
+
+  public void setAxisIDs()
+  {
+    if(EmulationActivity.isGameCubeGame())
+    {
+      switch (InputOverlay.sSensorGCSetting)
+      {
+        case InputOverlay.SENSOR_GC_JOYSTICK:
+          mAxisIDs[0] = NativeLibrary.ButtonType.STICK_MAIN + 1;
+          mAxisIDs[1] = NativeLibrary.ButtonType.STICK_MAIN + 2;
+          mAxisIDs[2] = NativeLibrary.ButtonType.STICK_MAIN + 3;
+          mAxisIDs[3] = NativeLibrary.ButtonType.STICK_MAIN + 4;
+          break;
+        case InputOverlay.SENSOR_GC_CSTICK:
+          mAxisIDs[0] = NativeLibrary.ButtonType.STICK_C + 1;
+          mAxisIDs[1] = NativeLibrary.ButtonType.STICK_C + 2;
+          mAxisIDs[2] = NativeLibrary.ButtonType.STICK_C + 3;
+          mAxisIDs[3] = NativeLibrary.ButtonType.STICK_C + 4;
+          break;
+        case InputOverlay.SENSOR_GC_DPAD:
+          mAxisIDs[0] = NativeLibrary.ButtonType.BUTTON_UP;
+          mAxisIDs[1] = NativeLibrary.ButtonType.BUTTON_DOWN;
+          mAxisIDs[2] = NativeLibrary.ButtonType.BUTTON_LEFT;
+          mAxisIDs[3] = NativeLibrary.ButtonType.BUTTON_RIGHT;
+          break;
+      }
+    }
+    else
+    {
+      switch (InputOverlay.sSensorWiiSetting)
+      {
+        case InputOverlay.SENSOR_WII_DPAD:
+          mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_UP;
+          mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_DOWN;
+          mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_LEFT;
+          mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_RIGHT;
+          break;
+        case InputOverlay.SENSOR_WII_STICK:
+          if(InputOverlay.sControllerType == InputOverlay.COCONTROLLER_CLASSIC)
+          {
+            mAxisIDs[0] = NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_UP;
+            mAxisIDs[1] = NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_DOWN;
+            mAxisIDs[2] = NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_LEFT;
+            mAxisIDs[3] = NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_RIGHT;
+          }
+          else
+          {
+            mAxisIDs[0] = NativeLibrary.ButtonType.NUNCHUK_STICK + 1;
+            mAxisIDs[1] = NativeLibrary.ButtonType.NUNCHUK_STICK + 2;
+            mAxisIDs[2] = NativeLibrary.ButtonType.NUNCHUK_STICK + 3;
+            mAxisIDs[3] = NativeLibrary.ButtonType.NUNCHUK_STICK + 4;
+          }
+
+          break;
+        case InputOverlay.SENSOR_WII_IR:
+          mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
+          mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
+          mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_IR + 3;
+          mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_IR + 4;
+          break;
+        case InputOverlay.SENSOR_WII_SWING:
+          mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_SWING + 1;
+          mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SWING + 2;
+          mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SWING + 3;
+          mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SWING + 4;
+          break;
+        case InputOverlay.SENSOR_WII_TILT:
+          if(InputOverlay.sControllerType == InputOverlay.CONTROLLER_WIINUNCHUK)
+          {
+            mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1; // up
+            mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2; // down
+            mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3; // left
+            mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4; // right
+          }
+          else
+          {
+            mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4; // right
+            mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3; // left
+            mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1; // up
+            mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2; // down
+          }
+          break;
+        case InputOverlay.SENSOR_WII_SHAKE:
+          mAxisIDs[0] = 0;
+          mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
+          mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Y;
+          mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Z;
+      }
+    }
   }
 
   public void onSensorChanged(float[] rotation)
@@ -36,136 +127,40 @@ public class InputOverlaySensor
     float z = mBaseYaw - rotation[0];
     float y = mBasePitch - rotation[2];
     float x = mBaseRoll - rotation[1];
-    int[] axisIDs = new int[4];
     float[] axises = new float[4];
 
     z = z * (1 + Math.abs(z));
     y = y * (1 + Math.abs(y));
     x = x * (1 + Math.abs(x));
 
-    if(EmulationActivity.isGameCubeGame())
+    axises[0] = y; // up
+    axises[1] = y; // down
+    axises[2] = x; // left
+    axises[3] = x; // right
+
+    if(!EmulationActivity.isGameCubeGame())
     {
-      switch (InputOverlay.sSensorGCSetting)
+      if(InputOverlay.SENSOR_WII_TILT == InputOverlay.sSensorWiiSetting)
       {
-        case InputOverlay.SENSOR_GC_JOYSTICK:
-          axisIDs[0] = NativeLibrary.ButtonType.STICK_MAIN + 1;
-          axisIDs[1] = NativeLibrary.ButtonType.STICK_MAIN + 2;
-          axisIDs[2] = NativeLibrary.ButtonType.STICK_MAIN + 3;
-          axisIDs[3] = NativeLibrary.ButtonType.STICK_MAIN + 4;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case InputOverlay.SENSOR_GC_CSTICK:
-          axisIDs[0] = NativeLibrary.ButtonType.STICK_C + 1;
-          axisIDs[1] = NativeLibrary.ButtonType.STICK_C + 2;
-          axisIDs[2] = NativeLibrary.ButtonType.STICK_C + 3;
-          axisIDs[3] = NativeLibrary.ButtonType.STICK_C + 4;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case InputOverlay.SENSOR_GC_DPAD:
-          axisIDs[0] = NativeLibrary.ButtonType.BUTTON_UP;
-          axisIDs[1] = NativeLibrary.ButtonType.BUTTON_DOWN;
-          axisIDs[2] = NativeLibrary.ButtonType.BUTTON_LEFT;
-          axisIDs[3] = NativeLibrary.ButtonType.BUTTON_RIGHT;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
+        axises[0] = y / 2.0f;
+        axises[1] = y / 2.0f;
+        axises[2] = x / 2.0f;
+        axises[3] = x / 2.0f;
       }
-    }
-    else
-    {
-      switch (InputOverlay.sSensorWiiSetting)
+      else if(InputOverlay.SENSOR_WII_SHAKE == InputOverlay.sSensorWiiSetting)
       {
-        case InputOverlay.SENSOR_WII_DPAD:
-          axisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_UP;
-          axisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_DOWN;
-          axisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_LEFT;
-          axisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_RIGHT;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case InputOverlay.SENSOR_WII_STICK:
-          if(InputOverlay.sControllerType == InputOverlay.COCONTROLLER_CLASSIC)
-          {
-            axisIDs[0] = NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_UP;
-            axisIDs[1] = NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_DOWN;
-            axisIDs[2] = NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_LEFT;
-            axisIDs[3] = NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_RIGHT;
-          }
-          else
-          {
-            axisIDs[0] = NativeLibrary.ButtonType.NUNCHUK_STICK + 1;
-            axisIDs[1] = NativeLibrary.ButtonType.NUNCHUK_STICK + 2;
-            axisIDs[2] = NativeLibrary.ButtonType.NUNCHUK_STICK + 3;
-            axisIDs[3] = NativeLibrary.ButtonType.NUNCHUK_STICK + 4;
-          }
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case InputOverlay.SENSOR_WII_IR:
-          axisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
-          axisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
-          axisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_IR + 3;
-          axisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_IR + 4;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case InputOverlay.SENSOR_WII_SWING:
-          axisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_SWING + 1;
-          axisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SWING + 2;
-          axisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SWING + 3;
-          axisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SWING + 4;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case InputOverlay.SENSOR_WII_TILT:
-          if(InputOverlay.sControllerType == InputOverlay.CONTROLLER_WIINUNCHUK)
-          {
-            axisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1; // up
-            axisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2; // down
-            axisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3; // left
-            axisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4; // right
-          }
-          else
-          {
-            axisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4; // right
-            axisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3; // left
-            axisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1; // up
-            axisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2; // down
-          }
-          axises[0] = y / 2.0f;
-          axises[1] = y / 2.0f;
-          axises[2] = x / 2.0f;
-          axises[3] = x / 2.0f;
-          break;
-        case InputOverlay.SENSOR_WII_SHAKE:
-          axises[0] = -x;
-          axises[1] = x;
-          axises[2] = -y;
-          axises[3] = y;
-          handleShakeEvent(axises);
-          return;
+        axises[0] = -x;
+        axises[1] = x;
+        axises[2] = -y;
+        axises[3] = y;
+        handleShakeEvent(axises);
+        return;
       }
     }
 
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < mAxisIDs.length; i++)
     {
-      NativeLibrary.onGamePadMoveEvent(NativeLibrary.TouchScreenDevice, axisIDs[i], axises[i]);
+      NativeLibrary.onGamePadMoveEvent(NativeLibrary.TouchScreenDevice, mAxisIDs[i], axises[i]);
     }
   }
 
@@ -200,6 +195,7 @@ public class InputOverlaySensor
 
   public void onAccuracyChanged(int accuracy)
   {
+    setAxisIDs();
     mAccuracyChanged = true;
     mBaseYaw = (float)Math.PI;
     mBasePitch = (float)Math.PI;

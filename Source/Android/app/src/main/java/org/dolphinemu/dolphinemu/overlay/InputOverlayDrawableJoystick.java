@@ -23,6 +23,8 @@ public final class InputOverlayDrawableJoystick
 {
   private final int[] mAxisIDs = {0, 0, 0, 0};
   private final float[] mAxises = {0f, 0f};
+  private float mFactor = 1;
+
   private int mTrackId = -1;
   private int mJoystickType;
   private int mControlPositionX, mControlPositionY;
@@ -51,11 +53,7 @@ public final class InputOverlayDrawableJoystick
     Bitmap bitmapInnerDefault, Bitmap bitmapInnerPressed,
     Rect rectOuter, Rect rectInner, int joystick)
   {
-    mAxisIDs[0] = joystick + 1;
-    mAxisIDs[1] = joystick + 2;
-    mAxisIDs[2] = joystick + 3;
-    mAxisIDs[3] = joystick + 4;
-    mJoystickType = joystick;
+    setAxisIDs(joystick);
 
     mOuterBitmap = new BitmapDrawable(res, bitmapOuter);
     mDefaultStateInnerBitmap = new BitmapDrawable(res, bitmapInnerDefault);
@@ -122,6 +120,63 @@ public final class InputOverlayDrawableJoystick
     setJoystickState(x, y);
   }
 
+  public void setAxisIDs(int joystick)
+  {
+    if(joystick != 0)
+    {
+      mJoystickType = joystick;
+      mAxisIDs[0] = joystick + 1;
+      mAxisIDs[1] = joystick + 2;
+      mAxisIDs[2] = joystick + 3;
+      mAxisIDs[3] = joystick + 4;
+    }
+    else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_IR)
+    {
+      mFactor = -0.8f;
+      mJoystickType = NativeLibrary.ButtonType.WIIMOTE_IR;
+      mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
+      mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
+      mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_IR + 3;
+      mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_IR + 4;
+    }
+    else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SWING)
+    {
+      mFactor = -0.8f;
+      mJoystickType = NativeLibrary.ButtonType.WIIMOTE_SWING;
+      mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_SWING + 1;
+      mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SWING + 2;
+      mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SWING + 3;
+      mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SWING + 4;
+    }
+    else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_TILT)
+    {
+      mFactor = 0.8f;
+      mJoystickType = NativeLibrary.ButtonType.WIIMOTE_TILT;
+      if(InputOverlay.sControllerType == InputOverlay.CONTROLLER_WIINUNCHUK)
+      {
+        mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1;
+        mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2;
+        mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3;
+        mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4;
+      }
+      else
+      {
+        mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4;
+        mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3;
+        mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1;
+        mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2;
+      }
+    }
+    else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SHAKE)
+    {
+      mJoystickType = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
+      mAxisIDs[0] = 0;
+      mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
+      mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Y;
+      mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Z;
+    }
+  }
+
   private void setJoystickState(float touchX, float touchY)
   {
     if(mTrackId != -1)
@@ -144,65 +199,25 @@ public final class InputOverlayDrawableJoystick
 
     SetInnerBounds();
 
-    float factor = 1.0f;
-    int[] axisIDs = getAxisIDs();
     float[] axises = getAxisValues();
 
-    // fx wii classic
-    if(axisIDs[0] == NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_UP && axises[0] > 0)
+    // shake
+    if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SHAKE)
     {
-      axises[1] = 0;
+      axises[1] = -axises[1];
+      axises[3] = -axises[3];
+      handleShakeEvent(axises);
+      return;
     }
-
-    if (axisIDs[0] == NativeLibrary.ButtonType.NUNCHUK_STICK_UP ||
-      (InputOverlay.sControllerType == InputOverlay.COCONTROLLER_CLASSIC &&
-        axisIDs[0] == NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_UP))
+    else if(mAxisIDs[0] == NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_UP && axises[0] > 0)
     {
-      if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_IR)
-      {
-        factor = -1.0f;
-        axisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
-        axisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
-        axisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_IR + 3;
-        axisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_IR + 4;
-      }
-      else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SWING)
-      {
-        factor = -1.0f;
-        axisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_SWING + 1;
-        axisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SWING + 2;
-        axisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SWING + 3;
-        axisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SWING + 4;
-      }
-      else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_TILT)
-      {
-        if(InputOverlay.sControllerType == InputOverlay.CONTROLLER_WIINUNCHUK)
-        {
-          axisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1;
-          axisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2;
-          axisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3;
-          axisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4;
-        }
-        else
-        {
-          axisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4;
-          axisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3;
-          axisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1;
-          axisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2;
-        }
-      }
-      else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SHAKE)
-      {
-        axises[1] = -axises[1];
-        axises[3] = -axises[3];
-        handleShakeEvent(axises);
-        return;
-      }
+      // fx wii classic
+      axises[1] = 0;
     }
 
     for (int i = 0; i < 4; i++)
     {
-      NativeLibrary.onGamePadMoveEvent(NativeLibrary.TouchScreenDevice, axisIDs[i], factor * axises[i]);
+      NativeLibrary.onGamePadMoveEvent(NativeLibrary.TouchScreenDevice, mAxisIDs[i], mFactor * axises[i]);
     }
   }
 
@@ -271,11 +286,6 @@ public final class InputOverlayDrawableJoystick
   public float[] getAxisValues()
   {
     return new float[]{mAxises[0], mAxises[0], mAxises[1], mAxises[1]};
-  }
-
-  public int[] getAxisIDs()
-  {
-    return new int[]{mAxisIDs[0], mAxisIDs[1], mAxisIDs[2], mAxisIDs[3]};
   }
 
   private void SetInnerBounds()
