@@ -133,7 +133,7 @@ public final class InputOverlayDrawableJoystick
     else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_IR)
     {
       mFactor = -0.8f;
-      mJoystickType = NativeLibrary.ButtonType.WIIMOTE_IR;
+      mJoystickType = 0;
       mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
       mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
       mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_IR + 3;
@@ -142,7 +142,7 @@ public final class InputOverlayDrawableJoystick
     else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SWING)
     {
       mFactor = -0.8f;
-      mJoystickType = NativeLibrary.ButtonType.WIIMOTE_SWING;
+      mJoystickType = 0;
       mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_SWING + 1;
       mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SWING + 2;
       mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SWING + 3;
@@ -151,7 +151,7 @@ public final class InputOverlayDrawableJoystick
     else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_TILT)
     {
       mFactor = 0.8f;
-      mJoystickType = NativeLibrary.ButtonType.WIIMOTE_TILT;
+      mJoystickType = 0;
       if(InputOverlay.sControllerType == InputOverlay.CONTROLLER_WIINUNCHUK)
       {
         mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1;
@@ -169,7 +169,7 @@ public final class InputOverlayDrawableJoystick
     }
     else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SHAKE)
     {
-      mJoystickType = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
+      mJoystickType = 0;
       mAxisIDs[0] = 0;
       mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
       mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Y;

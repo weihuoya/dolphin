@@ -1008,17 +1008,8 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     // The X and Y coordinates of the InputOverlayDrawableButton on the InputOverlay.
     // These were set in the input overlay configuration menu.
-    float x, y;
-    if(joystick != 0)
-    {
-      x = mPreferences.getFloat(controller + "_" + joystick + "_X", 0f);
-      y = mPreferences.getFloat(controller + "_" + joystick + "_Y", 0f);
-    }
-    else
-    {
-      x = -0.3f;
-      y = 0.5f;
-    }
+    float x = mPreferences.getFloat(controller + "_" + joystick + "_X", -0.3f);
+    float y = mPreferences.getFloat(controller + "_" + joystick + "_Y", 0.5f);
 
     // Decide inner scale based on joystick ID
     float innerScale;
