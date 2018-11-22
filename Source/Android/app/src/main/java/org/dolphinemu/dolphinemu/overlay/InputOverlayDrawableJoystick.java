@@ -207,7 +207,6 @@ public final class InputOverlayDrawableJoystick
   }
 
   // axis to button
-  private int[] mShakeState = new int[4];
   private void handleShakeEvent(float[] axises)
   {
     int[] axisIDs = new int[4];
@@ -220,16 +219,18 @@ public final class InputOverlayDrawableJoystick
     {
       if(axises[i] > 0.15f)
       {
-        if(mShakeState[i] != NativeLibrary.ButtonState.PRESSED)
+        if(InputOverlay.sShakeStates[i] != NativeLibrary.ButtonState.PRESSED)
         {
-          mShakeState[i] = NativeLibrary.ButtonState.PRESSED;
-          NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, axisIDs[i], mShakeState[i]);
+          InputOverlay.sShakeStates[i] = NativeLibrary.ButtonState.PRESSED;
+          NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, axisIDs[i],
+            NativeLibrary.ButtonState.PRESSED);
         }
       }
-      else if(mShakeState[i] != NativeLibrary.ButtonState.RELEASED)
+      else if(InputOverlay.sShakeStates[i] != NativeLibrary.ButtonState.RELEASED)
       {
-        mShakeState[i] = NativeLibrary.ButtonState.RELEASED;
-        NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, axisIDs[i], mShakeState[i]);
+        InputOverlay.sShakeStates[i] = NativeLibrary.ButtonState.RELEASED;
+        NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, axisIDs[i],
+          NativeLibrary.ButtonState.RELEASED);
       }
     }
   }

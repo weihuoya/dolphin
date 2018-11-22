@@ -74,15 +74,13 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
   public static final int SENSOR_WII_SHAKE = 6;
   public static int sSensorWiiSetting;
 
-  private boolean mAccuracyChanged;
-  private float mBaseYaw;
-  private float mBasePitch;
-  private float mBaseRoll;
+  public static int[] sShakeStates = new int[4];
 
   private final ArrayList<InputOverlayDrawableButton> overlayButtons = new ArrayList<>();
   private final ArrayList<InputOverlayDrawableDpad> overlayDpads = new ArrayList<>();
   private final ArrayList<InputOverlayDrawableJoystick> overlayJoysticks = new ArrayList<>();
   private InputOverlayPointer mOverlayPointer = null;
+  private InputOverlaySensor mOverlaySensor = null;
 
   private boolean mIsInEditMode = false;
   private InputOverlayDrawableButton mButtonBeingConfigured;
@@ -136,7 +134,12 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     sSensorGCSetting = SENSOR_GC_NONE;
     sSensorWiiSetting = SENSOR_WII_NONE;
-    mAccuracyChanged = false;
+
+    //
+    for(int i = 0; i < sShakeStates.length; ++i)
+    {
+      sShakeStates[i] = NativeLibrary.ButtonState.RELEASED;
+    }
 
     // Load the controls.
     refreshControls();
@@ -457,192 +460,19 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
   public void onSensorChanged(float[] rotation)
   {
-    // portrait:  yaw(0) - pitch(1) - roll(2)
-    // landscape: yaw(0) - pitch(2) - roll(1)
-    if(mAccuracyChanged)
+    if(mOverlaySensor != null)
     {
-      if(Math.abs(mBaseYaw - rotation[0]) > 0.1f ||
-        Math.abs(mBasePitch - rotation[2]) > 0.1f ||
-        Math.abs(mBaseRoll - rotation[1]) > 0.1f)
-      {
-        mBaseYaw = rotation[0];
-        mBasePitch = rotation[2];
-        mBaseRoll = rotation[1];
-        return;
-      }
-      mAccuracyChanged = false;
-    }
-
-    float z = mBaseYaw - rotation[0];
-    float y = mBasePitch - rotation[2];
-    float x = mBaseRoll - rotation[1];
-    int[] axisIDs = new int[4];
-    float[] axises = new float[4];
-
-    z = z * (1 + Math.abs(z));
-    y = y * (1 + Math.abs(y));
-    x = x * (1 + Math.abs(x));
-
-    if(EmulationActivity.isGameCubeGame())
-    {
-      switch (sSensorGCSetting)
-      {
-        case SENSOR_GC_JOYSTICK:
-          axisIDs[0] = ButtonType.STICK_MAIN + 1;
-          axisIDs[1] = ButtonType.STICK_MAIN + 2;
-          axisIDs[2] = ButtonType.STICK_MAIN + 3;
-          axisIDs[3] = ButtonType.STICK_MAIN + 4;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case SENSOR_GC_CSTICK:
-          axisIDs[0] = ButtonType.STICK_C + 1;
-          axisIDs[1] = ButtonType.STICK_C + 2;
-          axisIDs[2] = ButtonType.STICK_C + 3;
-          axisIDs[3] = ButtonType.STICK_C + 4;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case SENSOR_GC_DPAD:
-          axisIDs[0] = ButtonType.BUTTON_UP;
-          axisIDs[1] = ButtonType.BUTTON_DOWN;
-          axisIDs[2] = ButtonType.BUTTON_LEFT;
-          axisIDs[3] = ButtonType.BUTTON_RIGHT;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-      }
-    }
-    else
-    {
-      switch (sSensorWiiSetting)
-      {
-        case SENSOR_WII_DPAD:
-          axisIDs[0] = ButtonType.WIIMOTE_UP;
-          axisIDs[1] = ButtonType.WIIMOTE_DOWN;
-          axisIDs[2] = ButtonType.WIIMOTE_LEFT;
-          axisIDs[3] = ButtonType.WIIMOTE_RIGHT;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case SENSOR_WII_STICK:
-          if(sControllerType == COCONTROLLER_CLASSIC)
-          {
-            axisIDs[0] = ButtonType.CLASSIC_STICK_LEFT_UP;
-            axisIDs[1] = ButtonType.CLASSIC_STICK_LEFT_DOWN;
-            axisIDs[2] = ButtonType.CLASSIC_STICK_LEFT_LEFT;
-            axisIDs[3] = ButtonType.CLASSIC_STICK_LEFT_RIGHT;
-          }
-          else
-          {
-            axisIDs[0] = ButtonType.NUNCHUK_STICK + 1;
-            axisIDs[1] = ButtonType.NUNCHUK_STICK + 2;
-            axisIDs[2] = ButtonType.NUNCHUK_STICK + 3;
-            axisIDs[3] = ButtonType.NUNCHUK_STICK + 4;
-          }
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case SENSOR_WII_IR:
-          axisIDs[0] = ButtonType.WIIMOTE_IR + 1;
-          axisIDs[1] = ButtonType.WIIMOTE_IR + 2;
-          axisIDs[2] = ButtonType.WIIMOTE_IR + 3;
-          axisIDs[3] = ButtonType.WIIMOTE_IR + 4;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case SENSOR_WII_SWING:
-          axisIDs[0] = ButtonType.WIIMOTE_SWING + 1;
-          axisIDs[1] = ButtonType.WIIMOTE_SWING + 2;
-          axisIDs[2] = ButtonType.WIIMOTE_SWING + 3;
-          axisIDs[3] = ButtonType.WIIMOTE_SWING + 4;
-          axises[0] = y; // up
-          axises[1] = y; // down
-          axises[2] = x; // left
-          axises[3] = x; // right
-          break;
-        case SENSOR_WII_TILT:
-          if(sControllerType == CONTROLLER_WIINUNCHUK)
-          {
-            axisIDs[0] = ButtonType.WIIMOTE_TILT + 1; // up
-            axisIDs[1] = ButtonType.WIIMOTE_TILT + 2; // down
-            axisIDs[2] = ButtonType.WIIMOTE_TILT + 3; // left
-            axisIDs[3] = ButtonType.WIIMOTE_TILT + 4; // right
-          }
-          else
-          {
-            axisIDs[0] = ButtonType.WIIMOTE_TILT + 4; // right
-            axisIDs[1] = ButtonType.WIIMOTE_TILT + 3; // left
-            axisIDs[2] = ButtonType.WIIMOTE_TILT + 1; // up
-            axisIDs[3] = ButtonType.WIIMOTE_TILT + 2; // down
-          }
-          axises[0] = y / 2.0f;
-          axises[1] = y / 2.0f;
-          axises[2] = x / 2.0f;
-          axises[3] = x / 2.0f;
-          break;
-        case SENSOR_WII_SHAKE:
-          axises[0] = -x;
-          axises[1] = x;
-          axises[2] = -y;
-          axises[3] = y;
-          handleShakeEvent(axises);
-          return;
-      }
-    }
-
-    for (int i = 0; i < 4; i++)
-    {
-      NativeLibrary.onGamePadMoveEvent(NativeLibrary.TouchScreenDevice, axisIDs[i], axises[i]);
-    }
-  }
-
-  // axis to button
-  private int[] mShakeState = new int[4];
-  private void handleShakeEvent(float[] axises)
-  {
-    int[] axisIDs = new int[4];
-    axisIDs[0] = 0;
-    axisIDs[1] = ButtonType.WIIMOTE_SHAKE_X;
-    axisIDs[2] = ButtonType.WIIMOTE_SHAKE_Y;
-    axisIDs[3] = ButtonType.WIIMOTE_SHAKE_Z;
-
-    for(int i = 0; i < axises.length; ++i)
-    {
-      if(axises[i] > 0.15f)
-      {
-        if(mShakeState[i] != ButtonState.PRESSED)
-        {
-          mShakeState[i] = ButtonState.PRESSED;
-          NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, axisIDs[i], mShakeState[i]);
-        }
-      }
-      else if(mShakeState[i] != ButtonState.RELEASED)
-      {
-        mShakeState[i] = ButtonState.RELEASED;
-        NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, axisIDs[i], mShakeState[i]);
-      }
+      mOverlaySensor.onSensorChanged(rotation);
     }
   }
 
   public void onAccuracyChanged(int accuracy)
   {
-    mAccuracyChanged = true;
-    mBaseYaw = (float)Math.PI;
-    mBasePitch = (float)Math.PI;
-    mBaseRoll = (float)Math.PI;
+    if(mOverlaySensor == null)
+    {
+      mOverlaySensor = new InputOverlaySensor();
+    }
+    mOverlaySensor.onAccuracyChanged(accuracy);
   }
 
   private void addGameCubeOverlayControls()
