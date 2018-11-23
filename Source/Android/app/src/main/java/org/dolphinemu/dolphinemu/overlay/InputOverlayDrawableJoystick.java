@@ -202,7 +202,7 @@ public final class InputOverlayDrawableJoystick
     float[] axises = getAxisValues();
 
     // shake
-    if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SHAKE)
+    if (mJoystickType == 0 && InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SHAKE)
     {
       axises[1] = -axises[1];
       axises[3] = -axises[3];

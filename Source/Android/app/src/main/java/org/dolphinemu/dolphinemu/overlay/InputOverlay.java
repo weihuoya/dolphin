@@ -299,7 +299,6 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
         if(mOverlayPointer != null && mOverlayPointer.getTrackId() == pointerId)
         {
           mOverlayPointer.onPointerUp(pointerId, pointerX, pointerY);
-          break;
         }
 
         for (InputOverlayDrawableJoystick joystick : overlayJoysticks)
