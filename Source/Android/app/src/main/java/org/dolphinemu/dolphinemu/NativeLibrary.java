@@ -88,6 +88,11 @@ public final class NativeLibrary
     public static final int WIIMOTE_SHAKE_X = 132;
     public static final int WIIMOTE_SHAKE_Y = 133;
     public static final int WIIMOTE_SHAKE_Z = 134;
+    public static final int HOTKEYS_SIDEWAYS_TOGGLE = 135;
+    public static final int HOTKEYS_UPRIGHT_TOGGLE = 136;
+    public static final int HOTKEYS_SIDEWAYS_HOLD = 137;
+    public static final int HOTKEYS_UPRIGHT_HOLD = 138;
+    // Nunchuk
     public static final int NUNCHUK_BUTTON_C = 200;
     public static final int NUNCHUK_BUTTON_Z = 201;
     public static final int NUNCHUK_STICK = 202;
@@ -111,6 +116,7 @@ public final class NativeLibrary
     public static final int NUNCHUK_SHAKE_X = 220;
     public static final int NUNCHUK_SHAKE_Y = 221;
     public static final int NUNCHUK_SHAKE_Z = 222;
+    // Classic
     public static final int CLASSIC_BUTTON_A = 300;
     public static final int CLASSIC_BUTTON_B = 301;
     public static final int CLASSIC_BUTTON_X = 302;

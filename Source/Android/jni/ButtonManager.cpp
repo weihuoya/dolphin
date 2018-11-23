@@ -409,6 +409,16 @@ void Init(const std::string& gameId)
     AddBind(touchScreenKey, new sBind(a, WIIMOTE_TILT_LEFT, BIND_AXIS, WIIMOTE_TILT_LEFT, -1.0f));
     AddBind(touchScreenKey, new sBind(a, WIIMOTE_TILT_RIGHT, BIND_AXIS, WIIMOTE_TILT_RIGHT, 1.0f));
 
+    // Hotkeys
+    AddBind(touchScreenKey,
+            new sBind(a, HOTKEYS_SIDEWAYS_TOGGLE, BIND_BUTTON, HOTKEYS_SIDEWAYS_TOGGLE, 1.0f));
+    AddBind(touchScreenKey,
+            new sBind(a, HOTKEYS_UPRIGHT_TOGGLE, BIND_BUTTON, HOTKEYS_UPRIGHT_TOGGLE, 1.0f));
+    AddBind(touchScreenKey,
+            new sBind(a, HOTKEYS_SIDEWAYS_HOLD, BIND_BUTTON, HOTKEYS_SIDEWAYS_HOLD, 1.0f));
+    AddBind(touchScreenKey,
+            new sBind(a, HOTKEYS_UPRIGHT_HOLD, BIND_BUTTON, HOTKEYS_UPRIGHT_HOLD, 1.0f));
+
     // Wii: Nunchuk
     AddBind(touchScreenKey, new sBind(a, NUNCHUK_BUTTON_C, BIND_BUTTON, NUNCHUK_BUTTON_C, 1.0f));
     AddBind(touchScreenKey, new sBind(a, NUNCHUK_BUTTON_Z, BIND_BUTTON, NUNCHUK_BUTTON_Z, 1.0f));
