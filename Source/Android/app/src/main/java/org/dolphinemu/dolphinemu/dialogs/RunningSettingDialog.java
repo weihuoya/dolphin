@@ -50,8 +50,9 @@ public class RunningSettingDialog extends DialogFragment
     public static final int SETTING_JIT_FOLLOW_BRANCH = 8;
     //
     public static final int SETTING_PHONE_RUMBLE = 9;
-    public static final int SEETING_TOUCH_POINTER = 10;
-    public static final int SEETING_JOYSTICK_RELATIVE = 11;
+    public static final int SETTING_TOUCH_POINTER = 10;
+    public static final int SETTING_TOUCH_POINTER_SENSITIVE = 11;
+    public static final int SETTING_JOYSTICK_RELATIVE = 12;
 
     // view type
     public static final int TYPE_CHECKBOX = 0;
@@ -233,7 +234,8 @@ public class RunningSettingDialog extends DialogFragment
     {
       mItem = item;
       mTextSettingName.setText(item.getName());
-      if (mItem.getSetting() == SettingsItem.SETTING_OVERCLOCK_PERCENT)
+      if (mItem.getSetting() == SettingsItem.SETTING_OVERCLOCK_PERCENT ||
+        mItem.getSetting() == SettingsItem.SETTING_TOUCH_POINTER_SENSITIVE)
       {
         mSeekBar.setMax(300);
       }
@@ -246,7 +248,7 @@ public class RunningSettingDialog extends DialogFragment
         @Override
         public void onProgressChanged(SeekBar seekBar, int progress, boolean b)
         {
-          if (mItem.getSetting() == SettingsItem.SETTING_OVERCLOCK_PERCENT)
+          if (seekBar.getMax() > 99)
           {
             mTextSettingValue.setText(progress + "%");
           }
@@ -283,6 +285,7 @@ public class RunningSettingDialog extends DialogFragment
   {
     private int mRumble;
     private int mTouchPointer;
+    private int mIRSensitive;
     private int mJoystickRelative;
     private int[] mRunningSettings;
     private ArrayList<SettingsItem> mSettings;
@@ -302,13 +305,18 @@ public class RunningSettingDialog extends DialogFragment
       {
         mTouchPointer = PreferenceManager.getDefaultSharedPreferences(getContext())
           .getBoolean(InputOverlay.POINTER_PREF_KEY, false) ? 1 : 0;
-        mSettings.add(new SettingsItem(SettingsItem.SEETING_TOUCH_POINTER, R.string.touch_screen_pointer,
+        mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER, R.string.touch_screen_pointer,
           SettingsItem.TYPE_CHECKBOX, mTouchPointer));
+
+        mIRSensitive = PreferenceManager.getDefaultSharedPreferences(getContext())
+          .getInt(InputOverlay.SENSITIVE_PREF_KEY, 200);
+        mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER_SENSITIVE, R.string.touch_screen_pointer_sensitive,
+          SettingsItem.TYPE_SEEK_BAR, mIRSensitive));
       }
 
       mJoystickRelative = PreferenceManager.getDefaultSharedPreferences(getContext())
         .getBoolean(InputOverlay.RELATIVE_PREF_KEY, true) ? 1 : 0;
-      mSettings.add(new SettingsItem(SettingsItem.SEETING_JOYSTICK_RELATIVE, R.string.joystick_relative_center,
+      mSettings.add(new SettingsItem(SettingsItem.SETTING_JOYSTICK_RELATIVE, R.string.joystick_relative_center,
         SettingsItem.TYPE_CHECKBOX, mJoystickRelative));
 
       // gfx
@@ -399,6 +407,14 @@ public class RunningSettingDialog extends DialogFragment
         {
           editor.putBoolean(InputOverlay.POINTER_PREF_KEY, pointer > 0);
           NativeLibrary.sEmulationActivity.get().setTouchPointerEnabled(pointer > 0);
+        }
+        mSettings.remove(0);
+
+        int sensitive = Math.max(mSettings.get(0).getValue(), 1);
+        if(mIRSensitive != sensitive)
+        {
+          editor.putInt(InputOverlay.SENSITIVE_PREF_KEY, sensitive);
+          InputOverlay.sIREmulateSensitive = sensitive;
         }
         mSettings.remove(0);
       }

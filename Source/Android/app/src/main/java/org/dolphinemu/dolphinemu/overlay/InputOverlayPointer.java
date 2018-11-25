@@ -64,8 +64,8 @@ public class InputOverlayPointer
     mPointerY = y;
 
     float axises[] = new float[4];
-    axises[0] = axises[1] = (mCenterY - mPointerY) / mHeight;
-    axises[2] = axises[3] = (mCenterX - mPointerX) / mWidth;
+    axises[0] = axises[1] = (mCenterY - mPointerY) / mHeight / InputOverlay.sIREmulateSensitive * 100;
+    axises[2] = axises[3] = (mCenterX - mPointerX) / mWidth / InputOverlay.sIREmulateSensitive * 100;
 
     for (int i = 0; i < 4; i++)
     {
