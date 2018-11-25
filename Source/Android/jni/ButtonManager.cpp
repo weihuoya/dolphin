@@ -571,6 +571,7 @@ void Init(const std::string& gameId)
   // Init our controller bindings
   IniFile ini;
   ini.Load(File::GetUserPath(D_CONFIG_IDX) + std::string("Dolphin.ini"));
+  IniFile::Section* section = ini.GetOrCreateSection("Android");
   for (u32 a = 0; a < ArraySize(configStrings); ++a)
   {
     for (int padID = 0; padID < MAX_PAD_NUM; ++padID)
@@ -581,7 +582,7 @@ void Init(const std::string& gameId)
       bool hasbind = false;
       char modifier = '+';
       std::string value;
-      ini.GetOrCreateSection("Android")->Get(StringFromFormat("%s_%d", configStrings[a], padID), &value, "");
+      section->Get(StringFromFormat("%s_%d", configStrings[a], padID), &value, "");
       if (value.empty())
         continue;
       if (std::string::npos != value.find("Axis"))
@@ -603,6 +604,7 @@ void Init(const std::string& gameId)
   }
 
   ini.Load(File::GetUserPath(D_GAMESETTINGS_IDX) + std::string(gameId + ".ini"));
+  section = ini.GetOrCreateSection("Android");
   for (u32 a = 0; a < ArraySize(configStrings); ++a)
   {
     for (int padID = 0; padID < MAX_PAD_NUM; ++padID)
@@ -613,7 +615,7 @@ void Init(const std::string& gameId)
       bool hasbind = false;
       char modifier = '+';
       std::string value;
-      ini.GetOrCreateSection("Android")->Get(StringFromFormat("%s_%d", configStrings[a], padID), &value, "");
+      section->Get(StringFromFormat("%s_%d", configStrings[a], padID), &value, "");
       if (value.empty())
         continue;
       if (std::string::npos != value.find("Axis"))

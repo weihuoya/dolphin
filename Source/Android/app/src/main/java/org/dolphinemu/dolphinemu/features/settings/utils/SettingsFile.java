@@ -1,6 +1,7 @@
 package org.dolphinemu.dolphinemu.features.settings.utils;
 
 import android.support.annotation.NonNull;
+import android.text.TextUtils;
 
 import org.dolphinemu.dolphinemu.NativeLibrary;
 import org.dolphinemu.dolphinemu.features.settings.model.BooleanSetting;
@@ -663,7 +664,7 @@ public final class SettingsFile
   private static void writeSection(PrintWriter writer, SettingSection section)
   {
     // Write the section header.
-    String header = sectionAsString(section);
+    String header = "[" + section.getName() + "]";
     writer.println(header);
 
     // Write this section's values.
@@ -674,20 +675,12 @@ public final class SettingsFile
     for (String key : sortedKeySet)
     {
       Setting setting = settings.get(key);
-      String settingString = settingAsString(setting);
-
-      writer.println(settingString);
+      String valueAsString = setting.getValueAsString();
+      if(!TextUtils.isEmpty(valueAsString))
+      {
+        writer.println(setting.getKey() + " = " + valueAsString);
+      }
     }
-  }
-
-  private static String sectionAsString(SettingSection section)
-  {
-    return "[" + section.getName() + "]";
-  }
-
-  private static String settingAsString(Setting setting)
-  {
-    return setting.getKey() + " = " + setting.getValueAsString();
   }
 
   private static String customWiimoteExtSettingAsString(Setting setting)

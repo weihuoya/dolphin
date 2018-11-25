@@ -281,7 +281,7 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_SetUserSetti
   std::string key = GetJString(env, jKey);
   std::string val = GetJString(env, jValue);
 
-  if (val != "-1")
+  if (val != "-1" && !val.empty())
   {
     s_ini.GetOrCreateSection(section)->Set(key, val);
   }
@@ -302,7 +302,7 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_SetProfileSe
 
   ini.Load(File::GetUserPath(D_CONFIG_IDX) + "Profiles/Wiimote/" + profile + ".ini");
 
-  if (val != "-1")
+  if (val != "-1" && !val.empty())
   {
     ini.GetOrCreateSection(section)->Set(key, val);
   }

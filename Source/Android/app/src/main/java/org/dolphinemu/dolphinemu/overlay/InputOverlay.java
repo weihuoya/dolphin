@@ -874,7 +874,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     // The X and Y coordinates of the InputOverlayDrawableButton on the InputOverlay.
     // These were set in the input overlay configuration menu.
     float x = mPreferences.getFloat(controller + "_" + buttonId + "_X", 0f);
-    float y = mPreferences.getFloat(controller + "_" + buttonId + "_Y", 0f);
+    float y = mPreferences.getFloat(controller + "_" + buttonId + "_Y", 0.5f);
 
     int width = overlayDrawable.getWidth();
     int height = overlayDrawable.getHeight();
@@ -957,7 +957,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     // The X and Y coordinates of the InputOverlayDrawableDpad on the InputOverlay.
     // These were set in the input overlay configuration menu.
     float x = mPreferences.getFloat(controller + "_" + buttonUp + "_X", 0f);
-    float y = mPreferences.getFloat(controller + "_" + buttonUp + "_Y", 0f);
+    float y = mPreferences.getFloat(controller + "_" + buttonUp + "_Y", 0.5f);
 
     int width = overlayDrawable.getWidth();
     int height = overlayDrawable.getHeight();

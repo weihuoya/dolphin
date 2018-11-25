@@ -918,11 +918,6 @@ namespace Core
 // a reporting mode. size is the byte size of the report.
 void Callback_WiimoteInterruptChannel(int number, u16 channel_id, const u8* data, u32 size)
 {
-  DEBUG_LOG(WIIMOTE, "====================");
-  DEBUG_LOG(WIIMOTE, "Callback_WiimoteInterruptChannel: (Wiimote: #%i)", number);
-  DEBUG_LOG(WIIMOTE, "   Data: %s", ArrayToString(data, size, 50).c_str());
-  DEBUG_LOG(WIIMOTE, "   Channel: %x", channel_id);
-
   const auto bt = std::static_pointer_cast<IOS::HLE::Device::BluetoothEmu>(
       IOS::HLE::GetIOS()->GetDeviceByName("/dev/usb/oh1/57e/305"));
   if (bt)

@@ -53,6 +53,7 @@ template <typename T>
 class ReadHandler
 {
 public:
+  virtual ~ReadHandler() = default;
   virtual T Read(u32 addr) = 0;
   virtual void Visit(ReadHandlerVisitor<T>& visitor) = 0;
 };
@@ -61,6 +62,7 @@ template <typename T>
 class WriteHandler
 {
 public:
+  virtual ~WriteHandler() = default;
   virtual void Write(u32 addr, T val) = 0;
   virtual void Visit(WriteHandlerVisitor<T>& visitor) = 0;
 };
