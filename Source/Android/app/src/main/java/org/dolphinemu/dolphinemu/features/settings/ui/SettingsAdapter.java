@@ -14,8 +14,8 @@ import android.widget.TextView;
 import org.dolphinemu.dolphinemu.R;
 import org.dolphinemu.dolphinemu.dialogs.MotionAlertDialog;
 import org.dolphinemu.dolphinemu.features.settings.model.BooleanSetting;
-import org.dolphinemu.dolphinemu.features.settings.model.FloatSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.IntSetting;
+import org.dolphinemu.dolphinemu.features.settings.model.Setting;
 import org.dolphinemu.dolphinemu.features.settings.model.Settings;
 import org.dolphinemu.dolphinemu.features.settings.model.StringSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.view.CheckBoxSetting;
@@ -30,6 +30,7 @@ import org.dolphinemu.dolphinemu.features.settings.ui.viewholder.CheckBoxSetting
 import org.dolphinemu.dolphinemu.features.settings.ui.viewholder.HeaderViewHolder;
 import org.dolphinemu.dolphinemu.features.settings.ui.viewholder.InputBindingSettingViewHolder;
 import org.dolphinemu.dolphinemu.features.settings.ui.viewholder.RumbleBindingViewHolder;
+import org.dolphinemu.dolphinemu.features.settings.ui.viewholder.SeekbarViewHolder;
 import org.dolphinemu.dolphinemu.features.settings.ui.viewholder.SettingViewHolder;
 import org.dolphinemu.dolphinemu.features.settings.ui.viewholder.SingleChoiceViewHolder;
 import org.dolphinemu.dolphinemu.features.settings.ui.viewholder.SliderViewHolder;
@@ -93,6 +94,10 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
         view = inflater.inflate(R.layout.list_item_setting, parent, false);
         return new RumbleBindingViewHolder(view, this);
 
+      case SettingsItem.TYPE_SEEKBAR:
+        view = inflater.inflate(R.layout.list_item_setting_seekbar, parent, false);
+        return new SeekbarViewHolder(view, this);
+
       default:
         Log.error("[SettingsAdapter] Invalid view type: " + viewType);
         return null;
@@ -102,12 +107,7 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
   @Override
   public void onBindViewHolder(SettingViewHolder holder, int position)
   {
-    holder.bind(getItem(position));
-  }
-
-  private SettingsItem getItem(int position)
-  {
-    return mSettings.get(position);
+    holder.bind(mSettings.get(position));
   }
 
   @Override
@@ -126,7 +126,7 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
   @Override
   public int getItemViewType(int position)
   {
-    return getItem(position).getType();
+    return mSettings.get(position).getType();
   }
 
   public void setSettings(ArrayList<SettingsItem> settings)
@@ -138,20 +138,12 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
   public void onBooleanClick(CheckBoxSetting item, int position, boolean checked)
   {
     BooleanSetting setting = item.setChecked(checked);
-    notifyItemChanged(position);
-
     if (setting != null)
     {
       mActivity.putSetting(setting);
     }
-
-    if (item.getKey().equals(SettingsFile.KEY_SKIP_EFB) ||
-      item.getKey().equals(SettingsFile.KEY_IGNORE_FORMAT))
-    {
-      mActivity.putSetting(new BooleanSetting(item.getKey(), item.getSection(), !checked));
-    }
-
     mActivity.setSettingChanged();
+    //notifyItemChanged(position);
   }
 
   public void onSingleChoiceClick(SingleChoiceSetting item)
@@ -159,12 +151,9 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
     mClickedItem = item;
 
     int value = getSelectionForSingleChoiceValue(item);
-
     AlertDialog.Builder builder = new AlertDialog.Builder(mActivity);
-
     builder.setTitle(item.getNameId());
     builder.setSingleChoiceItems(item.getChoicesId(), value, this);
-
     mDialog = builder.show();
   }
 
@@ -173,11 +162,19 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
     mClickedItem = item;
 
     AlertDialog.Builder builder = new AlertDialog.Builder(mActivity);
-
     builder.setTitle(item.getNameId());
     builder.setSingleChoiceItems(item.getChoicesId(), item.getSelectValueIndex(), this);
-
     mDialog = builder.show();
+  }
+
+  public void onSeekbarClick(SliderSetting item, int position, int progress)
+  {
+    Setting setting = item.setSelectedValue(progress);
+    if (setting != null)
+    {
+      mActivity.putSetting(setting);
+    }
+    mActivity.setSettingChanged();
   }
 
   public void onSliderClick(SliderSetting item)
@@ -195,18 +192,16 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
     builder.setNegativeButton(R.string.cancel, this);
     mDialog = builder.show();
 
-    mTextSliderValue = (TextView) view.findViewById(R.id.text_value);
+    mTextSliderValue = view.findViewById(R.id.text_value);
     mTextSliderValue.setText(String.valueOf(mSeekbarProgress));
 
-    TextView units = (TextView) view.findViewById(R.id.text_units);
+    TextView units = view.findViewById(R.id.text_units);
     units.setText(item.getUnits());
 
-    SeekBar seekbar = (SeekBar) view.findViewById(R.id.seekbar);
-
+    SeekBar seekbar = view.findViewById(R.id.seekbar);
     seekbar.setMax(item.getMax());
     seekbar.setProgress(mSeekbarProgress);
     seekbar.setKeyProgressIncrement(5);
-
     seekbar.setOnSeekBarChangeListener(this);
   }
 
@@ -317,31 +312,10 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
     else if (mClickedItem instanceof SliderSetting)
     {
       SliderSetting sliderSetting = (SliderSetting) mClickedItem;
-      if (sliderSetting.isPercentSetting() || sliderSetting.getSetting() instanceof FloatSetting)
+      Setting setting = sliderSetting.setSelectedValue(mSeekbarProgress);
+      if (setting != null)
       {
-        float value;
-        if (sliderSetting.isPercentSetting())
-        {
-          value = mSeekbarProgress / 100.0f;
-        }
-        else
-        {
-          value = (float) mSeekbarProgress;
-        }
-
-        FloatSetting setting = sliderSetting.setSelectedValue(value);
-        if (setting != null)
-        {
-          mActivity.putSetting(setting);
-        }
-      }
-      else
-      {
-        IntSetting setting = sliderSetting.setSelectedValue(mSeekbarProgress);
-        if (setting != null)
-        {
-          mActivity.putSetting(setting);
-        }
+        mActivity.putSetting(setting);
       }
     }
 

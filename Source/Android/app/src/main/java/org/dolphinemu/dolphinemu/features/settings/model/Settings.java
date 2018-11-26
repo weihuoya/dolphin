@@ -114,7 +114,7 @@ public class Settings
     for (Map.Entry<String, List<String>> entry : configFileSectionsMap.entrySet())
     {
       String fileName = entry.getKey();
-      if (filesToExclude == null || !filesToExclude.contains(fileName))
+      if (!filesToExclude.contains(fileName))
       {
         sections.putAll(SettingsFile.readFile(fileName));
       }

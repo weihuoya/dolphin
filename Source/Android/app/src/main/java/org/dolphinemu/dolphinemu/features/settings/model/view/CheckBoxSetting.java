@@ -2,6 +2,7 @@ package org.dolphinemu.dolphinemu.features.settings.model.view;
 
 import org.dolphinemu.dolphinemu.features.settings.model.BooleanSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.Setting;
+import org.dolphinemu.dolphinemu.features.settings.utils.SettingsFile;
 
 public final class CheckBoxSetting extends SettingsItem
 {
@@ -16,24 +17,30 @@ public final class CheckBoxSetting extends SettingsItem
 
   public boolean isChecked()
   {
-    if (getSetting() == null)
+    boolean value = mDefaultValue;
+    if (getSetting() != null)
     {
-      return mDefaultValue;
+      BooleanSetting setting = (BooleanSetting) getSetting();
+      value = setting.getValue();
     }
 
-    BooleanSetting setting = (BooleanSetting) getSetting();
-    return setting.getValue();
+    if(isInvertedSetting())
+      value = !value;
+
+    return value;
   }
 
-  /**
-   * Write a value to the backing boolean. If that boolean was previously null,
-   * initializes a new one and returns it, so it can be added to the Hashmap.
-   *
-   * @param checked Pretty self explanatory.
-   * @return null if overwritten successfully; otherwise, a newly created BooleanSetting.
-   */
+  public boolean isInvertedSetting()
+  {
+    return getKey().equals(SettingsFile.KEY_SKIP_EFB)
+      || getKey().equals(SettingsFile.KEY_IGNORE_FORMAT);
+  }
+
   public BooleanSetting setChecked(boolean checked)
   {
+    if(isInvertedSetting())
+      checked = !checked;
+
     if (getSetting() == null)
     {
       BooleanSetting setting = new BooleanSetting(getKey(), getSection(), checked);

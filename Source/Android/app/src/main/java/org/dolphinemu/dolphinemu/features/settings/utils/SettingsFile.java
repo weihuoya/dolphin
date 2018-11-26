@@ -663,15 +663,16 @@ public final class SettingsFile
    */
   private static void writeSection(PrintWriter writer, SettingSection section)
   {
+    // Write this section's values.
+    HashMap<String, Setting> settings = section.getSettings();
+    if(settings.size() == 0)
+      return;
+
     // Write the section header.
     String header = "[" + section.getName() + "]";
     writer.println(header);
 
-    // Write this section's values.
-    HashMap<String, Setting> settings = section.getSettings();
-    Set<String> keySet = settings.keySet();
-    Set<String> sortedKeySet = new TreeSet<>(keySet);
-
+    Set<String> sortedKeySet = new TreeSet<>(settings.keySet());
     for (String key : sortedKeySet)
     {
       Setting setting = settings.get(key);

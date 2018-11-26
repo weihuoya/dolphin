@@ -114,14 +114,7 @@ public final class SettingsActivity extends AppCompatActivity implements Setting
   {
     if (mSettings.isEmpty())
     {
-      if (!TextUtils.isEmpty(mGameId))
-      {
-        mSettings.loadSettings(mGameId);
-      }
-      else
-      {
-        mSettings.loadSettings(null);
-      }
+      mSettings.loadSettings(mGameId);
     }
 
     showSettingsFragment(mMenuTag, null, false, mGameId);

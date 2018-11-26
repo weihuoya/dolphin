@@ -501,17 +501,8 @@ public final class SettingsFragmentPresenter
     SettingSection gfxSection = mSettings.getSection(Settings.SECTION_GFX_SETTINGS);
     SettingSection hacksSection = mSettings.getSection(Settings.SECTION_GFX_HACKS);
 
-    boolean skipEFBValue =
-      getInvertedBooleanValue(Settings.SECTION_GFX_HACKS, SettingsFile.KEY_SKIP_EFB, false);
-    boolean ignoreFormatValue =
-      getInvertedBooleanValue(Settings.SECTION_GFX_HACKS, SettingsFile.KEY_IGNORE_FORMAT,
-        true);
-
-    BooleanSetting skipEFB =
-      new BooleanSetting(SettingsFile.KEY_SKIP_EFB, Settings.SECTION_GFX_HACKS, skipEFBValue);
-    BooleanSetting ignoreFormat =
-      new BooleanSetting(SettingsFile.KEY_IGNORE_FORMAT, Settings.SECTION_GFX_HACKS,
-        ignoreFormatValue);
+    Setting skipEFB = hacksSection.getSetting(SettingsFile.KEY_SKIP_EFB);
+    Setting ignoreFormat = hacksSection.getSetting(SettingsFile.KEY_IGNORE_FORMAT);
     Setting efbToTexture = hacksSection.getSetting(SettingsFile.KEY_EFB_TEXTURE);
     Setting deferEfbCopies = hacksSection.getSetting(SettingsFile.KEY_DEFER_EFB_COPIES);
     Setting texCacheAccuracy = gfxSection.getSetting(SettingsFile.KEY_TEXCACHE_ACCURACY);
@@ -731,8 +722,7 @@ public final class SettingsFragmentPresenter
     if (TextUtils.isEmpty(mGameID))
     {
       extension = new IntSetting(SettingsFile.KEY_WIIMOTE_EXTENSION,
-              Settings.SECTION_WIIMOTE + wiimoteNumber, getExtensionValue(wiimoteNumber - 3),
-              MenuTag.getWiimoteExtensionMenuTag(wiimoteNumber));
+              Settings.SECTION_WIIMOTE + wiimoteNumber, getExtensionValue(wiimoteNumber - 3));
       sl.add(new SingleChoiceSetting(SettingsFile.KEY_WIIMOTE_EXTENSION,
               Settings.SECTION_WIIMOTE + (wiimoteNumber - 3), R.string.wiimote_extensions,
               R.string.wiimote_extensions_description, R.array.wiimoteExtensionsEntries,
@@ -743,8 +733,7 @@ public final class SettingsFragmentPresenter
     {
       mSettings.loadWiimoteProfile(mGameID, String.valueOf(wiimoteNumber - 4));
       extension = new IntSetting(SettingsFile.KEY_WIIMOTE_EXTENSION + (wiimoteNumber - 4),
-              Settings.SECTION_CONTROLS, getExtensionValue(wiimoteNumber - 4),
-              MenuTag.getWiimoteExtensionMenuTag(wiimoteNumber));
+              Settings.SECTION_CONTROLS, getExtensionValue(wiimoteNumber - 4));
       sl.add(new SingleChoiceSetting(SettingsFile.KEY_WIIMOTE_EXTENSION + (wiimoteNumber - 4),
               Settings.SECTION_CONTROLS, R.string.wiimote_extensions,
               R.string.wiimote_extensions_description, R.array.wiimoteExtensionsEntries,
@@ -1272,18 +1261,6 @@ public final class SettingsFragmentPresenter
                 SettingsFile.KEY_WIIBIND_TURNTABLE_CROSSFADE_RIGHT + wiimoteNumber,
                 Settings.SECTION_BINDINGS, R.string.generic_right, bindCrossfadeRight));
         break;
-    }
-  }
-
-  private boolean getInvertedBooleanValue(String section, String key, boolean defaultValue)
-  {
-    try
-    {
-      return !((BooleanSetting) mSettings.getSection(section).getSetting(key)).getValue();
-    }
-    catch (NullPointerException ex)
-    {
-      return defaultValue;
     }
   }
 

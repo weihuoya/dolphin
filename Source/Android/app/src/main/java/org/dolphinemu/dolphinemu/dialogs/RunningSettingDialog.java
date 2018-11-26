@@ -243,6 +243,7 @@ public class RunningSettingDialog extends DialogFragment
       {
         mSeekBar.setMax(10);
       }
+      mSeekBar.setProgress(item.getValue());
       mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener()
       {
         @Override
@@ -271,7 +272,6 @@ public class RunningSettingDialog extends DialogFragment
 
         }
       });
-      mSeekBar.setProgress(item.getValue());
     }
 
     @Override
