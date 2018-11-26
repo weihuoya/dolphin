@@ -35,14 +35,14 @@ public final class SeekbarViewHolder extends SettingViewHolder
   {
     mItem = (SliderSetting) item;
     mName.setText(item.getNameId());
-    mValue.setText(mItem.getSelectedValue() + mItem.getUnits());
     mSeekBar.setMax(mItem.getMax());
-    mSeekBar.setProgress(mItem.getSelectedValue());
     mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener()
     {
       @Override
       public void onProgressChanged(SeekBar seekBar, int progress, boolean b)
       {
+        if(mItem.getMax() > 99)
+          progress = (progress / 5) * 5;
         mValue.setText(progress + mItem.getUnits());
         mItem.setSelectedValue(progress);
         getAdapter().onSeekbarClick(mItem, getAdapterPosition(), progress);
@@ -60,6 +60,7 @@ public final class SeekbarViewHolder extends SettingViewHolder
 
       }
     });
+    mSeekBar.setProgress(mItem.getSelectedValue());
   }
 
   @Override

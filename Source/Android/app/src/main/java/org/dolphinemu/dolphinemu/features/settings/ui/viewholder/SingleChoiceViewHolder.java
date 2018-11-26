@@ -32,12 +32,24 @@ public final class SingleChoiceViewHolder extends SettingViewHolder
   public void bind(SettingsItem item)
   {
     mItem = item;
-
     mTextSettingName.setText(item.getNameId());
 
     if (item.getDescriptionId() > 0)
     {
       mTextSettingDescription.setText(item.getDescriptionId());
+    }
+    else if(item instanceof SingleChoiceSetting)
+    {
+      SingleChoiceSetting setting = (SingleChoiceSetting)item;
+      int selected = setting.getSelectedValue();
+      String[] choices = mTextSettingDescription
+        .getContext().getResources().getStringArray(setting.getChoicesId());
+      mTextSettingDescription.setText(choices[selected]);
+    }
+    else if(item instanceof StringSingleChoiceSetting)
+    {
+      StringSingleChoiceSetting setting = (StringSingleChoiceSetting)item;
+      mTextSettingDescription.setText(setting.getSelectedValue());
     }
   }
 
@@ -46,11 +58,11 @@ public final class SingleChoiceViewHolder extends SettingViewHolder
   {
     if (mItem instanceof SingleChoiceSetting)
     {
-      getAdapter().onSingleChoiceClick((SingleChoiceSetting) mItem);
+      getAdapter().onSingleChoiceClick((SingleChoiceSetting) mItem, getAdapterPosition());
     }
     else if (mItem instanceof StringSingleChoiceSetting)
     {
-      getAdapter().onStringSingleChoiceClick((StringSingleChoiceSetting) mItem);
+      getAdapter().onStringSingleChoiceClick((StringSingleChoiceSetting) mItem, getAdapterPosition());
     }
   }
 }

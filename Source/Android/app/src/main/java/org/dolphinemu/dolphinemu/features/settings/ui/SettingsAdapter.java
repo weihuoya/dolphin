@@ -47,6 +47,7 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
   private ArrayList<SettingsItem> mSettings;
 
   private SettingsItem mClickedItem;
+  private int mClickedPosition;
   private int mSeekbarProgress;
 
   private AlertDialog mDialog;
@@ -55,6 +56,7 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
   public SettingsAdapter(SettingsActivity activity)
   {
     mActivity = activity;
+    mClickedPosition = -1;
   }
 
   @Override
@@ -143,12 +145,12 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
       mActivity.putSetting(setting);
     }
     mActivity.setSettingChanged();
-    //notifyItemChanged(position);
   }
 
-  public void onSingleChoiceClick(SingleChoiceSetting item)
+  public void onSingleChoiceClick(SingleChoiceSetting item, int position)
   {
     mClickedItem = item;
+    mClickedPosition = position;
 
     int value = getSelectionForSingleChoiceValue(item);
     AlertDialog.Builder builder = new AlertDialog.Builder(mActivity);
@@ -157,9 +159,10 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
     mDialog = builder.show();
   }
 
-  public void onStringSingleChoiceClick(StringSingleChoiceSetting item)
+  public void onStringSingleChoiceClick(StringSingleChoiceSetting item, int position)
   {
     mClickedItem = item;
+    mClickedPosition = position;
 
     AlertDialog.Builder builder = new AlertDialog.Builder(mActivity);
     builder.setTitle(item.getNameId());
@@ -328,6 +331,11 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
   {
     if (mDialog != null)
     {
+      if(mClickedPosition != -1)
+      {
+        notifyItemChanged(mClickedPosition);
+        mClickedPosition = -1;
+      }
       mDialog.dismiss();
       mDialog = null;
     }

@@ -724,10 +724,9 @@ public final class SettingsFragmentPresenter
       extension = new IntSetting(SettingsFile.KEY_WIIMOTE_EXTENSION,
               Settings.SECTION_WIIMOTE + wiimoteNumber, getExtensionValue(wiimoteNumber - 3));
       sl.add(new SingleChoiceSetting(SettingsFile.KEY_WIIMOTE_EXTENSION,
-              Settings.SECTION_WIIMOTE + (wiimoteNumber - 3), R.string.wiimote_extensions,
-              R.string.wiimote_extensions_description, R.array.wiimoteExtensionsEntries,
-              R.array.wiimoteExtensionsValues, 0, extension,
-              MenuTag.getWiimoteExtensionMenuTag(wiimoteNumber)));
+              Settings.SECTION_WIIMOTE + (wiimoteNumber - 3), R.string.wiimote_extensions, 0,
+              R.array.wiimoteExtensionsEntries, R.array.wiimoteExtensionsValues, 0,
+              extension, MenuTag.getWiimoteExtensionMenuTag(wiimoteNumber)));
     }
     else
     {
@@ -735,10 +734,9 @@ public final class SettingsFragmentPresenter
       extension = new IntSetting(SettingsFile.KEY_WIIMOTE_EXTENSION + (wiimoteNumber - 4),
               Settings.SECTION_CONTROLS, getExtensionValue(wiimoteNumber - 4));
       sl.add(new SingleChoiceSetting(SettingsFile.KEY_WIIMOTE_EXTENSION + (wiimoteNumber - 4),
-              Settings.SECTION_CONTROLS, R.string.wiimote_extensions,
-              R.string.wiimote_extensions_description, R.array.wiimoteExtensionsEntries,
-              R.array.wiimoteExtensionsValues, 0, extension,
-              MenuTag.getWiimoteExtensionMenuTag(wiimoteNumber)));
+              Settings.SECTION_CONTROLS, R.string.wiimote_extensions, 0,
+              R.array.wiimoteExtensionsEntries, R.array.wiimoteExtensionsValues, 0,
+              extension, MenuTag.getWiimoteExtensionMenuTag(wiimoteNumber)));
     }
 
     sl.add(new HeaderSetting(null, null, R.string.generic_buttons, 0));
