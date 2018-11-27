@@ -378,7 +378,7 @@ public final class SettingsFragmentPresenter
     Setting aspectRatio = gfxSection.getSetting(SettingsFile.KEY_ASPECT_RATIO);
 
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_VIDEO_BACKEND_INDEX, Settings.SECTION_INI_CORE,
-      R.string.video_backend, R.string.video_backend_description, R.array.videoBackendEntries,
+      R.string.video_backend, 0, R.array.videoBackendEntries,
       R.array.videoBackendValues, 0, videoBackend));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_SHOW_FPS, Settings.SECTION_GFX_SETTINGS,
       R.string.show_fps, R.string.show_fps_description, false, showFps));
@@ -431,7 +431,7 @@ public final class SettingsFragmentPresenter
     shaderListValues[0] = "";
     sl.add(new StringSingleChoiceSetting(SettingsFile.KEY_POST_SHADER,
       Settings.SECTION_GFX_ENHANCEMENTS, R.string.post_processing_shader,
-      R.string.post_processing_shader_description, shaderListEntries, shaderListValues, "",
+      0, shaderListEntries, shaderListValues, "",
       shader));
 
     sl.add(new CheckBoxSetting(SettingsFile.KEY_SCALED_EFB, Settings.SECTION_GFX_HACKS,

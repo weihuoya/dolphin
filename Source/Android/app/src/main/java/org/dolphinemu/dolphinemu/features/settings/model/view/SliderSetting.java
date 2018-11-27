@@ -107,10 +107,6 @@ public final class SliderSetting extends SettingsItem
   @Override
   public int getType()
   {
-    if(getKey().equals(SettingsFile.KEY_SPEED_LIMIT))
-    {
-      return TYPE_SEEKBAR;
-    }
     return TYPE_SLIDER;
   }
 }

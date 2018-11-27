@@ -180,9 +180,10 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
     mActivity.setSettingChanged();
   }
 
-  public void onSliderClick(SliderSetting item)
+  public void onSliderClick(SliderSetting item, int position)
   {
     mClickedItem = item;
+    mClickedPosition = position;
     mSeekbarProgress = item.getSelectedValue();
     AlertDialog.Builder builder = new AlertDialog.Builder(mActivity);
 
@@ -192,7 +193,6 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
     builder.setTitle(item.getNameId());
     builder.setView(view);
     builder.setPositiveButton(R.string.ok, this);
-    builder.setNegativeButton(R.string.cancel, this);
     mDialog = builder.show();
 
     mTextSliderValue = view.findViewById(R.id.text_value);
@@ -253,6 +253,9 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
       SingleChoiceSetting scSetting = (SingleChoiceSetting) mClickedItem;
 
       int value = getValueForSingleChoiceSelection(scSetting, which);
+      if(scSetting.getSelectedValue() != value)
+        mActivity.setSettingChanged();
+
       MenuTag menuTag = scSetting.getMenuTag();
       if (menuTag != null)
       {
@@ -304,6 +307,9 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
     {
       StringSingleChoiceSetting scSetting = (StringSingleChoiceSetting) mClickedItem;
       String value = scSetting.getValueAt(which);
+      if(!scSetting.getSelectedValue().equals(value))
+        mActivity.setSettingChanged();
+
       StringSetting setting = scSetting.setSelectedValue(value);
       if (setting != null)
       {
@@ -315,14 +321,18 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
     else if (mClickedItem instanceof SliderSetting)
     {
       SliderSetting sliderSetting = (SliderSetting) mClickedItem;
+      if(sliderSetting.getSelectedValue() != mSeekbarProgress)
+        mActivity.setSettingChanged();
+
       Setting setting = sliderSetting.setSelectedValue(mSeekbarProgress);
       if (setting != null)
       {
         mActivity.putSetting(setting);
       }
+
+      closeDialog();
     }
 
-    mActivity.setSettingChanged();
     mClickedItem = null;
     mSeekbarProgress = -1;
   }

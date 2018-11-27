@@ -1,5 +1,6 @@
 package org.dolphinemu.dolphinemu.features.settings.ui.viewholder;
 
+import android.content.res.Resources;
 import android.view.View;
 import android.widget.TextView;
 
@@ -42,14 +43,24 @@ public final class SingleChoiceViewHolder extends SettingViewHolder
     {
       SingleChoiceSetting setting = (SingleChoiceSetting)item;
       int selected = setting.getSelectedValue();
-      String[] choices = mTextSettingDescription
-        .getContext().getResources().getStringArray(setting.getChoicesId());
-      mTextSettingDescription.setText(choices[selected]);
+      Resources resMgr = mTextSettingDescription.getContext().getResources();
+      String[] choices = resMgr.getStringArray(setting.getChoicesId());
+      int[] values = resMgr.getIntArray(setting.getValuesId());
+      for(int i = 0; i < values.length; ++i)
+      {
+        if(values[i] == selected)
+        {
+          mTextSettingDescription.setText(choices[i]);
+        }
+      }
     }
     else if(item instanceof StringSingleChoiceSetting)
     {
       StringSingleChoiceSetting setting = (StringSingleChoiceSetting)item;
-      mTextSettingDescription.setText(setting.getSelectedValue());
+      String[] choices = setting.getChoicesId();
+      int valueIndex = setting.getSelectValueIndex();
+      if(valueIndex != -1)
+        mTextSettingDescription.setText(choices[valueIndex]);
     }
   }
 

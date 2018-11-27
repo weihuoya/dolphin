@@ -44,8 +44,11 @@ public final class SeekbarViewHolder extends SettingViewHolder
         if(mItem.getMax() > 99)
           progress = (progress / 5) * 5;
         mValue.setText(progress + mItem.getUnits());
-        mItem.setSelectedValue(progress);
-        getAdapter().onSeekbarClick(mItem, getAdapterPosition(), progress);
+        if(progress != mItem.getSelectedValue())
+        {
+          mItem.setSelectedValue(progress);
+          getAdapter().onSeekbarClick(mItem, getAdapterPosition(), progress);
+        }
       }
 
       @Override
