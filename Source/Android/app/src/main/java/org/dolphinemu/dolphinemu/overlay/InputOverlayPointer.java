@@ -9,8 +9,6 @@ public class InputOverlayPointer
   private float mHeight;
   private float mCenterX;
   private float mCenterY;
-  private float mPointerX;
-  private float mPointerY;
   private final int[] mAxisIDs = new int[4];
 
   public InputOverlayPointer(float width, float height)
@@ -19,12 +17,6 @@ public class InputOverlayPointer
     mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
     mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_IR + 3;
     mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_IR + 4;
-
-    mPointerX = 0;
-    mPointerY = 0;
-
-    mCenterX = 0;
-    mCenterY = 0;
 
     mWidth = width;
     mHeight = height;
@@ -53,19 +45,21 @@ public class InputOverlayPointer
   public void onPointerUp(int id, float x, float y)
   {
     mTrackId = -1;
-    mCenterX = 0;
-    mCenterY = 0;
     setPointerState(0, 0);
   }
 
   private void setPointerState(float x, float y)
   {
-    mPointerX = x;
-    mPointerY = y;
-
     float axises[] = new float[4];
-    axises[0] = axises[1] = (mCenterY - mPointerY) / mHeight / 100 * InputOverlay.sIREmulateSensitive;
-    axises[2] = axises[3] = (mCenterX - mPointerX) / mWidth / 100 * InputOverlay.sIREmulateSensitive;
+    if(mTrackId == -1)
+    {
+      axises[0] = axises[1] = axises[2] = axises[3] = 0;
+    }
+    else
+    {
+      axises[0] = axises[1] = (mCenterY - y) / mHeight / 100 * InputOverlay.sIREmulateSensitive;
+      axises[2] = axises[3] = (mCenterX - x) / mWidth / 100 * InputOverlay.sIREmulateSensitive;
+    }
 
     for (int i = 0; i < 4; i++)
     {
