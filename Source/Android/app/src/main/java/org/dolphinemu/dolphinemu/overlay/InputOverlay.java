@@ -191,7 +191,6 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       case MotionEvent.ACTION_DOWN:
       case MotionEvent.ACTION_POINTER_DOWN:
       {
-        boolean isCaptured = false;
         int pointerIndex = event.getActionIndex();
         int pointerId = event.getPointerId(pointerIndex);
         float pointerX = event.getX(pointerIndex);
@@ -202,13 +201,10 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
           if(joystick.getBounds().contains((int)pointerX, (int)pointerY))
           {
             joystick.onPointerDown(pointerId, pointerX, pointerY);
-            isCaptured = true;
             isProcessed = true;
             break;
           }
         }
-        if(isCaptured)
-          break;
 
         for (InputOverlayDrawableButton button : overlayButtons)
         {
@@ -292,7 +288,6 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       case MotionEvent.ACTION_UP:
       case MotionEvent.ACTION_POINTER_UP:
       {
-        boolean isCaptured = false;
         int pointerIndex = event.getActionIndex();
         int pointerId = event.getPointerId(pointerIndex);
         float pointerX = event.getX(pointerIndex);
@@ -308,13 +303,10 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
           if(joystick.getTrackId() == pointerId)
           {
             joystick.onPointerUp(pointerId, pointerX, pointerY);
-            isCaptured = true;
             isProcessed = true;
             break;
           }
         }
-        if(isCaptured)
-          break;
 
         for (InputOverlayDrawableButton button : overlayButtons)
         {
