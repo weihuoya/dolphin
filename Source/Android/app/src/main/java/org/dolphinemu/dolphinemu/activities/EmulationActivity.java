@@ -519,8 +519,12 @@ public final class EmulationActivity extends AppCompatActivity
       default:
         return false;
     }
+
     InputDevice input = event.getDevice();
-    return NativeLibrary.onGamePadEvent(input.getDescriptor(), event.getKeyCode(), action);
+    if (input != null)
+      return NativeLibrary.onGamePadEvent(input.getDescriptor(), event.getKeyCode(), action);
+    else
+      return false;
   }
 
   private void toggleControls()
