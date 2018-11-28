@@ -46,9 +46,6 @@ struct EncodingProgram
 
 std::map<EFBCopyParams, EncodingProgram> s_encoding_programs;
 std::unique_ptr<AbstractTexture> s_encoding_render_texture;
-
-const int renderBufferWidth = EFB_WIDTH * 4;
-const int renderBufferHeight = 1024;
 }  // namespace
 
 static EncodingProgram& GetOrCreateEncodingShader(const EFBCopyParams& params)

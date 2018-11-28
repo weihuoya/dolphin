@@ -1162,7 +1162,7 @@ bool Renderer::CompileShaders()
 
 void Renderer::DestroyShaders()
 {
-  auto DestroyShader = [this](VkShaderModule& shader) {
+  auto DestroyShader = [](VkShaderModule& shader) {
     if (shader != VK_NULL_HANDLE)
     {
       vkDestroyShaderModule(g_vulkan_context->GetDevice(), shader, nullptr);

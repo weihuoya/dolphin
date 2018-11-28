@@ -140,10 +140,6 @@ public:
   std::tuple<float, float> ScaleToDisplayAspectRatio(int width, int height) const;
   void UpdateDrawRectangle();
 
-  // Use this to convert a single target rectangle to two stereo rectangles
-  std::tuple<TargetRectangle, TargetRectangle>
-  ConvertStereoRectangle(const TargetRectangle& rc) const;
-
   unsigned int GetEFBScale() const;
 
   // Use this to upscale native EFB coordinates to IDEAL internal resolution

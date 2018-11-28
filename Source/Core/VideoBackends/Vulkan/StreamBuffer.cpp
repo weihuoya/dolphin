@@ -235,7 +235,7 @@ void StreamBuffer::CommitMemory(size_t final_num_bytes)
 {
   ASSERT((m_current_offset + final_num_bytes) <= m_current_size);
   ASSERT_MSG(MASTER_LOG, final_num_bytes <= m_last_allocation_size,
-             _trans("StreamBuffer Commit Error.\n\nUsage: 0x%08X, Size: %d, Total: %s\n\nIgnore and continue?"),
+             _trans("StreamBuffer Commit Error.\n\nUsage: 0x%08X, Size: %d, Total: %d\n\nIgnore and continue?"),
              m_usage, final_num_bytes, m_last_allocation_size);
 
   // For non-coherent mappings, flush the memory range

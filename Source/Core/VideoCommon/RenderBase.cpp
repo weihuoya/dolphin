@@ -170,26 +170,6 @@ bool Renderer::CalculateTargetSize()
   return false;
 }
 
-std::tuple<TargetRectangle, TargetRectangle>
-Renderer::ConvertStereoRectangle(const TargetRectangle& rc) const
-{
-  // Resize target to half its original size
-  TargetRectangle draw_rc = rc;
-  int width = rc.right - rc.left;
-  draw_rc.left += width / 4;
-  draw_rc.right -= width / 4;
-
-  // Create two target rectangle offset to the sides of the backbuffer
-  TargetRectangle left_rc = draw_rc;
-  TargetRectangle right_rc = draw_rc;
-  left_rc.left -= m_backbuffer_width / 4;
-  left_rc.right -= m_backbuffer_width / 4;
-  right_rc.left += m_backbuffer_width / 4;
-  right_rc.right += m_backbuffer_width / 4;
-
-  return std::make_tuple(left_rc, right_rc);
-}
-
 void Renderer::SaveScreenshot(const std::string& filename, bool wait_for_completion)
 {
   // We must not hold the lock while waiting for the screenshot to complete.
@@ -237,7 +217,6 @@ void Renderer::DrawDebugText()
   {
     if (bShowFPS)
     {
-      //final_cyan += StringFromFormat("FPS: %.2f", m_fps_counter.GetFPS());
       final_cyan += m_debug_title_text;
     }
 
