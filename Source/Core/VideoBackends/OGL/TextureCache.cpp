@@ -45,26 +45,6 @@ void main()
 }
 )GLSL";
 
-constexpr const char GLSL_PROGRAM_GS[] = R"GLSL(
-layout(triangles) in;
-layout(triangle_strip, max_vertices = 6) out;
-in vec3 v_uv0[3];
-out vec3 f_uv0;
-SAMPLER_BINDING(9) uniform sampler2DArray samp9;
-
-void main()
-{
-  int layers = textureSize(samp9, 0).z;
-  for (int layer = 0; layer < layers; ++layer) {
-    for (int i = 0; i < 3; ++i) {
-      f_uv0 = vec3(v_uv0[i].xy, layer);
-      gl_Position = gl_in[i].gl_Position;
-      gl_Layer = layer;
-      EmitVertex();
-  }
-  EndPrimitive();
-}
-)GLSL";
 
 constexpr const char GLSL_COLOR_COPY_FS[] = R"GLSL(
 SAMPLER_BINDING(9) uniform sampler2DArray samp9;

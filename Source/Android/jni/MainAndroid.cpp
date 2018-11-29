@@ -441,7 +441,6 @@ JNIEXPORT jstring JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_DefaultAu
 JNIEXPORT jintArray JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_getSysconfSettings
   (JNIEnv * env, jobject obj)
 {
-  int i = 0;
   int settings[9];
   jintArray array = env->NewIntArray(9);
 
@@ -464,7 +463,6 @@ JNIEXPORT jintArray JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_getSysc
 JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_setSysconfSettings
   (JNIEnv * env, jobject obj, jintArray array)
 {
-  int i = 0;
   jint * settings = env->GetIntArrayElements(array, 0);
   // SYSCONF.IPL
   Config::SetBase<bool>(Config::SYSCONF_SCREENSAVER, settings[0]);

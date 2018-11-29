@@ -708,12 +708,9 @@ struct FogParams
 
   union FogColor
   {
-    struct
-    {
-      u8 b;
-      u8 g;
-      u8 r;
-    };
+    BitField<0, 8, u32> b;
+    BitField<8, 8, u32> g;
+    BitField<16, 8, u32> r;
     u32 hex;
   };
 

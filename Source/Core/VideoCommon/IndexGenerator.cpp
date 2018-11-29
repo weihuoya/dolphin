@@ -103,7 +103,10 @@ u16* IndexGenerator::AddFan(u16* Iptr, u32 numVerts, u32 index)
   bool ccw = bpmem.genMode.cullmode == GenMode::CULL_FRONT;
   int v1 = ccw ? 2 : 1;
   int v2 = ccw ? 1 : 2;
-  for (u32 i = 0; i < numVerts - 2; ++i)
+  // The Last Story
+  // if only one vertex remaining, render a triangle
+  numVerts = numVerts < 3 ? 1 : numVerts - 2;
+  for (u32 i = 0; i < numVerts; ++i)
   {
     *Iptr++ = index;
     *Iptr++ = index + i + v1;

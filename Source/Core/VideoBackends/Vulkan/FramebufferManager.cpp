@@ -581,7 +581,7 @@ bool FramebufferManager::CompileConversionShaders()
 
 void FramebufferManager::DestroyConversionShaders()
 {
-  auto DestroyShader = [this](VkShaderModule& shader) {
+  auto DestroyShader = [](VkShaderModule& shader) {
     if (shader != VK_NULL_HANDLE)
     {
       vkDestroyShaderModule(g_vulkan_context->GetDevice(), shader, nullptr);
