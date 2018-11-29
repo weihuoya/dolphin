@@ -225,7 +225,7 @@ public final class SettingsFragmentPresenter
     String[] audioListValues = new String[audioListEntries.length];
     System.arraycopy(audioListEntries, 0, audioListValues, 0, audioListEntries.length);
     sl.add(new StringSingleChoiceSetting(SettingsFile.KEY_AUDIO_BACKEND, Settings.SECTION_INI_DSP,
-      R.string.audio_backend, R.string.audio_backend_description, audioListEntries,
+      R.string.audio_backend, 0, audioListEntries,
       audioListValues, defaultAudioBackend, audioBackend));
   }
 
@@ -390,7 +390,7 @@ public final class SettingsFragmentPresenter
       R.string.wait_for_shaders, R.string.wait_for_shaders_description, false,
       waitForShaders));
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_ASPECT_RATIO, Settings.SECTION_GFX_SETTINGS,
-      R.string.aspect_ratio, R.string.aspect_ratio_description, R.array.aspectRatioEntries,
+      R.string.aspect_ratio, 0, R.array.aspectRatioEntries,
       R.array.aspectRatioValues, 0, aspectRatio));
   }
 
