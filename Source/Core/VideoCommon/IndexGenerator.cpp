@@ -17,20 +17,6 @@ u16* IndexGenerator::index_buffer_current;
 u16* IndexGenerator::BASEIptr;
 u32 IndexGenerator::base_index;
 
-static u16* (*primitive_table[8])(u16*, u32, u32);
-
-void IndexGenerator::Init()
-{
-  primitive_table[OpcodeDecoder::GX_DRAW_QUADS] = AddQuads;
-  primitive_table[OpcodeDecoder::GX_DRAW_QUADS_2] = AddQuads_nonstandard;
-  primitive_table[OpcodeDecoder::GX_DRAW_TRIANGLES] = AddList;
-  primitive_table[OpcodeDecoder::GX_DRAW_TRIANGLE_STRIP] = AddStrip;
-  primitive_table[OpcodeDecoder::GX_DRAW_TRIANGLE_FAN] = AddFan;
-  primitive_table[OpcodeDecoder::GX_DRAW_LINES] = &AddLineList;
-  primitive_table[OpcodeDecoder::GX_DRAW_LINE_STRIP] = &AddLineStrip;
-  primitive_table[OpcodeDecoder::GX_DRAW_POINTS] = &AddPoints;
-}
-
 void IndexGenerator::Start(u16* Indexptr)
 {
   index_buffer_current = Indexptr;
@@ -40,7 +26,33 @@ void IndexGenerator::Start(u16* Indexptr)
 
 void IndexGenerator::AddIndices(int primitive, u32 numVerts)
 {
-  index_buffer_current = primitive_table[primitive](index_buffer_current, numVerts, base_index);
+  switch (primitive)
+  {
+  case OpcodeDecoder::GX_DRAW_QUADS:
+    index_buffer_current = AddQuads(index_buffer_current, numVerts, base_index);
+    break;
+  case OpcodeDecoder::GX_DRAW_QUADS_2:
+    index_buffer_current = AddQuads_nonstandard(index_buffer_current, numVerts, base_index);
+    break;
+  case OpcodeDecoder::GX_DRAW_TRIANGLES:
+    index_buffer_current = AddList(index_buffer_current, numVerts, base_index);
+    break;
+  case OpcodeDecoder::GX_DRAW_TRIANGLE_STRIP:
+    index_buffer_current = AddStrip(index_buffer_current, numVerts, base_index);
+    break;
+  case OpcodeDecoder::GX_DRAW_TRIANGLE_FAN:
+    index_buffer_current = AddFan(index_buffer_current, numVerts, base_index);
+    break;
+  case OpcodeDecoder::GX_DRAW_LINES:
+    index_buffer_current = AddLineList(index_buffer_current, numVerts, base_index);
+    break;
+  case OpcodeDecoder::GX_DRAW_LINE_STRIP:
+    index_buffer_current = AddLineStrip(index_buffer_current, numVerts, base_index);
+    break;
+  case OpcodeDecoder::GX_DRAW_POINTS:
+    index_buffer_current = AddPoints(index_buffer_current, numVerts, base_index);
+    break;
+  }
   base_index += numVerts;
 }
 
@@ -52,7 +64,7 @@ u32 IndexGenerator::GetRemainingIndices()
 
 //////////////////////////////////////////////////////////////////////////////////
 // Triangles
-u16* IndexGenerator::AddList(u16* Iptr, u32 const numVerts, u32 index)
+u16* IndexGenerator::AddList(u16* Iptr, u32 numVerts, u32 index)
 {
   bool ccw = bpmem.genMode.cullmode == GenMode::CULL_FRONT;
   int v1 = ccw ? 2 : 1;
@@ -66,11 +78,13 @@ u16* IndexGenerator::AddList(u16* Iptr, u32 const numVerts, u32 index)
   return Iptr;
 }
 
-u16* IndexGenerator::AddStrip(u16* Iptr, u32 const numVerts, u32 index)
+u16* IndexGenerator::AddStrip(u16* Iptr, u32 numVerts, u32 index)
 {
   bool ccw = bpmem.genMode.cullmode == GenMode::CULL_FRONT;
   int wind = ccw ? 2 : 1;
-  for (u32 i = 0; i < numVerts - 2; ++i)
+  // if only one vertex remaining, render a triangle
+  numVerts = numVerts < 3 ? 1 : numVerts - 2;
+  for (u32 i = 0; i < numVerts; ++i)
   {
     *Iptr++ = index + i;
     *Iptr++ = index + i + wind;

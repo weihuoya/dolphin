@@ -137,24 +137,24 @@ u32 VertexManagerBase::GetRemainingIndices(int primitive)
   {
   case OpcodeDecoder::GX_DRAW_QUADS:
   case OpcodeDecoder::GX_DRAW_QUADS_2:
-	  return index_len / 6 * 4;
+    return index_len / 6 * 4;
   case OpcodeDecoder::GX_DRAW_TRIANGLES:
-	  return index_len;
+    return index_len;
   case OpcodeDecoder::GX_DRAW_TRIANGLE_STRIP:
-	  return index_len / 3 + 2;
+    return index_len / 3 + 2;
   case OpcodeDecoder::GX_DRAW_TRIANGLE_FAN:
-	  return index_len / 3 + 2;
+    return index_len / 3 + 2;
 
   case OpcodeDecoder::GX_DRAW_LINES:
-	  return index_len;
+    return index_len;
   case OpcodeDecoder::GX_DRAW_LINE_STRIP:
-	  return index_len / 2 + 1;
+    return index_len / 2 + 1;
 
   case OpcodeDecoder::GX_DRAW_POINTS:
-	  return index_len;
+    return index_len;
 
   default:
-	  return 0;
+    return 0;
   }
 }
 

@@ -12,8 +12,6 @@
 class IndexGenerator
 {
 public:
-  // Init
-  static void Init();
   static void Start(u16* Indexptr);
 
   static void AddIndices(int primitive, u32 numVertices);
@@ -28,6 +26,8 @@ private:
   static u16* AddList(u16* Iptr, u32 numVerts, u32 index);
   static u16* AddStrip(u16* Iptr, u32 numVerts, u32 index);
   static u16* AddFan(u16* Iptr, u32 numVerts, u32 index);
+
+  // Quads
   static u16* AddQuads(u16* Iptr, u32 numVerts, u32 index);
   static u16* AddQuads_nonstandard(u16* Iptr, u32 numVerts, u32 index);
 

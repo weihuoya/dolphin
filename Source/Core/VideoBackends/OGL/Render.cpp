@@ -41,7 +41,6 @@
 
 #include "VideoCommon/BPFunctions.h"
 #include "VideoCommon/DriverDetails.h"
-#include "VideoCommon/IndexGenerator.h"
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/PixelEngine.h"
 #include "VideoCommon/RenderState.h"
@@ -781,8 +780,6 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context)
   glBlendFunc(GL_ONE, GL_ONE);
   glBlendColor(0, 0, 0, 0.5f);
   glClearDepthf(1.0f);
-
-  IndexGenerator::Init();
 
   UpdateActiveConfig();
   ClearEFBCache();
