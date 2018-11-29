@@ -509,16 +509,16 @@ endif()
 #     should be linked statically)
 #   - place the CMakeLists.txt in the first-level subdirectory, e.g.
 #     Externals/zlib/CMakeLists.txt (that is: NOT in some Src/ subdirectory)
-#
-if(NOT ANDROID)
-  add_subdirectory(Externals/cpp-optparse)
-endif()
 
 if (_M_X86)
   add_subdirectory(Externals/Bochs_disasm)
 endif()
 
+if(NOT ANDROID)
+  add_subdirectory(Externals/cpp-optparse)
+endif()
 add_subdirectory(Externals/glslang)
+add_subdirectory(Externals/imgui)
 
 if(USE_SHARED_ENET)
   check_lib(ENET libenet enet enet/enet.h QUIET)
