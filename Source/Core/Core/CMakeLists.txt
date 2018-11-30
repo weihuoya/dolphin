@@ -291,6 +291,7 @@ PUBLIC
   videonull
   videoogl
   videosoftware
+  videovulkan
 
 PRIVATE
   ${LZO}
