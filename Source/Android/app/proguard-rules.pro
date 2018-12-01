@@ -42,6 +42,8 @@
 # -dontwarn rx.functions.**
 # -keep class rx.functions.** { *; }
 
+-keep class android.support.v7.app.** { *; }
+
 -keep class org.dolphinemu.dolphinemu.NativeLibrary { *; }
 -keep class org.dolphinemu.dolphinemu.utils.Java_GCAdapter { *; }
 -keep class org.dolphinemu.dolphinemu.utils.Java_WiimoteAdapter { *; }
