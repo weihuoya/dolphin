@@ -19,7 +19,7 @@ public:
   // returns numprimitives
   static u32 GetNumVerts() { return base_index; }
   static u32 GetIndexLen() { return (u32)(index_buffer_current - BASEIptr); }
-  static u32 GetRemainingIndices();
+  static u32 GetRemainingIndices() { return 65535 - base_index; }
 
 private:
   // Triangles

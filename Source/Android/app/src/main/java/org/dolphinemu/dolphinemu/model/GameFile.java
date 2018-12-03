@@ -69,33 +69,6 @@ public class GameFile
     return DirectoryInitialization.getCoverDirectory() + File.separator + getGameId() + ".png";
   }
 
-  public List<String> getSavedStates()
-  {
-    final int NUM_STATES = 10;
-    final String statePath = DirectoryInitialization.getDolphinDirectory() + "/StateSaves/";
-    final String gameId = getGameId();
-    long lastModified = Long.MAX_VALUE;
-    ArrayList<String> savedStates = new ArrayList<>();
-    for (int i = 1; i < NUM_STATES; ++i)
-    {
-      String filename = String.format("%s%s.s%02d", statePath, gameId, i);
-      File stateFile = new File(filename);
-      if (stateFile.exists())
-      {
-        if (stateFile.lastModified() < lastModified)
-        {
-          savedStates.add(0, filename);
-          lastModified = stateFile.lastModified();
-        }
-        else
-        {
-          savedStates.add(filename);
-        }
-      }
-    }
-    return savedStates;
-  }
-
   public String getLastSavedState()
   {
     final int NUM_STATES = 10;

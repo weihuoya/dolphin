@@ -2,8 +2,6 @@
 // Licensed under GPLv2+
 // Refer to the license.txt file included.
 
-#include <cstddef>
-
 #include "Common/CommonTypes.h"
 #include "Common/Compiler.h"
 #include "Common/Logging/Log.h"
@@ -56,24 +54,18 @@ void IndexGenerator::AddIndices(int primitive, u32 numVerts)
   base_index += numVerts;
 }
 
-u32 IndexGenerator::GetRemainingIndices()
-{
-  u32 max_index = 65534;  // -1 is reserved for primitive restart (ogl + dx11)
-  return max_index - base_index;
-}
-
 //////////////////////////////////////////////////////////////////////////////////
 // Triangles
 u16* IndexGenerator::AddList(u16* Iptr, u32 numVerts, u32 index)
 {
   bool ccw = bpmem.genMode.cullmode == GenMode::CULL_FRONT;
-  int v1 = ccw ? 2 : 1;
-  int v2 = ccw ? 1 : 2;
-  for (u32 i = 0; i < numVerts; i += 3)
+  int v1 = ccw ? 0 : 1;
+  int v2 = ccw ? 1 : 0;
+  for (u32 i = 2; i < numVerts; i += 3)
   {
-    *Iptr++ = index + i;
-    *Iptr++ = index + i + v1;
-    *Iptr++ = index + i + v2;
+    *Iptr++ = index + i - 2;
+    *Iptr++ = index + i - v1;
+    *Iptr++ = index + i - v2;
   }
   return Iptr;
 }
@@ -81,15 +73,13 @@ u16* IndexGenerator::AddList(u16* Iptr, u32 numVerts, u32 index)
 u16* IndexGenerator::AddStrip(u16* Iptr, u32 numVerts, u32 index)
 {
   bool ccw = bpmem.genMode.cullmode == GenMode::CULL_FRONT;
-  int wind = ccw ? 2 : 1;
-  // if only one vertex remaining, render a triangle
-  numVerts = numVerts < 3 ? 1 : numVerts - 2;
-  for (u32 i = 0; i < numVerts; ++i)
+  int wind = ccw ? 0 : 1;
+  for (u32 i = 2; i < numVerts; ++i)
   {
-    *Iptr++ = index + i;
-    *Iptr++ = index + i + wind;
-    wind ^= 3;  // toggle between 1 and 2
-    *Iptr++ = index + i + wind;
+    *Iptr++ = index + i - 2;
+    *Iptr++ = index + i - wind;
+    wind ^= 1;  // toggle between 0 and 1
+    *Iptr++ = index + i - wind;
   }
   return Iptr;
 }
@@ -115,16 +105,13 @@ u16* IndexGenerator::AddStrip(u16* Iptr, u32 numVerts, u32 index)
 u16* IndexGenerator::AddFan(u16* Iptr, u32 numVerts, u32 index)
 {
   bool ccw = bpmem.genMode.cullmode == GenMode::CULL_FRONT;
-  int v1 = ccw ? 2 : 1;
-  int v2 = ccw ? 1 : 2;
-  // The Last Story
-  // if only one vertex remaining, render a triangle
-  numVerts = numVerts < 3 ? 1 : numVerts - 2;
-  for (u32 i = 0; i < numVerts; ++i)
+  int v1 = ccw ? 0 : 1;
+  int v2 = ccw ? 1 : 0;
+  for (u32 i = 2; i < numVerts; ++i)
   {
     *Iptr++ = index;
-    *Iptr++ = index + i + v1;
-    *Iptr++ = index + i + v2;
+    *Iptr++ = index + i - v1;
+    *Iptr++ = index + i - v2;
   }
   return Iptr;
 }
@@ -149,30 +136,30 @@ u16* IndexGenerator::AddFan(u16* Iptr, u32 numVerts, u32 index)
 u16* IndexGenerator::AddQuads(u16* Iptr, u32 numVerts, u32 index)
 {
   bool ccw = bpmem.genMode.cullmode == GenMode::CULL_FRONT;
-  int v1 = ccw ? 2 : 1;
-  int v2 = ccw ? 1 : 2;
-  int v3 = ccw ? 3 : 2;
-  int v4 = ccw ? 2 : 3;
-  u32 i = 0;
+  u32 i = 3;
+  int v1 = ccw ? 1 : 2;
+  int v2 = ccw ? 2 : 1;
+  int v3 = ccw ? 0 : 1;
+  int v4 = ccw ? 1 : 0;
 
-  for (; i < (numVerts & ~3); i += 4)
+  for (; i < numVerts; i += 4)
   {
-    *Iptr++ = index + i;
-    *Iptr++ = index + i + v1;
-    *Iptr++ = index + i + v2;
+    *Iptr++ = index + i - 3;
+    *Iptr++ = index + i - v1;
+    *Iptr++ = index + i - v2;
 
-    *Iptr++ = index + i;
-    *Iptr++ = index + i + v3;
-    *Iptr++ = index + i + v4;
+    *Iptr++ = index + i - 3;
+    *Iptr++ = index + i - v3;
+    *Iptr++ = index + i - v4;
   }
 
   // Legend of Zelda The Wind Waker
   // if three vertices remaining, render a triangle
-  if (numVerts & 3)
+  if (i == numVerts)
   {
-    *Iptr++ = index + i;
-    *Iptr++ = index + i + v1;
-    *Iptr++ = index + i + v2;
+    *Iptr++ = index + i - 3;
+    *Iptr++ = index + i - v1;
+    *Iptr++ = index + i - v2;
   }
 
   return Iptr;
@@ -187,10 +174,10 @@ u16* IndexGenerator::AddQuads_nonstandard(u16* Iptr, u32 numVerts, u32 index)
 // Lines
 u16* IndexGenerator::AddLineList(u16* Iptr, u32 numVerts, u32 index)
 {
-  for (u32 i = 0; i < numVerts; i += 2)
+  for (u32 i = 1; i < numVerts; i += 2)
   {
+    *Iptr++ = index + i - 1;
     *Iptr++ = index + i;
-    *Iptr++ = index + i + 1;
   }
   return Iptr;
 }
@@ -199,10 +186,10 @@ u16* IndexGenerator::AddLineList(u16* Iptr, u32 numVerts, u32 index)
 // so converting them to lists
 u16* IndexGenerator::AddLineStrip(u16* Iptr, u32 numVerts, u32 index)
 {
-  for (u32 i = 0; i < numVerts - 1; ++i)
+  for (u32 i = 1; i < numVerts - 1; ++i)
   {
+    *Iptr++ = index + i - 1;
     *Iptr++ = index + i;
-    *Iptr++ = index + i + 1;
   }
   return Iptr;
 }
@@ -216,4 +203,3 @@ u16* IndexGenerator::AddPoints(u16* Iptr, u32 numVerts, u32 index)
   }
   return Iptr;
 }
-

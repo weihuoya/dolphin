@@ -349,6 +349,7 @@ public class RunningSettingDialog extends DialogFragment
       }*/
     }
 
+    @NonNull
     @Override
     public SettingViewHolder onCreateViewHolder(ViewGroup parent, int viewType)
     {
@@ -455,6 +456,7 @@ public class RunningSettingDialog extends DialogFragment
 
   private SettingsAdapter mAdapter;
 
+  @NonNull
   @Override
   public Dialog onCreateDialog(Bundle savedInstanceState)
   {

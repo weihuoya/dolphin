@@ -201,18 +201,21 @@ public final class InputOverlayDrawableJoystick
 
     float[] axises = getAxisValues();
 
-    // shake
-    if (mJoystickType == 0 && InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SHAKE)
+    if(mJoystickType != 0)
     {
+      // fx wii classic or classic bind
+      axises[1] = Math.min(axises[1], 1.0f);
+      axises[0] = Math.min(axises[0], 0.0f);
+      axises[3] = Math.min(axises[3], 1.0f);
+      axises[2] = Math.min(axises[2], 0.0f);
+    }
+    else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SHAKE)
+    {
+      // shake
       axises[1] = -axises[1];
       axises[3] = -axises[3];
       handleShakeEvent(axises);
       return;
-    }
-    else if(mAxisIDs[0] == NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_UP && axises[0] > 0)
-    {
-      // fx wii classic
-      axises[1] = 0;
     }
 
     for (int i = 0; i < 4; i++)
