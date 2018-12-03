@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+    <View
+        android:id="@+id/center_view"
+        android:visibility="invisible"
+        android:layout_alignParentStart="true"
+        android:layout_centerVertical="true"
+        android:layout_width="1dp"
+        android:layout_height="1dp"/>
+
+    <TextView
+        android:id="@+id/state_name"
+        android:textColor="@android:color/black"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_above="@id/center_view"
+        android:layout_alignParentStart="true"
+        android:text="00:00:00"/>
+
+    <TextView
+        android:id="@+id/state_time"
+        android:textColor="@android:color/black"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/center_view"
+        android:layout_alignParentStart="true"
+        android:text="01-01-01,2000"/>
+
+    <Button
+        android:text="@string/load"
+        android:id="@+id/button_load_state"
+        style="@style/Widget.AppCompat.Button.Colored"
+        android:textAllCaps="false"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_toStartOf="@+id/button_save_state"
+        android:stateListAnimator="@null"/>
+
+    <Button
+        android:text="@string/save"
+        android:id="@+id/button_save_state"
+        style="@style/Widget.AppCompat.Button.Colored"
+        android:textAllCaps="false"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentEnd="true"
+        android:stateListAnimator="@null"/>
+
+</RelativeLayout>

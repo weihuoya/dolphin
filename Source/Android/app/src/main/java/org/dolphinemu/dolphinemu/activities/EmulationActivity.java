@@ -27,6 +27,7 @@ import android.widget.TextView;
 import org.dolphinemu.dolphinemu.NativeLibrary;
 import org.dolphinemu.dolphinemu.R;
 import org.dolphinemu.dolphinemu.dialogs.RunningSettingDialog;
+import org.dolphinemu.dolphinemu.dialogs.StateSavesDialog;
 import org.dolphinemu.dolphinemu.fragments.EmulationFragment;
 import org.dolphinemu.dolphinemu.model.GameFile;
 import org.dolphinemu.dolphinemu.overlay.InputOverlay;
@@ -296,53 +297,7 @@ public final class EmulationActivity extends AppCompatActivity
 
       // Quick save / load
       case R.id.menu_quicksave:
-        NativeLibrary.SaveState(9, false);
-        break;
-
-      case R.id.menu_quickload:
-        NativeLibrary.LoadState(9);
-        break;
-
-      // Save state slots
-      case R.id.menu_emulation_save_1:
-        NativeLibrary.SaveState(0, false);
-        break;
-
-      case R.id.menu_emulation_save_2:
-        NativeLibrary.SaveState(1, false);
-        break;
-
-      case R.id.menu_emulation_save_3:
-        NativeLibrary.SaveState(2, false);
-        break;
-
-      case R.id.menu_emulation_save_4:
-        NativeLibrary.SaveState(3, false);
-        break;
-
-      case R.id.menu_emulation_save_5:
-        NativeLibrary.SaveState(4, false);
-        break;
-
-      // Load state slots
-      case R.id.menu_emulation_load_1:
-        NativeLibrary.LoadState(0);
-        break;
-
-      case R.id.menu_emulation_load_2:
-        NativeLibrary.LoadState(1);
-        break;
-
-      case R.id.menu_emulation_load_3:
-        NativeLibrary.LoadState(2);
-        break;
-
-      case R.id.menu_emulation_load_4:
-        NativeLibrary.LoadState(3);
-        break;
-
-      case R.id.menu_emulation_load_5:
-        NativeLibrary.LoadState(4);
+        showStateSaves();
         break;
 
       case R.id.menu_change_disc:
@@ -359,6 +314,11 @@ public final class EmulationActivity extends AppCompatActivity
     }
 
     return true;
+  }
+
+  private void showStateSaves()
+  {
+    StateSavesDialog.newInstance(sGameFile.getGameId()).show(getSupportFragmentManager(), "StateSavesDialog");
   }
 
   private void showJoystickSettings()
@@ -592,9 +552,9 @@ public final class EmulationActivity extends AppCompatActivity
     LayoutInflater inflater = LayoutInflater.from(this);
     View view = inflater.inflate(R.layout.dialog_seekbar, null);
 
-    final SeekBar seekbar = (SeekBar) view.findViewById(R.id.seekbar);
-    final TextView value = (TextView) view.findViewById(R.id.text_value);
-    final TextView units = (TextView) view.findViewById(R.id.text_units);
+    final SeekBar seekbar = view.findViewById(R.id.seekbar);
+    final TextView value = view.findViewById(R.id.text_value);
+    final TextView units = view.findViewById(R.id.text_units);
 
     seekbar.setMax(150);
     seekbar.setProgress(InputOverlay.sControllerScale);

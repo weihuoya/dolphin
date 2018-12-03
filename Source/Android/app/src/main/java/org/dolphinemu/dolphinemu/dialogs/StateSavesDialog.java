@@ -11,67 +11,130 @@ import android.support.v7.widget.RecyclerView;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.TextView;
 
 import com.nononsenseapps.filepicker.DividerItemDecoration;
 
+import org.dolphinemu.dolphinemu.NativeLibrary;
 import org.dolphinemu.dolphinemu.R;
 import org.dolphinemu.dolphinemu.utils.DirectoryInitialization;
 
 import java.io.File;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 
 public class StateSavesDialog extends DialogFragment
 {
   public class StateSaveModel
   {
+    private int mIndex;
     private String mFilename;
     private long mLastModified;
 
-    public StateSaveModel(String filename, long lastModified)
+    public StateSaveModel(int index, String filename, long lastModified)
     {
+      mIndex = index;
       mFilename = filename;
       mLastModified = lastModified;
+    }
+
+    public int getIndex()
+    {
+      return mIndex;
+    }
+
+    public String getName()
+    {
+      int idx = mFilename.lastIndexOf('.');
+      if(idx != -1 && idx < mFilename.length())
+        return mFilename.substring(idx + 1).toUpperCase();
+      return "";
+    }
+
+    public long getLastModified()
+    {
+      return mLastModified;
     }
   }
 
   public class StateSaveViewHolder extends RecyclerView.ViewHolder
-    implements View.OnClickListener
   {
-    public StateSaveViewHolder(View itemView)
+    private DialogFragment mDialog;
+    private TextView mName;
+    private TextView mDate;
+    private Button mBtnLoad;
+    private Button mBtnSave;
+
+    public StateSaveViewHolder(DialogFragment dialog, View itemView)
     {
       super(itemView);
-      itemView.setOnClickListener(this);
+
+      mDialog = dialog;
+      mName = itemView.findViewById(R.id.state_name);
+      mDate = itemView.findViewById(R.id.state_time);
+      mBtnLoad = itemView.findViewById(R.id.button_load_state);
+      mBtnSave = itemView.findViewById(R.id.button_save_state);
     }
 
     public void bind(StateSaveModel item)
     {
-
-    }
-
-    public void onClick(View clicked)
-    {
-
+      long lastModified = item.getLastModified();
+      if(lastModified > 0)
+      {
+        Date date = new Date(lastModified);
+        mName.setText(SimpleDateFormat.getTimeInstance().format(date));
+        mDate.setText(SimpleDateFormat.getDateInstance().format(date));
+      }
+      else
+      {
+        mName.setText("");
+        mDate.setText("");
+      }
+      mBtnLoad.setEnabled(!item.getName().isEmpty());
+      mBtnLoad.setOnClickListener(view ->
+      {
+        NativeLibrary.LoadState(item.getIndex());
+        mDialog.dismiss();
+      });
+      mBtnSave.setOnClickListener(view ->
+      {
+        NativeLibrary.SaveState(item.getIndex(), false);
+        mDialog.dismiss();
+      });
     }
   }
 
   public class StateSavesAdapter extends RecyclerView.Adapter<StateSaveViewHolder>
   {
     private static final int NUM_STATES = 10;
+    private DialogFragment mDialog;
     private ArrayList<StateSaveModel> mStateSaves;
 
-    public StateSavesAdapter(String gameId)
+    public StateSavesAdapter(DialogFragment dialog, String gameId)
     {
       final String statePath = DirectoryInitialization.getDolphinDirectory() + "/StateSaves/";
+      ArrayList<Integer> indices = new ArrayList<Integer>();
+      mDialog = dialog;
       mStateSaves = new ArrayList<>();
-      for (int i = 1; i < NUM_STATES; ++i)
+      for (int i = 0; i < NUM_STATES; ++i)
       {
         String filename = String.format("%s%s.s%02d", statePath, gameId, i);
         File stateFile = new File(filename);
         if (stateFile.exists())
         {
-          mStateSaves.add(new StateSaveModel(filename, stateFile.lastModified()));
+          mStateSaves.add(new StateSaveModel(i, filename, stateFile.lastModified()));
         }
+        else
+        {
+          indices.add(i);
+        }
+      }
+
+      for(Integer idx : indices)
+      {
+        mStateSaves.add(new StateSaveModel(idx, "", 0));
       }
     }
 
@@ -80,8 +143,8 @@ public class StateSavesDialog extends DialogFragment
     public StateSaveViewHolder onCreateViewHolder(ViewGroup parent, int viewType)
     {
       LayoutInflater inflater = LayoutInflater.from(parent.getContext());
-      View itemView = inflater.inflate(R.layout.list_item_running_checkbox, parent, false);
-      return new StateSaveViewHolder(itemView);
+      View itemView = inflater.inflate(R.layout.list_item_statesave, parent, false);
+      return new StateSaveViewHolder(mDialog, itemView);
     }
 
     @Override
@@ -131,7 +194,7 @@ public class StateSavesDialog extends DialogFragment
     RecyclerView recyclerView = contents.findViewById(R.id.list_settings);
     RecyclerView.LayoutManager layoutManager = new GridLayoutManager(getContext(), columns);
     recyclerView.setLayoutManager(layoutManager);
-    mAdapter = new StateSavesAdapter(getArguments().getString(ARG_GAME_ID));
+    mAdapter = new StateSavesAdapter(this, getArguments().getString(ARG_GAME_ID));
     recyclerView.setAdapter(mAdapter);
     recyclerView.addItemDecoration(new DividerItemDecoration(lineDivider));
     builder.setView(contents);
