@@ -47,9 +47,9 @@ public class StateSavesDialog extends DialogFragment
 
     public String getName()
     {
-      int idx = mFilename.lastIndexOf('.');
+      int idx = mFilename.lastIndexOf(File.separatorChar);
       if(idx != -1 && idx < mFilename.length())
-        return mFilename.substring(idx + 1).toUpperCase();
+        return mFilename.substring(idx + 1);
       return "";
     }
 
@@ -83,9 +83,8 @@ public class StateSavesDialog extends DialogFragment
       long lastModified = item.getLastModified();
       if(lastModified > 0)
       {
-        Date date = new Date(lastModified);
-        mName.setText(SimpleDateFormat.getTimeInstance().format(date));
-        mDate.setText(SimpleDateFormat.getDateInstance().format(date));
+        mName.setText(item.getName());
+        mDate.setText(SimpleDateFormat.getDateTimeInstance().format(new Date(lastModified)));
       }
       else
       {

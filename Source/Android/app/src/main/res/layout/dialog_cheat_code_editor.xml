@@ -25,7 +25,7 @@
         android:layout_below="@id/game_id" />
 
     <Button
-        android:text="@string/save_code"
+        android:text="@string/save"
         android:id="@+id/button_add_code"
         style="@style/Widget.AppCompat.Button.Colored"
         android:textAllCaps="false"
