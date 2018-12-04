@@ -13,14 +13,12 @@
 
         <TextView
             android:id="@+id/state_name"
-            android:textColor="@android:color/black"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="00:00:00"/>
 
         <TextView
             android:id="@+id/state_time"
-            android:textColor="@android:color/black"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="01-01-01,2000"/>

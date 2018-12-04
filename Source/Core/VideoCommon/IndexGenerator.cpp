@@ -186,7 +186,7 @@ u16* IndexGenerator::AddLineList(u16* Iptr, u32 numVerts, u32 index)
 // so converting them to lists
 u16* IndexGenerator::AddLineStrip(u16* Iptr, u32 numVerts, u32 index)
 {
-  for (u32 i = 1; i < numVerts - 1; ++i)
+  for (u32 i = 1; i < numVerts; ++i)
   {
     *Iptr++ = index + i - 1;
     *Iptr++ = index + i;
