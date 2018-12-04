@@ -2,6 +2,8 @@
 // Licensed under GPLv2+
 // Refer to the license.txt file included.
 
+#include <cstring>
+
 #include "Common/CommonTypes.h"
 #include "Common/Compiler.h"
 #include "Common/Logging/Log.h"
@@ -54,7 +56,13 @@ void IndexGenerator::AddIndices(int primitive, u32 numVerts)
   base_index += numVerts;
 }
 
-//////////////////////////////////////////////////////////////////////////////////
+void IndexGenerator::AddExternalIndices(const u16* indices, u32 num_indices, u32 num_vertices)
+{
+  std::memcpy(index_buffer_current, indices, sizeof(u16) * num_indices);
+  index_buffer_current += num_indices;
+  base_index += num_vertices;
+}
+
 // Triangles
 u16* IndexGenerator::AddList(u16* Iptr, u32 numVerts, u32 index)
 {

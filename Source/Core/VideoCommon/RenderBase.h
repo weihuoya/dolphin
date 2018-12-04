@@ -27,11 +27,13 @@
 #include "Common/Event.h"
 #include "Common/Flag.h"
 #include "Common/MathUtil.h"
+#include "VideoCommon/AbstractShader.h"
 #include "VideoCommon/AVIDump.h"
 #include "VideoCommon/AsyncShaderCompiler.h"
 #include "VideoCommon/BPMemory.h"
 #include "VideoCommon/FPSCounter.h"
 #include "VideoCommon/RenderState.h"
+#include "VideoCommon/TextureConfig.h"
 #include "VideoCommon/VideoCommon.h"
 
 class AbstractFramebuffer;
@@ -41,7 +43,6 @@ class AbstractTexture;
 class AbstractStagingTexture;
 class PostProcessingShaderImplementation;
 struct TextureConfig;
-struct ComputePipelineConfig;
 struct AbstractPipelineConfig;
 enum class ShaderStage;
 enum class EFBAccessType;
@@ -72,12 +73,15 @@ enum class OSDMessage : s32
 class Renderer
 {
 public:
-  Renderer(int backbuffer_width, int backbuffer_height);
+  Renderer(int backbuffer_width, int backbuffer_height, AbstractTextureFormat backbuffer_format);
   virtual ~Renderer();
 
   using ClearColor = std::array<float, 4>;
 
   virtual bool IsHeadless() const = 0;
+
+  virtual bool Initialize();
+  virtual void Shutdown();
 
   virtual void SetPipeline(const AbstractPipeline* pipeline) {}
   virtual void SetScissorRect(const MathUtil::Rectangle<int>& rc) {}
@@ -109,6 +113,10 @@ public:
                                       const ClearColor& color_value = {}, float depth_value = 0.0f)
   {
   }
+
+  // Drawing with currently-bound pipeline state.
+  virtual void Draw(u32 base_vertex, u32 num_vertices) {}
+  virtual void DrawIndexed(u32 base_index, u32 num_indices, u32 base_vertex) {}
 
   // Shader modules/objects.
   virtual std::unique_ptr<AbstractShader>
@@ -185,18 +193,6 @@ public:
 
   virtual std::unique_ptr<VideoCommon::AsyncShaderCompiler> CreateAsyncShaderCompiler();
 
-  virtual void Shutdown();
-
-  // Drawing utility shaders.
-  virtual void DrawUtilityPipeline(const void* uniforms, u32 uniforms_size, const void* vertices,
-                                   u32 vertex_stride, u32 num_vertices)
-  {
-  }
-  virtual void DispatchComputeShader(const AbstractShader* shader, const void* uniforms,
-                                     u32 uniforms_size, u32 groups_x, u32 groups_y, u32 groups_z)
-  {
-  }
-
   void ShowOSDMessage(OSDMessage message);
 
 protected:
@@ -226,6 +222,7 @@ protected:
   // Backbuffer (window) size and render area
   int m_backbuffer_width = 0;
   int m_backbuffer_height = 0;
+  AbstractTextureFormat m_backbuffer_format = AbstractTextureFormat::Undefined;
   TargetRectangle m_target_rectangle = {};
 
   std::unique_ptr<PostProcessingShaderImplementation> m_post_processor;
