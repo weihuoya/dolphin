@@ -106,6 +106,14 @@ JNIEXPORT jstring JNICALL Java_org_dolphinemu_dolphinemu_model_GameFile_getPath(
   return ToJString(env, GetRef(env, obj)->GetFilePath());
 }
 
+JNIEXPORT jstring JNICALL Java_org_dolphinemu_dolphinemu_model_GameFile_getTitlePath(JNIEnv* env,
+                                                                                     jobject obj)
+{
+  u64 titleID = GetRef(env, obj)->GetTitleID();
+  std::string path = StringFromFormat("Wii/title/%08x/%08x", (u32)(titleID >> 32), (u32)titleID);
+  return ToJString(env, path);
+}
+
 JNIEXPORT jstring JNICALL Java_org_dolphinemu_dolphinemu_model_GameFile_getGameId(JNIEnv* env,
                                                                                   jobject obj)
 {

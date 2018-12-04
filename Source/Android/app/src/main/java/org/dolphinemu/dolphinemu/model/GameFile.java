@@ -54,6 +54,8 @@ public class GameFile
 
   public native String getPath();
 
+  public native String getTitlePath();
+
   public native String getGameId();
 
   public native int[] getBanner();

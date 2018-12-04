@@ -54,9 +54,13 @@ public final class GameDetailsDialog extends DialogFragment
     textGameTitle.setText(gameFile.getTitle());
 
     // game filename
-    String gamePath = gameFile.getPath();
+    String gamePath = gameFile.getGameId();
+    if(gameFile.getPlatform() > 0)
+    {
+      gamePath += ", " + gameFile.getTitlePath();
+    }
     TextView textGameFilename = contents.findViewById(R.id.text_game_filename);
-    textGameFilename.setText(gamePath.substring(gamePath.lastIndexOf("/") + 1));
+    textGameFilename.setText(gamePath);
 
     //
     Button buttonDeleteSetting = contents.findViewById(R.id.button_delete_setting);
@@ -71,7 +75,7 @@ public final class GameDetailsDialog extends DialogFragment
     buttonCheatCode.setOnClickListener(view ->
     {
       this.dismiss();
-      CheatCodeDialog.newInstance(gamePath).show(getFragmentManager(), "CheatCodeDialog");
+      CheatCodeDialog.newInstance(gameFile.getPath()).show(getFragmentManager(), "CheatCodeDialog");
     });
 
     //
