@@ -677,7 +677,7 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
       // Since we use the common pipelines here and draw vertices if a batch is currently being
       // built by the vertex loader, we end up trampling over its pointer, as we share the buffer
       // with the loader, and it has not been unmapped yet. Force a pipeline flush to avoid this.
-      g_vertex_manager->Flush();
+      //g_vertex_manager->Flush();
 
       // TODO: merge more generic parts into VideoCommon
       {

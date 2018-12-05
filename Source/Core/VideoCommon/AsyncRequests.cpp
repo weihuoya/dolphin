@@ -32,22 +32,21 @@ void AsyncRequests::PullEventsInternal()
 
   while (!m_queue.empty())
   {
-    Event e = m_queue.front();
+    Event& e = m_queue.front();
 
     // try to merge as many efb pokes as possible
     // it's a bit hacky, but some games render a complete frame in this way
     if ((e.type == Event::EFB_POKE_COLOR || e.type == Event::EFB_POKE_Z))
     {
-      m_merged_efb_pokes.clear();
-      Event first_event = m_queue.front();
+      const Event& first_event = m_queue.front();
       const auto t = first_event.type == Event::EFB_POKE_COLOR ? EFBAccessType::PokeColor :
                                                                  EFBAccessType::PokeZ;
+      m_merged_efb_pokes.clear();
 
       do
       {
-        e = m_queue.front();
-
         EfbPokeData d;
+        e = m_queue.front();
         d.data = e.efb_poke.data;
         d.x = e.efb_poke.x;
         d.y = e.efb_poke.y;
@@ -82,21 +81,22 @@ void AsyncRequests::PushEvent(const AsyncRequests::Event& event, bool blocking)
 
   if (m_passthrough)
   {
+    lock.unlock();
     HandleEvent(event);
     return;
   }
-
-  m_empty.Clear();
-  m_wake_me_up_again |= blocking;
 
   if (!m_enable)
     return;
 
   m_queue.push(event);
+  m_empty.Clear();
 
   Fifo::RunGpu();
+
   if (blocking)
   {
+    m_wake_me_up_again = true;
     m_cond.wait(lock, [this] { return m_queue.empty(); });
   }
 }
