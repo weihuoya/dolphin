@@ -186,7 +186,7 @@ public final class EmulationActivity extends AppCompatActivity
     {
       mStopEmulation = true;
       mEmulationFragment.stopEmulation();
-      new Handler().postDelayed(this::finish, 500);
+      finish();
     }
     else
     {
