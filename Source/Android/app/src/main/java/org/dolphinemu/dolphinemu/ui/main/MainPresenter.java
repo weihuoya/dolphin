@@ -60,11 +60,6 @@ public final class MainPresenter
     }
   }
 
-  public void onFabClick()
-  {
-    mView.launchFileListActivity();
-  }
-
   public boolean handleOptionSelection(int itemId, Context context)
   {
     switch (itemId)

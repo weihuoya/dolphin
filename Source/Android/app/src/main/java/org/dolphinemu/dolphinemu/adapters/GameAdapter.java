@@ -71,13 +71,17 @@ public final class GameAdapter extends RecyclerView.Adapter<GameViewHolder> impl
 
     final int[] platforms =
       {R.string.game_platform_ngc, R.string.game_platform_wii, R.string.game_platform_ware};
-    Context context = holder.textPlatform.getContext();
-    String[] countryNames = context.getResources().getStringArray(R.array.countryNames);
+    final Context context = holder.textPlatform.getContext();
+    final String[] countryNames = context.getResources().getStringArray(R.array.countryNames);
+    int platform = gameFile.getPlatform();
+    int country = gameFile.getCountry();
     int discNumber = gameFile.getDiscNumber() + 1;
     String discInfo = discNumber > 1 ? "DISC-" + discNumber : "";
-    holder.textPlatform.setText(context.getString(platforms[gameFile.getPlatform()],
-      countryNames[gameFile.getCountry()], discInfo));
-
+    if(platform < 0 || platform >= platforms.length)
+      platform = platforms.length - 1;
+    if(country < 0 || country >= countryNames.length)
+      country = countryNames.length - 1;
+    holder.textPlatform.setText(context.getString(platforms[platform], countryNames[country], discInfo));
     holder.gameFile = gameFile;
   }
 

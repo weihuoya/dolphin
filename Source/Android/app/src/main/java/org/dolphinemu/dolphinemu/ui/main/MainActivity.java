@@ -32,7 +32,6 @@ import org.dolphinemu.dolphinemu.utils.StartupHandler;
 public final class MainActivity extends AppCompatActivity implements MainView
 {
   private GameAdapter mAdapter;
-  private RecyclerView mRecyclerView;
   private Toolbar mToolbar;
 
   private MainPresenter mPresenter = new MainPresenter(this, this);
@@ -78,16 +77,16 @@ public final class MainActivity extends AppCompatActivity implements MainView
   // TODO: Replace with a ButterKnife injection.
   private void findViews()
   {
+    RecyclerView gamelist = findViewById(R.id.grid_games);
     mToolbar = findViewById(R.id.toolbar_main);
-    mRecyclerView = findViewById(R.id.grid_games);
 
     int columns = getResources().getInteger(R.integer.game_grid_columns);
     Drawable lineDivider = getDrawable(R.drawable.line_divider);
     RecyclerView.LayoutManager layoutManager = new GridLayoutManager(this, columns);
     mAdapter = new GameAdapter();
-    mRecyclerView.setLayoutManager(layoutManager);
-    mRecyclerView.setAdapter(mAdapter);
-    mRecyclerView.addItemDecoration(new DividerItemDecoration(lineDivider));
+    gamelist.setLayoutManager(layoutManager);
+    gamelist.setAdapter(mAdapter);
+    gamelist.addItemDecoration(new DividerItemDecoration(lineDivider));
   }
 
   @Override
