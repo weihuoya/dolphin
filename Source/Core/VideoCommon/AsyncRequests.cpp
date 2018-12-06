@@ -28,7 +28,6 @@ void AsyncRequests::DoFlush()
 void AsyncRequests::PullEventsInternal()
 {
   std::unique_lock<std::mutex> lock(m_mutex);
-  m_empty.Set();
 
   while (!m_queue.empty())
   {
@@ -36,7 +35,7 @@ void AsyncRequests::PullEventsInternal()
 
     // try to merge as many efb pokes as possible
     // it's a bit hacky, but some games render a complete frame in this way
-    if ((e.type == Event::EFB_POKE_COLOR || e.type == Event::EFB_POKE_Z))
+    if (m_queue.size() > 1 && (e.type == Event::EFB_POKE_COLOR || e.type == Event::EFB_POKE_Z))
     {
       const Event& first_event = m_queue.front();
       const auto t = first_event.type == Event::EFB_POKE_COLOR ? EFBAccessType::PokeColor :
@@ -67,6 +66,8 @@ void AsyncRequests::PullEventsInternal()
 
     m_queue.pop();
   }
+
+  m_empty.Set();
 
   if (m_wake_me_up_again)
   {

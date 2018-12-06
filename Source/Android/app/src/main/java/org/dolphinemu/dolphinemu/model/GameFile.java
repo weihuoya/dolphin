@@ -76,15 +76,15 @@ public class GameFile
     final int NUM_STATES = 10;
     final String statePath = DirectoryInitialization.getDolphinDirectory() + "/StateSaves/";
     final String gameId = getGameId();
-    long lastModified = Long.MAX_VALUE;
+    long lastModified = 0;
     String savedState = null;
-    for (int i = 1; i < NUM_STATES; ++i)
+    for (int i = 0; i < NUM_STATES; ++i)
     {
       String filename = String.format("%s%s.s%02d", statePath, gameId, i);
       File stateFile = new File(filename);
       if (stateFile.exists())
       {
-        if (stateFile.lastModified() < lastModified)
+        if (stateFile.lastModified() > lastModified)
         {
           savedState = filename;
           lastModified = stateFile.lastModified();
