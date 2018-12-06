@@ -25,7 +25,6 @@ static u32 s_dstalpha;
 static u32 s_late_ztest;
 static u32 s_rgba6_format;
 static u32 s_dither;
-static u32 s_bounding_box;
 
 static u32 s_blend_enable;
 static u32 s_blend_src_factor;
@@ -34,10 +33,6 @@ static u32 s_blend_dst_factor;
 static u32 s_blend_dst_factor_alpha;
 static u32 s_blend_subtract;
 static u32 s_blend_subtract_alpha;
-
-using uint4 = std::array<u32, 4>;
-static std::array<uint4, 16> s_pack1;  // .xy - combiners, .z - tevind, .w - iref
-static std::array<uint4, 8> s_pack2;   // .x - tevorder, .y - tevksel
 
 PixelShaderConstants PixelShaderManager::constants;
 bool PixelShaderManager::dirty;
@@ -50,7 +45,7 @@ void PixelShaderManager::Init()
   s_bFogRangeAdjustChanged = true;
   s_bViewPortChanged = false;
   s_bIndirectDirty = false;
-  s_bDestAlphaDirty = false;
+  s_bDestAlphaDirty = true;
 
   s_alphaTest = 0;
   s_fogRangeBase = 0;
@@ -58,7 +53,6 @@ void PixelShaderManager::Init()
   s_late_ztest = 0;
   s_rgba6_format = 0;
   s_dither = 0;
-  s_bounding_box = 0;
 
   s_blend_enable = 0;
   s_blend_src_factor = 0;
@@ -67,9 +61,6 @@ void PixelShaderManager::Init()
   s_blend_dst_factor_alpha = 0;
   s_blend_subtract = 0;
   s_blend_subtract_alpha = 0;
-
-  memset(s_pack1.data(), 0, 16 * 4 * 4);
-  memset(s_pack2.data(), 0, 8 * 4 * 4);
 
   SetIndMatrixChanged(0);
   SetIndMatrixChanged(1);
@@ -178,49 +169,41 @@ void PixelShaderManager::SetConstants()
 void PixelShaderManager::SetTevColor(int index, int component, s32 value)
 {
   auto& c = constants.colors[index];
-  c[component] = value;
-  dirty = true;
-
-  PRIM_LOG("tev color%d: %d %d %d %d", index, c[0], c[1], c[2], c[3]);
+  if(c[component] != value)
+  {
+    c[component] = value;
+    dirty = true;
+  }
 }
 
 void PixelShaderManager::SetTevKonstColor(int index, int component, s32 value)
 {
   auto& c = constants.kcolors[index];
-  c[component] = value;
-  dirty = true;
+  if(c[component] != value)
+  {
+    c[component] = value;
+    dirty = true;
+  }
 }
 
 void PixelShaderManager::SetTevOrder(int index, u32 order)
 {
-  if (s_pack2[index][0] != order)
-  {
-    s_pack2[index][0] = order;
-    dirty = true;
-  }
+
 }
 
 void PixelShaderManager::SetTevKSel(int index, u32 ksel)
 {
-  if (s_pack2[index][1] != ksel)
-  {
-    s_pack2[index][1] = ksel;
-    dirty = true;
-  }
+
 }
 
 void PixelShaderManager::SetTevCombiner(int index, int alpha, u32 combiner)
 {
-  if (s_pack1[index][alpha] != combiner)
-  {
-    s_pack1[index][alpha] = combiner;
-    dirty = true;
-  }
+
 }
 
 void PixelShaderManager::SetTevIndirectChanged()
 {
-  s_bIndirectDirty = true;
+
 }
 
 void PixelShaderManager::SetAlpha()
@@ -356,7 +339,7 @@ void PixelShaderManager::SetZTextureTypeChanged()
 
 void PixelShaderManager::SetZTextureOpChanged()
 {
-  dirty = true;
+
 }
 
 void PixelShaderManager::SetTexCoordChanged(u8 texmapid)
@@ -413,8 +396,7 @@ void PixelShaderManager::SetFogRangeAdjustChanged()
 
 void PixelShaderManager::SetGenModeChanged()
 {
-  s_bIndirectDirty = true;
-  dirty = true;
+
 }
 
 void PixelShaderManager::SetZModeControl()
@@ -482,14 +464,7 @@ void PixelShaderManager::SetBlendModeChanged()
 
 void PixelShaderManager::SetBoundingBoxActive(bool active)
 {
-  const bool enable =
-      active && g_ActiveConfig.bBBoxEnable && g_ActiveConfig.BBoxUseFragmentShaderImplementation();
 
-  if (enable == (s_bounding_box != 0))
-    return;
-
-  s_bounding_box = active;
-  dirty = true;
 }
 
 void PixelShaderManager::DoState(PointerWrap& p)

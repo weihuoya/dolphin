@@ -9,6 +9,7 @@
         android:layout_marginStart="@dimen/spacing_medlarge"
         android:layout_centerVertical="true"
         android:layout_alignParentStart="true"
+        android:layout_toStartOf="@id/button_load_state"
         android:orientation="vertical">
 
         <TextView
@@ -32,8 +33,16 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_centerVertical="true"
-        android:layout_toStartOf="@+id/button_save_state"
+        android:layout_toStartOf="@+id/separator"
         android:stateListAnimator="@null"/>
+
+    <View
+        android:id="@+id/separator"
+        android:layout_centerVertical="true"
+        android:layout_toStartOf="@+id/button_save_state"
+        android:layout_width="1dp"
+        android:layout_height="20dp"
+        android:background="@color/light_grey"/>
 
     <Button
         android:text="@string/save"
