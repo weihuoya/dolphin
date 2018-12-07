@@ -53,6 +53,7 @@ public class RunningSettingDialog extends DialogFragment
     public static final int SETTING_TOUCH_POINTER = 10;
     public static final int SETTING_TOUCH_POINTER_SENSITIVE = 11;
     public static final int SETTING_JOYSTICK_RELATIVE = 12;
+    public static final int SETTING_AUTOHIDE_POINTER = 13;
 
     // view type
     public static final int TYPE_CHECKBOX = 0;
@@ -285,6 +286,7 @@ public class RunningSettingDialog extends DialogFragment
   {
     private int mRumble;
     private int mTouchPointer;
+    private int mAutoHidePointer;
     private int mIRSensitive;
     private int mJoystickRelative;
     private int[] mRunningSettings;
@@ -307,6 +309,12 @@ public class RunningSettingDialog extends DialogFragment
           .getBoolean(InputOverlay.POINTER_PREF_KEY, false) ? 1 : 0;
         mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER, R.string.touch_screen_pointer,
           SettingsItem.TYPE_CHECKBOX, mTouchPointer));
+
+        mAutoHidePointer = PreferenceManager.getDefaultSharedPreferences(getContext())
+          .getBoolean(InputOverlay.AUTOHIDE_PREF_KEY, false) ? 1 : 0;
+        mSettings.add(new SettingsItem(SettingsItem.SETTING_AUTOHIDE_POINTER,
+          R.string.touch_screen_pointer_autohide,
+          SettingsItem.TYPE_CHECKBOX, mAutoHidePointer));
 
         mIRSensitive = PreferenceManager.getDefaultSharedPreferences(getContext())
           .getInt(InputOverlay.SENSITIVE_PREF_KEY, 200);
@@ -408,6 +416,14 @@ public class RunningSettingDialog extends DialogFragment
         {
           editor.putBoolean(InputOverlay.POINTER_PREF_KEY, pointer > 0);
           NativeLibrary.sEmulationActivity.get().setTouchPointerEnabled(pointer > 0);
+        }
+        mSettings.remove(0);
+
+        int autohide = mSettings.get(0).getValue();
+        if(mAutoHidePointer != autohide)
+        {
+          editor.putBoolean(InputOverlay.AUTOHIDE_PREF_KEY, autohide > 0);
+          InputOverlay.sAutoHidePointer = autohide > 0;
         }
         mSettings.remove(0);
 

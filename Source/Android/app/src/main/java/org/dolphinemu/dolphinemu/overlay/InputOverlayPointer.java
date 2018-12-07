@@ -31,6 +31,9 @@ public class InputOverlayPointer
 
   public void onPointerDown(int id, float x, float y)
   {
+    NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice,
+      NativeLibrary.ButtonType.WIIMOTE_IR_HIDE, NativeLibrary.ButtonState.RELEASED);
+
     mTrackId = id;
     mCenterX = x;
     mCenterY = y;
@@ -46,6 +49,10 @@ public class InputOverlayPointer
   {
     mTrackId = -1;
     setPointerState(0, 0);
+
+    if(InputOverlay.sAutoHidePointer)
+      NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice,
+        NativeLibrary.ButtonType.WIIMOTE_IR_HIDE, NativeLibrary.ButtonState.PRESSED);
   }
 
   private void setPointerState(float x, float y)
