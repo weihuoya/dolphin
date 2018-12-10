@@ -6,6 +6,7 @@ import org.dolphinemu.dolphinemu.activities.EmulationActivity;
 public class InputOverlaySensor
 {
   private final int[] mAxisIDs = {0, 0, 0, 0};
+  private final float[] mFactors = {1, 1, 1, 1};
   private boolean mAccuracyChanged;
   private float mBaseYaw;
   private float mBasePitch;
@@ -84,6 +85,11 @@ public class InputOverlaySensor
         case InputOverlay.SENSOR_WII_TILT:
           if(InputOverlay.sControllerType == InputOverlay.CONTROLLER_WIINUNCHUK)
           {
+            mFactors[0] = 0.5f;
+            mFactors[1] = 0.5f;
+            mFactors[2] = 0.5f;
+            mFactors[3] = 0.5f;
+
             mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1; // up
             mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2; // down
             mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3; // left
@@ -91,6 +97,11 @@ public class InputOverlaySensor
           }
           else
           {
+            mFactors[0] = -0.5f;
+            mFactors[1] = -0.5f;
+            mFactors[2] = 0.5f;
+            mFactors[3] = 0.5f;
+
             mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4; // right
             mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3; // left
             mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1; // up
@@ -98,6 +109,11 @@ public class InputOverlaySensor
           }
           break;
         case InputOverlay.SENSOR_WII_SHAKE:
+          mFactors[0] = -1;
+          mFactors[1] = 1;
+          mFactors[2] = -1;
+          mFactors[3] = 1;
+
           mAxisIDs[0] = 0;
           mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
           mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Y;
@@ -138,41 +154,27 @@ public class InputOverlaySensor
     axises[2] = x; // left
     axises[3] = x; // right
 
-    if(!EmulationActivity.isGameCubeGame())
+    if(!EmulationActivity.isGameCubeGame() &&
+      InputOverlay.SENSOR_WII_SHAKE == InputOverlay.sSensorWiiSetting)
     {
-      if(InputOverlay.SENSOR_WII_TILT == InputOverlay.sSensorWiiSetting)
-      {
-        axises[0] = y / 2.0f;
-        axises[1] = y / 2.0f;
-        axises[2] = x / 2.0f;
-        axises[3] = x / 2.0f;
-      }
-      else if(InputOverlay.SENSOR_WII_SHAKE == InputOverlay.sSensorWiiSetting)
-      {
-        axises[0] = -x;
-        axises[1] = x;
-        axises[2] = -y;
-        axises[3] = y;
-        handleShakeEvent(axises);
-        return;
-      }
+      axises[0] = 0;
+      axises[1] = x;
+      axises[2] = -y;
+      axises[3] = y;
+      handleShakeEvent(axises);
+      return;
     }
 
     for (int i = 0; i < mAxisIDs.length; i++)
     {
-      NativeLibrary.onGamePadMoveEvent(NativeLibrary.TouchScreenDevice, mAxisIDs[i], axises[i]);
+      NativeLibrary.onGamePadMoveEvent(
+        NativeLibrary.TouchScreenDevice, mAxisIDs[i], mFactors[i] * axises[i]);
     }
   }
 
   // axis to button
   private void handleShakeEvent(float[] axises)
   {
-    int[] axisIDs = new int[4];
-    axisIDs[0] = 0;
-    axisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
-    axisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Y;
-    axisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Z;
-
     for(int i = 0; i < axises.length; ++i)
     {
       if(axises[i] > 0.15f)
@@ -180,14 +182,14 @@ public class InputOverlaySensor
         if(InputOverlay.sShakeStates[i] != NativeLibrary.ButtonState.PRESSED)
         {
           InputOverlay.sShakeStates[i] = NativeLibrary.ButtonState.PRESSED;
-          NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, axisIDs[i],
+          NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, mAxisIDs[i],
             NativeLibrary.ButtonState.PRESSED);
         }
       }
       else if(InputOverlay.sShakeStates[i] != NativeLibrary.ButtonState.RELEASED)
       {
         InputOverlay.sShakeStates[i] = NativeLibrary.ButtonState.RELEASED;
-        NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, axisIDs[i],
+        NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, mAxisIDs[i],
           NativeLibrary.ButtonState.RELEASED);
       }
     }
@@ -195,10 +197,17 @@ public class InputOverlaySensor
 
   public void onAccuracyChanged(int accuracy)
   {
-    setAxisIDs();
-    mAccuracyChanged = true;
+    // init value
     mBaseYaw = (float)Math.PI;
     mBasePitch = (float)Math.PI;
     mBaseRoll = (float)Math.PI;
+
+    // reset current state
+    float[] rotation = {mBaseYaw, mBasePitch, mBaseRoll};
+    onSensorChanged(rotation);
+
+    // begin new state
+    setAxisIDs();
+    mAccuracyChanged = true;
   }
 }

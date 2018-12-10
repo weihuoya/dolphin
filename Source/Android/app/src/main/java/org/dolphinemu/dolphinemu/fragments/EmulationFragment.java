@@ -29,20 +29,15 @@ import org.dolphinemu.dolphinemu.utils.DirectoryInitialization.DirectoryInitiali
 import org.dolphinemu.dolphinemu.utils.DirectoryStateReceiver;
 import org.dolphinemu.dolphinemu.utils.Log;
 
-import java.io.File;
 
 public final class EmulationFragment extends Fragment implements SurfaceHolder.Callback, SensorEventListener
 {
   private static final String KEY_GAMEPATH = "gamepath";
 
   private SharedPreferences mPreferences;
-
   private InputOverlay mInputOverlay;
-
   private EmulationState mEmulationState;
-
   private DirectoryStateReceiver directoryStateReceiver;
-
   private EmulationActivity activity;
 
   public static EmulationFragment newInstance(String gamePath)
@@ -64,7 +59,7 @@ public final class EmulationFragment extends Fragment implements SurfaceHolder.C
     if (context instanceof EmulationActivity)
     {
       activity = (EmulationActivity) context;
-      NativeLibrary.setEmulationActivity((EmulationActivity) context);
+      NativeLibrary.setEmulationActivity(activity);
     }
     else
     {

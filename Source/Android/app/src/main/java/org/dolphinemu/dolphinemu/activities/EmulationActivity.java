@@ -9,7 +9,6 @@ import android.hardware.SensorManager;
 import android.hardware.usb.UsbManager;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.Vibrator;
 import android.preference.PreferenceManager;
 import android.support.v4.app.FragmentActivity;
 import android.support.v7.app.AppCompatActivity;
@@ -490,7 +489,7 @@ public final class EmulationActivity extends AppCompatActivity
   private void toggleControls()
   {
     final SharedPreferences.Editor editor = mPreferences.edit();
-    boolean[] enabledButtons = new boolean[14];
+    boolean[] enabledButtons = new boolean[16];
     int controller = InputOverlay.sControllerType;
     AlertDialog.Builder builder = new AlertDialog.Builder(this);
     builder.setTitle(R.string.emulation_toggle_controls);
