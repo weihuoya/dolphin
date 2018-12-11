@@ -57,9 +57,12 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
   public static final String JOYSTICK_PREF_KEY = "JoystickEmulate";
   public static final int JOYSTICK_EMULATE_NONE = 0;
   public static final int JOYSTICK_EMULATE_IR = 1;
-  public static final int JOYSTICK_EMULATE_SWING = 2;
-  public static final int JOYSTICK_EMULATE_TILT = 3;
-  public static final int JOYSTICK_EMULATE_SHAKE = 4;
+  public static final int JOYSTICK_EMULATE_WII_SWING = 2;
+  public static final int JOYSTICK_EMULATE_WII_TILT = 3;
+  public static final int JOYSTICK_EMULATE_WII_SHAKE = 4;
+  public static final int JOYSTICK_EMULATE_NUNCHUK_SWING = 5;
+  public static final int JOYSTICK_EMULATE_NUNCHUK_TILT = 6;
+  public static final int JOYSTICK_EMULATE_NUNCHUK_SHAKE = 7;
   public static int sJoyStickSetting;
 
   public static final int SENSOR_GC_NONE = 0;
@@ -75,6 +78,9 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
   public static final int SENSOR_WII_SWING = 4;
   public static final int SENSOR_WII_TILT = 5;
   public static final int SENSOR_WII_SHAKE = 6;
+  public static final int SENSOR_NUNCHUK_SWING = 7;
+  public static final int SENSOR_NUNCHUK_TILT = 8;
+  public static final int SENSOR_NUNCHUK_SHAKE = 9;
   public static int sSensorWiiSetting;
 
   public static int[] sShakeStates = new int[4];
@@ -577,6 +583,12 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     }
     if (mPreferences.getBoolean("buttonToggleWii7", true))
     {
+      overlayButtons
+        .add(initializeOverlayButton(R.drawable.classic_x, R.drawable.classic_x_pressed,
+          ButtonType.HOTKEYS_UPRIGHT_TOGGLE));
+    }
+    if (mPreferences.getBoolean("buttonToggleWii8", true))
+    {
       if (sControllerType == CONTROLLER_WIINUNCHUK)
       {
         overlayDpads.add(initializeOverlayDpad(R.drawable.gcwii_dpad,
@@ -595,12 +607,6 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
           ButtonType.WIIMOTE_UP, ButtonType.WIIMOTE_DOWN));
       }
     }
-    if (mPreferences.getBoolean("buttonToggleWii8", true))
-    {
-      overlayButtons
-        .add(initializeOverlayButton(R.drawable.classic_x, R.drawable.classic_x_pressed,
-          ButtonType.HOTKEYS_UPRIGHT_TOGGLE));
-    }
 
     // joystick emulate
     if(sJoyStickSetting != JOYSTICK_EMULATE_NONE)
@@ -612,17 +618,17 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
   private void addNunchukOverlayControls()
   {
-    if (mPreferences.getBoolean("buttonToggleWii8", true))
+    if (mPreferences.getBoolean("buttonToggleWii9", true))
     {
       overlayButtons.add(initializeOverlayButton(R.drawable.nunchuk_c, R.drawable.nunchuk_c_pressed,
         ButtonType.NUNCHUK_BUTTON_C));
     }
-    if (mPreferences.getBoolean("buttonToggleWii9", true))
+    if (mPreferences.getBoolean("buttonToggleWii10", true))
     {
       overlayButtons.add(initializeOverlayButton(R.drawable.nunchuk_z, R.drawable.nunchuk_z_pressed,
         ButtonType.NUNCHUK_BUTTON_Z));
     }
-    if (mPreferences.getBoolean("buttonToggleWii10", true))
+    if (mPreferences.getBoolean("buttonToggleWii11", true))
     {
       overlayJoysticks.add(initializeOverlayJoystick(R.drawable.gcwii_joystick_range,
         R.drawable.gcwii_joystick, R.drawable.gcwii_joystick_pressed,

@@ -259,20 +259,26 @@
 
     <string-array name="wiiJoystickSettings">
         <item>None</item>
-        <item>Emulate IR</item>
-        <item>Emulate Swing</item>
-        <item>Emulate Tilt</item>
-        <item>Emulate Shake</item>
+        <item>IR</item>
+        <item>Wii Swing</item>
+        <item>Wii Tilt</item>
+        <item>Wii Shake</item>
+        <item>Nunchuk Swing</item>
+        <item>Nunchuk Tilt</item>
+        <item>Nunchuk Shake</item>
     </string-array>
 
     <string-array name="wiiSensorSettings">
         <item>None</item>
-        <item>Wiimote Dpad</item>
+        <item>Wii Dpad</item>
         <item>Nunchuk Stick</item>
-        <item>Emulate IR</item>
-        <item>Emulate Swing</item>
-        <item>Emulate Tilt</item>
-        <item>Emulate Shake</item>
+        <item>IR</item>
+        <item>Wii Swing</item>
+        <item>Wii Tilt</item>
+        <item>Wii Shake</item>
+        <item>Nunchuk Swing</item>
+        <item>Nunchuk Tilt</item>
+        <item>Nunchuk Shake</item>
     </string-array>
 
     <string-array name="gcSensorSettings">
@@ -304,8 +310,8 @@
         <item>+</item>
         <item>-</item>
         <item>Home</item>
+        <item>Toggle</item>
         <item>D-Pad</item>
-        <item>X</item>
     </string-array>
 
     <string-array name="nunchukButtons">
@@ -316,6 +322,7 @@
         <item>+</item>
         <item>-</item>
         <item>Home</item>
+        <item>Toggle</item>
         <item>D-Pad</item>
         <item>C</item>
         <item>Z</item>

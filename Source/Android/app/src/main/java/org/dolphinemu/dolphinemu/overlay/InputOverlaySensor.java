@@ -48,12 +48,21 @@ public class InputOverlaySensor
       switch (InputOverlay.sSensorWiiSetting)
       {
         case InputOverlay.SENSOR_WII_DPAD:
+          mFactors[0] = 1;
+          mFactors[1] = 1;
+          mFactors[2] = 1;
+          mFactors[3] = 1;
+
           mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_UP;
           mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_DOWN;
           mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_LEFT;
           mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_RIGHT;
           break;
         case InputOverlay.SENSOR_WII_STICK:
+          mFactors[0] = 1;
+          mFactors[1] = 1;
+          mFactors[2] = 1;
+          mFactors[3] = 1;
           if(InputOverlay.sControllerType == InputOverlay.COCONTROLLER_CLASSIC)
           {
             mAxisIDs[0] = NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_UP;
@@ -68,15 +77,24 @@ public class InputOverlaySensor
             mAxisIDs[2] = NativeLibrary.ButtonType.NUNCHUK_STICK + 3;
             mAxisIDs[3] = NativeLibrary.ButtonType.NUNCHUK_STICK + 4;
           }
-
           break;
         case InputOverlay.SENSOR_WII_IR:
+          mFactors[0] = 1;
+          mFactors[1] = 1;
+          mFactors[2] = 1;
+          mFactors[3] = 1;
+
           mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
           mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
           mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_IR + 3;
           mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_IR + 4;
           break;
         case InputOverlay.SENSOR_WII_SWING:
+          mFactors[0] = 1;
+          mFactors[1] = 1;
+          mFactors[2] = 1;
+          mFactors[3] = 1;
+
           mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_SWING + 1;
           mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SWING + 2;
           mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SWING + 3;
@@ -109,15 +127,40 @@ public class InputOverlaySensor
           }
           break;
         case InputOverlay.SENSOR_WII_SHAKE:
-          mFactors[0] = -1;
-          mFactors[1] = 1;
-          mFactors[2] = -1;
-          mFactors[3] = 1;
-
           mAxisIDs[0] = 0;
           mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
           mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Y;
           mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Z;
+          break;
+        case InputOverlay.SENSOR_NUNCHUK_SWING:
+          mFactors[0] = 1;
+          mFactors[1] = 1;
+          mFactors[2] = 1;
+          mFactors[3] = 1;
+
+          mAxisIDs[0] = NativeLibrary.ButtonType.NUNCHUK_SWING + 1;
+          mAxisIDs[1] = NativeLibrary.ButtonType.NUNCHUK_SWING + 2;
+          mAxisIDs[2] = NativeLibrary.ButtonType.NUNCHUK_SWING + 3;
+          mAxisIDs[3] = NativeLibrary.ButtonType.NUNCHUK_SWING + 4;
+          break;
+        case InputOverlay.SENSOR_NUNCHUK_TILT:
+          mFactors[0] = 0.5f;
+          mFactors[1] = 0.5f;
+          mFactors[2] = 0.5f;
+          mFactors[3] = 0.5f;
+
+          mAxisIDs[0] = NativeLibrary.ButtonType.NUNCHUK_TILT + 1; // up
+          mAxisIDs[1] = NativeLibrary.ButtonType.NUNCHUK_TILT + 2; // down
+          mAxisIDs[2] = NativeLibrary.ButtonType.NUNCHUK_TILT + 3; // left
+          mAxisIDs[3] = NativeLibrary.ButtonType.NUNCHUK_TILT + 4; // right
+
+          break;
+        case InputOverlay.SENSOR_NUNCHUK_SHAKE:
+          mAxisIDs[0] = 0;
+          mAxisIDs[1] = NativeLibrary.ButtonType.NUNCHUK_SHAKE_X;
+          mAxisIDs[2] = NativeLibrary.ButtonType.NUNCHUK_SHAKE_Y;
+          mAxisIDs[3] = NativeLibrary.ButtonType.NUNCHUK_SHAKE_Z;
+          break;
       }
     }
   }
@@ -155,7 +198,8 @@ public class InputOverlaySensor
     axises[3] = x; // right
 
     if(!EmulationActivity.isGameCubeGame() &&
-      InputOverlay.SENSOR_WII_SHAKE == InputOverlay.sSensorWiiSetting)
+      (InputOverlay.SENSOR_WII_SHAKE == InputOverlay.sSensorWiiSetting ||
+        InputOverlay.SENSOR_NUNCHUK_SHAKE == InputOverlay.sSensorWiiSetting))
     {
       axises[0] = 0;
       axises[1] = x;

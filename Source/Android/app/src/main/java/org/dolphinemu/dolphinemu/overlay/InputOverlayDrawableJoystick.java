@@ -125,74 +125,114 @@ public final class InputOverlayDrawableJoystick
     if(joystick != 0)
     {
       mJoystickType = joystick;
+
+      mFactors[0] = 1;
+      mFactors[1] = 1;
+      mFactors[2] = 1;
+      mFactors[3] = 1;
+
       mAxisIDs[0] = joystick + 1;
       mAxisIDs[1] = joystick + 2;
       mAxisIDs[2] = joystick + 3;
       mAxisIDs[3] = joystick + 4;
+      return;
     }
-    else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_IR)
+
+    switch(InputOverlay.sJoyStickSetting)
     {
-      mJoystickType = 0;
+      case InputOverlay.JOYSTICK_EMULATE_IR:
+        mJoystickType = 0;
 
-      mFactors[0] = -0.8f;
-      mFactors[1] = -0.8f;
-      mFactors[2] = -0.8f;
-      mFactors[3] = -0.8f;
+        mFactors[0] = -0.8f;
+        mFactors[1] = -0.8f;
+        mFactors[2] = -0.8f;
+        mFactors[3] = -0.8f;
 
-      mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
-      mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
-      mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_IR + 3;
-      mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_IR + 4;
-    }
-    else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SWING)
-    {
-      mJoystickType = 0;
+        mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
+        mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
+        mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_IR + 3;
+        mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_IR + 4;
+        break;
+      case InputOverlay.JOYSTICK_EMULATE_WII_SWING:
+        mJoystickType = 0;
 
-      mFactors[0] = -0.8f;
-      mFactors[1] = -0.8f;
-      mFactors[2] = -0.8f;
-      mFactors[3] = -0.8f;
+        mFactors[0] = -0.8f;
+        mFactors[1] = -0.8f;
+        mFactors[2] = -0.8f;
+        mFactors[3] = -0.8f;
 
-      mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_SWING + 1;
-      mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SWING + 2;
-      mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SWING + 3;
-      mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SWING + 4;
-    }
-    else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_TILT)
-    {
-      mJoystickType = 0;
-      if(InputOverlay.sControllerType == InputOverlay.CONTROLLER_WIINUNCHUK)
-      {
+        mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_SWING + 1;
+        mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SWING + 2;
+        mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SWING + 3;
+        mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SWING + 4;
+        break;
+      case InputOverlay.JOYSTICK_EMULATE_WII_TILT:
+        mJoystickType = 0;
+        if(InputOverlay.sControllerType == InputOverlay.CONTROLLER_WIINUNCHUK)
+        {
+          mFactors[0] = 0.8f;
+          mFactors[1] = 0.8f;
+          mFactors[2] = 0.8f;
+          mFactors[3] = 0.8f;
+
+          mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1;
+          mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2;
+          mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3;
+          mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4;
+        }
+        else
+        {
+          mFactors[0] = -0.8f;
+          mFactors[1] = -0.8f;
+          mFactors[2] = 0.8f;
+          mFactors[3] = 0.8f;
+
+          mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4; // right
+          mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3; // left
+          mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1; // up
+          mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2; // down
+        }
+        break;
+      case InputOverlay.JOYSTICK_EMULATE_WII_SHAKE:
+        mJoystickType = 0;
+        mAxisIDs[0] = 0;
+        mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
+        mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Y;
+        mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Z;
+        break;
+      case InputOverlay.JOYSTICK_EMULATE_NUNCHUK_SWING:
+        mJoystickType = 0;
+
+        mFactors[0] = -0.8f;
+        mFactors[1] = -0.8f;
+        mFactors[2] = -0.8f;
+        mFactors[3] = -0.8f;
+
+        mAxisIDs[0] = NativeLibrary.ButtonType.NUNCHUK_SWING + 1;
+        mAxisIDs[1] = NativeLibrary.ButtonType.NUNCHUK_SWING + 2;
+        mAxisIDs[2] = NativeLibrary.ButtonType.NUNCHUK_SWING + 3;
+        mAxisIDs[3] = NativeLibrary.ButtonType.NUNCHUK_SWING + 4;
+        break;
+      case InputOverlay.JOYSTICK_EMULATE_NUNCHUK_TILT:
+        mJoystickType = 0;
+
         mFactors[0] = 0.8f;
         mFactors[1] = 0.8f;
         mFactors[2] = 0.8f;
         mFactors[3] = 0.8f;
 
-        mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1;
-        mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2;
-        mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3;
-        mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4;
-      }
-      else
-      {
-        mFactors[0] = -0.8f;
-        mFactors[1] = -0.8f;
-        mFactors[2] = 0.8f;
-        mFactors[3] = 0.8f;
-
-        mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_TILT + 4; // right
-        mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_TILT + 3; // left
-        mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_TILT + 1; // up
-        mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_TILT + 2; // down
-      }
-    }
-    else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SHAKE)
-    {
-      mJoystickType = 0;
-      mAxisIDs[0] = 0;
-      mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
-      mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Y;
-      mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Z;
+        mAxisIDs[0] = NativeLibrary.ButtonType.NUNCHUK_TILT + 1;
+        mAxisIDs[1] = NativeLibrary.ButtonType.NUNCHUK_TILT + 2;
+        mAxisIDs[2] = NativeLibrary.ButtonType.NUNCHUK_TILT + 3;
+        mAxisIDs[3] = NativeLibrary.ButtonType.NUNCHUK_TILT + 4;
+        break;
+      case InputOverlay.JOYSTICK_EMULATE_NUNCHUK_SHAKE:
+        mJoystickType = 0;
+        mAxisIDs[0] = 0;
+        mAxisIDs[1] = NativeLibrary.ButtonType.NUNCHUK_SHAKE_X;
+        mAxisIDs[2] = NativeLibrary.ButtonType.NUNCHUK_SHAKE_Y;
+        mAxisIDs[3] = NativeLibrary.ButtonType.NUNCHUK_SHAKE_Z;
+        break;
     }
   }
 
@@ -228,7 +268,8 @@ public final class InputOverlayDrawableJoystick
       axises[3] = Math.min(axises[3], 1.0f);
       axises[2] = Math.min(axises[2], 0.0f);
     }
-    else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_SHAKE)
+    else if (InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_WII_SHAKE ||
+      InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_NUNCHUK_SHAKE)
     {
       // shake
       axises[0] = 0;
