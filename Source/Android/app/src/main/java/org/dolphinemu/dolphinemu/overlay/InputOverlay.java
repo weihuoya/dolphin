@@ -595,6 +595,12 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
           ButtonType.WIIMOTE_UP, ButtonType.WIIMOTE_DOWN));
       }
     }
+    if (mPreferences.getBoolean("buttonToggleWii8", true))
+    {
+      overlayButtons
+        .add(initializeOverlayButton(R.drawable.classic_x, R.drawable.classic_x_pressed,
+          ButtonType.HOTKEYS_UPRIGHT_TOGGLE));
+    }
 
     // joystick emulate
     if(sJoyStickSetting != JOYSTICK_EMULATE_NONE)
@@ -863,6 +869,9 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       case ButtonType.CLASSIC_BUTTON_HOME:
         scale = 0.0725f;
         break;
+      case ButtonType.HOTKEYS_UPRIGHT_TOGGLE:
+        scale = 0.0675f;
+        break;
       case ButtonType.CLASSIC_TRIGGER_L:
       case ButtonType.CLASSIC_TRIGGER_R:
         scale = 0.22f;
@@ -1024,7 +1033,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     // The X and Y coordinates of the InputOverlayDrawableButton on the InputOverlay.
     // These were set in the input overlay configuration menu.
     float x = mPreferences.getFloat(controller + "_" + joystick + "_X", -0.3f);
-    float y = mPreferences.getFloat(controller + "_" + joystick + "_Y", 0.5f);
+    float y = mPreferences.getFloat(controller + "_" + joystick + "_Y", 0.3f);
 
     // Decide inner scale based on joystick ID
     float innerScale;
@@ -1221,6 +1230,10 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       res.getInteger(R.integer.WIIMOTE_RIGHT_X) / 100.0f);
     sPrefsEditor.putFloat(controller + "_" + ButtonType.WIIMOTE_RIGHT + "_Y",
       res.getInteger(R.integer.WIIMOTE_RIGHT_Y) / 100.0f);
+    sPrefsEditor.putFloat(controller + "_" + ButtonType.HOTKEYS_UPRIGHT_TOGGLE + "_X",
+      res.getInteger(R.integer.WIIMOTE_BUTTON_UPRIGHT_TOGGLE_X) / 100.0f);
+    sPrefsEditor.putFloat(controller + "_" + ButtonType.HOTKEYS_UPRIGHT_TOGGLE + "_Y",
+      res.getInteger(R.integer.WIIMOTE_BUTTON_UPRIGHT_TOGGLE_Y) / 100.0f);
 
     // We want to commit right away, otherwise the overlay could load before this is saved.
     sPrefsEditor.commit();
@@ -1266,6 +1279,10 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       res.getInteger(R.integer.WIIMOTE_RIGHT_X) / 100.0f);
     sPrefsEditor.putFloat(controller + "_" + ButtonType.WIIMOTE_RIGHT + "_Y",
       res.getInteger(R.integer.WIIMOTE_RIGHT_Y) / 100.0f);
+    sPrefsEditor.putFloat(controller + "_" + ButtonType.HOTKEYS_UPRIGHT_TOGGLE + "_X",
+      res.getInteger(R.integer.WIIMOTE_BUTTON_UPRIGHT_TOGGLE_X) / 100.0f);
+    sPrefsEditor.putFloat(controller + "_" + ButtonType.HOTKEYS_UPRIGHT_TOGGLE + "_Y",
+      res.getInteger(R.integer.WIIMOTE_BUTTON_UPRIGHT_TOGGLE_Y) / 100.0f);
 
     // We want to commit right away, otherwise the overlay could load before this is saved.
     sPrefsEditor.commit();

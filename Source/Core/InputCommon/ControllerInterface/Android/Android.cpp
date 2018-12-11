@@ -98,6 +98,7 @@ Touchscreen::Touchscreen(int padID) : _padID(padID)
   AddInput(new Button(_padID, ButtonManager::HOTKEYS_UPRIGHT_TOGGLE));
   AddInput(new Button(_padID, ButtonManager::HOTKEYS_SIDEWAYS_HOLD));
   AddInput(new Button(_padID, ButtonManager::HOTKEYS_UPRIGHT_HOLD));
+  AddInput(new Button(_padID, ButtonManager::WIIMOTE_IR_RECENTER));
 
   // Wii ext: Nunchuk
   AddInput(new Button(_padID, ButtonManager::NUNCHUK_BUTTON_C));

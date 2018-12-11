@@ -224,6 +224,12 @@ static const ButtonType configTypes[] = {
     WIIMOTE_SHAKE_X,
     WIIMOTE_SHAKE_Y,
     WIIMOTE_SHAKE_Z,
+    // Hotkeys
+    HOTKEYS_SIDEWAYS_TOGGLE,
+    HOTKEYS_UPRIGHT_TOGGLE,
+    HOTKEYS_SIDEWAYS_HOLD,
+    HOTKEYS_UPRIGHT_HOLD,
+    WIIMOTE_IR_RECENTER,
     // Nunchuk
     NUNCHUK_BUTTON_C,
     NUNCHUK_BUTTON_Z,
@@ -418,6 +424,8 @@ void Init(const std::string& gameId)
             new sBind(a, HOTKEYS_SIDEWAYS_HOLD, BIND_BUTTON, HOTKEYS_SIDEWAYS_HOLD, 1.0f));
     AddBind(touchScreenKey,
             new sBind(a, HOTKEYS_UPRIGHT_HOLD, BIND_BUTTON, HOTKEYS_UPRIGHT_HOLD, 1.0f));
+    AddBind(touchScreenKey,
+            new sBind(a, WIIMOTE_IR_RECENTER, BIND_BUTTON, WIIMOTE_IR_RECENTER, 1.0f));
 
     // Wii: Nunchuk
     AddBind(touchScreenKey, new sBind(a, NUNCHUK_BUTTON_C, BIND_BUTTON, NUNCHUK_BUTTON_C, 1.0f));

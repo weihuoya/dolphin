@@ -305,6 +305,7 @@
         <item>-</item>
         <item>Home</item>
         <item>D-Pad</item>
+        <item>X</item>
     </string-array>
 
     <string-array name="nunchukButtons">

@@ -92,6 +92,7 @@ public final class NativeLibrary
     public static final int HOTKEYS_UPRIGHT_TOGGLE = 136;
     public static final int HOTKEYS_SIDEWAYS_HOLD = 137;
     public static final int HOTKEYS_UPRIGHT_HOLD = 138;
+    public static final int WIIMOTE_IR_RECENTER = 139;
     // Nunchuk
     public static final int NUNCHUK_BUTTON_C = 200;
     public static final int NUNCHUK_BUTTON_Z = 201;

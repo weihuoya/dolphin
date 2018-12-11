@@ -331,7 +331,7 @@ public final class EmulationActivity extends AppCompatActivity
       {
         InputOverlay.sJoyStickSetting = indexSelected;
       });
-    builder.setPositiveButton(getString(R.string.ok), (dialogInterface, i) ->
+    builder.setOnDismissListener((dialogInterface) ->
     {
       if(InputOverlay.sJoyStickSetting != joystick)
       {
@@ -356,7 +356,7 @@ public final class EmulationActivity extends AppCompatActivity
         {
           InputOverlay.sSensorGCSetting = indexSelected;
         });
-      builder.setPositiveButton(getString(R.string.ok), (dialogInterface, i) ->
+      builder.setOnDismissListener((dialogInterface) ->
       {
         setSensorState(InputOverlay.sSensorGCSetting > 0);
       });
@@ -369,7 +369,7 @@ public final class EmulationActivity extends AppCompatActivity
         {
           InputOverlay.sSensorWiiSetting = indexSelected;
         });
-      builder.setPositiveButton(getString(R.string.ok), (dialogInterface, i) ->
+      builder.setOnDismissListener((dialogInterface) ->
       {
         setSensorState(InputOverlay.sSensorWiiSetting > 0);
       });

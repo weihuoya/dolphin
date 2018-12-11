@@ -45,8 +45,10 @@
     <integer name="WIIMOTE_BUTTON_PLUS_Y">35</integer>
     <integer name="WIIMOTE_UP_X">-85</integer>
     <integer name="WIIMOTE_UP_Y">-10</integer>
-    <integer name="WIIMOTE_BUTTON_HOME_X">0</integer>
+    <integer name="WIIMOTE_BUTTON_HOME_X">6</integer>
     <integer name="WIIMOTE_BUTTON_HOME_Y">75</integer>
+    <integer name="WIIMOTE_BUTTON_UPRIGHT_TOGGLE_X">-6</integer>
+    <integer name="WIIMOTE_BUTTON_UPRIGHT_TOGGLE_Y">75</integer>
     <integer name="NUNCHUK_STICK_X">-75</integer>
     <integer name="NUNCHUK_STICK_Y">55</integer>
 
