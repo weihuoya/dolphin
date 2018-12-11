@@ -601,7 +601,7 @@ public final class EmulationActivity extends AppCompatActivity
       {
         InputOverlay.sControllerType = indexSelected;
       });
-    builder.setPositiveButton(getString(R.string.ok), (dialogInterface, i) ->
+    builder.setOnDismissListener((dialogInterface) ->
     {
       NativeLibrary.SetConfig("WiimoteNew.ini", "Wiimote1", "Extension",
         getResources().getStringArray(R.array.controllersValues)[InputOverlay.sControllerType]);
