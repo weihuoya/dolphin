@@ -229,9 +229,7 @@ void TextureCache::CopyEFBToCacheEntry(TCacheEntry* entry, bool is_depth_copy,
   // Has to be flagged as a render target.
   ASSERT(texture->GetFramebuffer() != VK_NULL_HANDLE);
 
-  // Can't be done in a render pass, since we're doing our own render pass!
   VkCommandBuffer command_buffer = g_command_buffer_mgr->GetCurrentCommandBuffer();
-  StateTracker::GetInstance()->EndRenderPass();
 
   // Fill uniform buffer.
   struct PixelUniforms
@@ -308,6 +306,11 @@ void TextureCache::CopyEFBToCacheEntry(TCacheEntry* entry, bool is_depth_copy,
 
   VkRect2D dest_region = {{0, 0}, {texture->GetConfig().width, texture->GetConfig().height}};
 
+  // Can't be done in a render pass, since we're doing our own render pass!
+  StateTracker::GetInstance()->EndRenderPass();
+  // We touched everything, so put it back.
+  StateTracker::GetInstance()->SetPendingRebind();
+
   draw.BeginRenderPass(texture->GetFramebuffer(), dest_region);
 
   draw.DrawQuad(0, 0, texture->GetConfig().width, texture->GetConfig().height, scaled_src_rect.left,
@@ -315,9 +318,6 @@ void TextureCache::CopyEFBToCacheEntry(TCacheEntry* entry, bool is_depth_copy,
                 framebuffer_mgr->GetEFBWidth(), framebuffer_mgr->GetEFBHeight());
 
   draw.EndRenderPass();
-
-  // We touched everything, so put it back.
-  StateTracker::GetInstance()->SetPendingRebind();
 
   // Transition the EFB back to its original layout.
   src_texture->TransitionToLayout(command_buffer, original_layout);

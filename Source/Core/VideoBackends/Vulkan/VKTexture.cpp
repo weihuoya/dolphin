@@ -174,8 +174,8 @@ void VKTexture::ScaleRectangleFromTexture(const AbstractTexture* source,
   Texture2D* src_texture = static_cast<const VKTexture*>(source)->GetRawTexIdentifier();
 
   // Can't do this within a game render pass.
-  StateTracker::GetInstance()->EndRenderPass();
-  StateTracker::GetInstance()->SetPendingRebind();
+  //StateTracker::GetInstance()->EndRenderPass();
+  //StateTracker::GetInstance()->SetPendingRebind();
 
   // Can't render to a non-rendertarget (no framebuffer).
   ASSERT_MSG(VIDEO, m_config.rendertarget,
@@ -199,6 +199,10 @@ void VKTexture::ScaleRectangleFromTexture(const AbstractTexture* source,
   VkRect2D region = {
       {dst_rect.left, dst_rect.top},
       {static_cast<u32>(dst_rect.GetWidth()), static_cast<u32>(dst_rect.GetHeight())}};
+
+  StateTracker::GetInstance()->EndRenderPass();
+  StateTracker::GetInstance()->SetPendingRebind();
+
   draw.BeginRenderPass(m_framebuffer, region);
   draw.SetPSSampler(0, src_texture->GetView(), g_object_cache->GetLinearSampler());
   draw.DrawQuad(dst_rect.left, dst_rect.top, dst_rect.GetWidth(), dst_rect.GetHeight(),

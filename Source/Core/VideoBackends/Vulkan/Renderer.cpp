@@ -569,8 +569,8 @@ void Renderer::ClearScreen(const EFBRectangle& rc, bool color_enable, bool alpha
 
 void Renderer::ReinterpretPixelData(unsigned int convtype)
 {
-  StateTracker::GetInstance()->EndRenderPass();
-  StateTracker::GetInstance()->SetPendingRebind();
+  //StateTracker::GetInstance()->EndRenderPass();
+  //StateTracker::GetInstance()->SetPendingRebind();
   FramebufferManager::GetInstance()->ReinterpretPixelData(convtype);
 
   // EFB framebuffer has now changed, so update accordingly.
