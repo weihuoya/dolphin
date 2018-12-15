@@ -582,8 +582,6 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
   // Pending/batched EFB pokes should be included in the final image.
   FramebufferManager::GetInstance()->FlushEFBPokes();
 
-  auto* xfb_texture = static_cast<VKTexture*>(texture);
-
   // End the current render pass.
   StateTracker::GetInstance()->EndRenderPass();
   StateTracker::GetInstance()->OnEndFrame();
@@ -604,6 +602,7 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
   // Draw to the screen if we have a swap chain.
   if (m_swap_chain)
   {
+    auto* xfb_texture = static_cast<VKTexture*>(texture);
     DrawScreen(xfb_texture, xfb_region);
 
     // Submit the current command buffer, signaling rendering finished semaphore when it's done
@@ -635,6 +634,27 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
 
   // Determine what (if anything) has changed in the config.
   CheckForConfigChanges();
+
+  // Clean up stale textures.
+  TextureCache::GetInstance()->Cleanup(frameCount);
+}
+
+void Renderer::OnSwapFailure()
+{
+  // End the current render pass.
+  StateTracker::GetInstance()->EndRenderPass();
+  StateTracker::GetInstance()->OnEndFrame();
+
+  // Ensure the worker thread is not still submitting a previous command buffer.
+  // In other words, the last frame has been submitted (otherwise the next call would
+  // be a race, as the image may not have been consumed yet).
+  g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
+
+  // No swap chain, just execute command buffer.
+  g_command_buffer_mgr->SubmitCommandBuffer(true);
+
+  // Prep for the next frame (get command buffer ready) before doing anything else.
+  BeginFrame();
 
   // Clean up stale textures.
   TextureCache::GetInstance()->Cleanup(frameCount);

@@ -1366,8 +1366,6 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
       glDisable(GL_DEBUG_OUTPUT);
   }
 
-  auto* xfb_texture = static_cast<OGLTexture*>(texture);
-
   TargetRectangle sourceRc = xfb_region;
   sourceRc.top = xfb_region.GetHeight();
   sourceRc.bottom = 0;
@@ -1387,6 +1385,7 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
   // Skip screen rendering when running in headless mode.
   if (!IsHeadless())
   {
+    auto* xfb_texture = static_cast<OGLTexture*>(texture);
     // Clear the framebuffer before drawing anything.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glClearColor(0, 0, 0, 0);
@@ -1474,6 +1473,19 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
   // Renderer::SetZBufferRender();
   // SaveTexture("tex.png", GL_TEXTURE_2D, s_FakeZTarget,
   //	      GetTargetWidth(), GetTargetHeight());
+
+  // Invalidate EFB cache
+  ClearEFBCache();
+}
+
+void Renderer::OnSwapFailure()
+{
+  // ensure all commands are sent to the GPU.
+  // Otherwise the driver could batch several frames togehter.
+  glFlush();
+
+  // Clean out old stuff from caches. It's not worth it to clean out the shader caches.
+  g_texture_cache->Cleanup(frameCount);
 
   // Invalidate EFB cache
   ClearEFBCache();
