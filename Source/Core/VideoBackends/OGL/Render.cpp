@@ -1478,7 +1478,7 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
   ClearEFBCache();
 }
 
-void Renderer::OnSwapFailure()
+void Renderer::SwapInvalid()
 {
   // ensure all commands are sent to the GPU.
   // Otherwise the driver could batch several frames togehter.

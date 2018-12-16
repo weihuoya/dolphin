@@ -93,10 +93,9 @@ void AsyncRequests::PushEvent(const AsyncRequests::Event& event, bool blocking)
   m_queue.push(event);
   m_empty.Clear();
 
-  Fifo::RunGpu();
-
   if (blocking)
   {
+    Fifo::RunGpu();
     m_wake_me_up_again = true;
     m_cond.wait(lock, [this] { return m_queue.empty(); });
   }

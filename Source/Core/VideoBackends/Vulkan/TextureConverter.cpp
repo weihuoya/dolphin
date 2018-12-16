@@ -220,7 +220,7 @@ void TextureConverter::EncodeTextureToMemory(
   }
 
   // Can't do our own draw within a render pass.
-  //StateTracker::GetInstance()->EndRenderPass();
+  StateTracker::GetInstance()->EndRenderPass();
 
   static_cast<VKTexture*>(m_encoding_render_texture.get())
       ->GetRawTexIdentifier()
@@ -266,10 +266,6 @@ void TextureConverter::EncodeTextureToMemory(
                               render_height);
 
   VkRect2D render_region = {{0, 0}, {render_width, render_height}};
-
-  StateTracker::GetInstance()->EndRenderPass();
-  StateTracker::GetInstance()->SetPendingRebind();
-
   draw.BeginRenderPass(static_cast<VKTexture*>(m_encoding_render_texture.get())->GetFramebuffer(),
                        render_region);
   draw.DrawQuad(0, 0, render_width, render_height);

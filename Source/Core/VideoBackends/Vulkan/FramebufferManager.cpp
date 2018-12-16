@@ -373,10 +373,6 @@ void FramebufferManager::ReinterpretPixelData(int convtype)
 
   VkRect2D region = {{0, 0}, {GetEFBWidth(), GetEFBHeight()}};
   draw.SetMultisamplingState(GetEFBMultisamplingState());
-
-  StateTracker::GetInstance()->EndRenderPass();
-  StateTracker::GetInstance()->SetPendingRebind();
-
   draw.BeginRenderPass(m_efb_convert_framebuffer, region);
   draw.SetPSSampler(0, m_efb_color_texture->GetView(), g_object_cache->GetPointSampler());
   draw.DrawQuad(0, 0, GetEFBWidth(), GetEFBHeight());
@@ -434,7 +430,7 @@ Texture2D* FramebufferManager::ResolveEFBDepthTexture(const VkRect2D& region)
     return m_efb_depth_texture.get();
 
   // Can't resolve within a render pass.
-  //StateTracker::GetInstance()->EndRenderPass();
+  StateTracker::GetInstance()->EndRenderPass();
 
   m_efb_depth_texture->TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -446,10 +442,6 @@ Texture2D* FramebufferManager::ResolveEFBDepthTexture(const VkRect2D& region)
                          g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD),
                          m_depth_resolve_render_pass, g_shader_cache->GetPassthroughVertexShader(),
                          VK_NULL_HANDLE, m_ps_depth_resolve);
-
-  StateTracker::GetInstance()->EndRenderPass();
-  StateTracker::GetInstance()->SetPendingRebind();
-
   draw.BeginRenderPass(m_depth_resolve_framebuffer, region);
   draw.SetPSSampler(0, m_efb_depth_texture->GetView(), g_object_cache->GetPointSampler());
   draw.DrawQuad(region.offset.x, region.offset.y, region.extent.width, region.extent.height);
@@ -615,7 +607,7 @@ u32 FramebufferManager::PeekEFBColor(u32 x, u32 y)
 bool FramebufferManager::PopulateColorReadbackTexture()
 {
   // Can't be in our normal render pass.
-  //StateTracker::GetInstance()->EndRenderPass();
+  StateTracker::GetInstance()->EndRenderPass();
   StateTracker::GetInstance()->OnCPUEFBAccess();
 
   // Issue a copy from framebuffer -> copy texture if we have >1xIR or MSAA on.
@@ -638,10 +630,6 @@ bool FramebufferManager::PopulateColorReadbackTexture()
                            VK_NULL_HANDLE, m_copy_color_shader);
 
     VkRect2D rect = {{0, 0}, {EFB_WIDTH, EFB_HEIGHT}};
-
-    StateTracker::GetInstance()->EndRenderPass();
-    StateTracker::GetInstance()->SetPendingRebind();
-
     draw.BeginRenderPass(m_color_copy_framebuffer, rect);
     draw.SetPSSampler(0, src_texture->GetView(), g_object_cache->GetPointSampler());
     draw.DrawQuad(0, 0, EFB_WIDTH, EFB_HEIGHT);
@@ -691,7 +679,7 @@ float FramebufferManager::PeekEFBDepth(u32 x, u32 y)
 bool FramebufferManager::PopulateDepthReadbackTexture()
 {
   // Can't be in our normal render pass.
-  //StateTracker::GetInstance()->EndRenderPass();
+  StateTracker::GetInstance()->EndRenderPass();
   StateTracker::GetInstance()->OnCPUEFBAccess();
 
   // Issue a copy from framebuffer -> copy texture if we have >1xIR or MSAA on.
@@ -716,10 +704,6 @@ bool FramebufferManager::PopulateDepthReadbackTexture()
                            VK_NULL_HANDLE, m_copy_depth_shader);
 
     VkRect2D rect = {{0, 0}, {EFB_WIDTH, EFB_HEIGHT}};
-
-    StateTracker::GetInstance()->EndRenderPass();
-    StateTracker::GetInstance()->SetPendingRebind();
-
     draw.BeginRenderPass(m_depth_copy_framebuffer, rect);
     draw.SetPSSampler(0, src_texture->GetView(), g_object_cache->GetPointSampler());
     draw.DrawQuad(0, 0, EFB_WIDTH, EFB_HEIGHT);
