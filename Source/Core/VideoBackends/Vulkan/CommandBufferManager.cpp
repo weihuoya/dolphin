@@ -250,18 +250,7 @@ void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread, Swa
   // Fire fence tracking callbacks. This can't happen on the worker thread.
   // We invoke these before submitting so that any last-minute commands can be added.
   for (const auto& iter : m_fence_point_callbacks)
-    iter.second.first(resources.command_buffers[1], resources.fence);
-
-  // End the current command buffer.
-  for (VkCommandBuffer command_buffer : resources.command_buffers)
-  {
-    VkResult res = vkEndCommandBuffer(command_buffer);
-    if (res != VK_SUCCESS)
-    {
-      LOG_VULKAN_ERROR(res, "vkEndCommandBuffer failed: ");
-      PanicAlert("Failed to end command buffer");
-    }
-  }
+    iter.queued_callback(resources.command_buffers[1], resources.fence);
 
   // This command buffer now has commands, so can't be re-used without waiting.
   resources.needs_fence_wait = true;
@@ -325,6 +314,22 @@ void CommandBufferManager::SubmitCommandBuffer(size_t index, SwapChain * swap_ch
 
     submit_info.pSignalSemaphores = &signal_semaphore;
     submit_info.signalSemaphoreCount = 1;
+
+    Texture2D* backbuffer = swap_chain->GetCurrentTexture();
+    // Transition the backbuffer to PRESENT_SRC to ensure all commands drawing
+    // to it have finished before present.
+    backbuffer->TransitionToLayout(resources.command_buffers[1], VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+  }
+
+  // End the current command buffer.
+  for (VkCommandBuffer command_buffer : resources.command_buffers)
+  {
+    VkResult res = vkEndCommandBuffer(command_buffer);
+    if (res != VK_SUCCESS)
+    {
+      LOG_VULKAN_ERROR(res, "vkEndCommandBuffer failed: ");
+      PanicAlert("Failed to end command buffer");
+    }
   }
 
   VkResult res =
@@ -335,7 +340,6 @@ void CommandBufferManager::SubmitCommandBuffer(size_t index, SwapChain * swap_ch
     PanicAlert("Failed to submit command buffer.");
   }
 
-  // Do we have a swap chain to present?
   if (swap_chain)
   {
     // Should have a signal semaphore.
@@ -368,10 +372,9 @@ void CommandBufferManager::OnCommandBufferExecuted(size_t index)
   FrameResources& resources = m_frame_resources[index];
 
   // Fire fence tracking callbacks.
-  for (auto iter = m_fence_point_callbacks.begin(); iter != m_fence_point_callbacks.end();)
+  for (auto iter = m_fence_point_callbacks.begin(); iter != m_fence_point_callbacks.end(); ++iter)
   {
-    auto backup_iter = iter++;
-    backup_iter->second.second(resources.fence);
+    iter->executed_callback(resources.fence);
   }
 
   // Clean up all objects pending destruction on this command buffer
@@ -485,16 +488,27 @@ void CommandBufferManager::AddFencePointCallback(
     const void* key, const CommandBufferQueuedCallback& queued_callback,
     const CommandBufferExecutedCallback& executed_callback)
 {
-  // Shouldn't be adding twice.
-  ASSERT(m_fence_point_callbacks.find(key) == m_fence_point_callbacks.end());
-  m_fence_point_callbacks.emplace(key, std::make_pair(queued_callback, executed_callback));
+  for(auto iter = m_fence_point_callbacks.begin(); iter != m_fence_point_callbacks.end(); ++iter)
+  {
+    if(iter->entity_key == key)
+    {
+      ASSERT(false);
+    }
+  }
+  m_fence_point_callbacks.emplace_back(key, queued_callback, executed_callback);
 }
 
 void CommandBufferManager::RemoveFencePointCallback(const void* key)
 {
-  auto iter = m_fence_point_callbacks.find(key);
-  ASSERT(iter != m_fence_point_callbacks.end());
-  m_fence_point_callbacks.erase(iter);
+  for(auto iter = m_fence_point_callbacks.begin(); iter != m_fence_point_callbacks.end(); ++iter)
+  {
+    if(iter->entity_key == key)
+    {
+      m_fence_point_callbacks.erase(iter);
+      return;
+    }
+  }
+  ASSERT(false);
 }
 
 std::unique_ptr<CommandBufferManager> g_command_buffer_mgr;

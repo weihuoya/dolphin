@@ -550,8 +550,7 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
   // Draw to the screen if we have a swap chain.
   if (m_swap_chain)
   {
-    auto* xfb_texture = static_cast<VKTexture*>(texture);
-    DrawScreen(xfb_texture, xfb_region);
+    DrawScreen(static_cast<VKTexture*>(texture), xfb_region);
 
     // Submit the current command buffer, signaling rendering finished semaphore when it's done
     // Because this final command buffer is rendering to the swap chain, we need to wait for
@@ -670,11 +669,6 @@ void Renderer::DrawScreen(VKTexture* xfb_texture, const EFBRectangle& xfb_region
 
   // End drawing to backbuffer
   StateTracker::GetInstance()->EndRenderPass();
-
-  // Transition the backbuffer to PRESENT_SRC to ensure all commands drawing
-  // to it have finished before present.
-  backbuffer->TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(),
-                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 }
 
 void Renderer::BlitScreen(VkRenderPass render_pass, const TargetRectangle& dst_rect,
