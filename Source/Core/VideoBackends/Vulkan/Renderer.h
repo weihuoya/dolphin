@@ -92,9 +92,6 @@ public:
   void DrawIndexed(u32 base_index, u32 num_indices, u32 base_vertex) override;
 
 private:
-  bool CreateSemaphores();
-  void DestroySemaphores();
-
   void BeginFrame();
 
   void CheckForSurfaceChange();
@@ -120,11 +117,6 @@ private:
                   const TargetRectangle& src_rect, const Texture2D* src_tex);
 
   std::tuple<VkBuffer, u32> UpdateUtilityUniformBuffer(const void* uniforms, u32 uniforms_size);
-
-  VkSemaphore m_image_available_semaphore = VK_NULL_HANDLE;
-  VkSemaphore m_rendering_finished_semaphore = VK_NULL_HANDLE;
-  VkRenderPass m_swap_chain_render_pass = VK_NULL_HANDLE;
-  VkRenderPass m_swap_chain_clear_render_pass = VK_NULL_HANDLE;
 
   std::unique_ptr<SwapChain> m_swap_chain;
   std::unique_ptr<BoundingBox> m_bounding_box;

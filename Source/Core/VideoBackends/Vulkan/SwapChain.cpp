@@ -428,8 +428,9 @@ void SwapChain::DestroySwapChain()
   m_swap_chain = VK_NULL_HANDLE;
 }
 
-VkResult SwapChain::AcquireNextImage(VkSemaphore available_semaphore)
+VkResult SwapChain::AcquireNextImage()
 {
+  VkSemaphore available_semaphore = m_image_available_semaphore;
   VkResult res =
       vkAcquireNextImageKHR(g_vulkan_context->GetDevice(), m_swap_chain, UINT64_MAX,
                             available_semaphore, VK_NULL_HANDLE, &m_current_swap_chain_image_index);
@@ -509,6 +510,76 @@ bool SwapChain::RecreateSurface(void* native_handle)
     return false;
 
   return true;
+}
+
+void SwapChain::BeginClearRenderPass(VkCommandBuffer command_buffer, const VkRect2D& area,
+                                const VkClearValue* clear_values, u32 num_clear_values)
+{
+  VkRenderPassBeginInfo begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                                      nullptr,
+                                      GetClearRenderPass(),
+                                      GetCurrentFramebuffer(),
+                                      area,
+                                      num_clear_values,
+                                      clear_values};
+
+  vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+}
+
+void SwapChain::EndRenderPass(VkCommandBuffer command_buffer)
+{
+  vkCmdEndRenderPass(command_buffer);
+}
+
+bool SwapChain::InitDeviceObjects()
+{
+  // Create two semaphores, one that is triggered when the swapchain buffer is ready, another after
+  // submit and before present
+  VkSemaphoreCreateInfo semaphore_info = {
+    VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,  // VkStructureType          sType
+    nullptr,                                  // const void*              pNext
+    0                                         // VkSemaphoreCreateFlags   flags
+  };
+
+  VkResult res;
+  if ((res = vkCreateSemaphore(g_vulkan_context->GetDevice(), &semaphore_info, nullptr,
+                               &m_image_available_semaphore)) != VK_SUCCESS ||
+      (res = vkCreateSemaphore(g_vulkan_context->GetDevice(), &semaphore_info, nullptr,
+                               &m_rendering_finished_semaphore)) != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkCreateSemaphore failed: ");
+    return false;
+  }
+
+  m_swap_chain_render_pass =
+    g_object_cache->GetRenderPass(GetSurfaceFormat().format, VK_FORMAT_UNDEFINED,
+                                  1, VK_ATTACHMENT_LOAD_OP_LOAD);
+  m_swap_chain_clear_render_pass =
+    g_object_cache->GetRenderPass(GetSurfaceFormat().format, VK_FORMAT_UNDEFINED,
+                                  1, VK_ATTACHMENT_LOAD_OP_CLEAR);
+  if (m_swap_chain_render_pass == VK_NULL_HANDLE ||
+      m_swap_chain_clear_render_pass == VK_NULL_HANDLE)
+  {
+    PanicAlert("Failed to create swap chain render passes.");
+    return false;
+  }
+
+  return true;
+}
+
+void SwapChain::DestroyDeviceObjects()
+{
+  if (m_image_available_semaphore)
+  {
+    vkDestroySemaphore(g_vulkan_context->GetDevice(), m_image_available_semaphore, nullptr);
+    m_image_available_semaphore = VK_NULL_HANDLE;
+  }
+
+  if (m_rendering_finished_semaphore)
+  {
+    vkDestroySemaphore(g_vulkan_context->GetDevice(), m_rendering_finished_semaphore, nullptr);
+    m_rendering_finished_semaphore = VK_NULL_HANDLE;
+  }
 }
 
 void SwapChain::DestroySurface()

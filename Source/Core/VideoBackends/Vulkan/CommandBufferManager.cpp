@@ -188,8 +188,7 @@ bool CommandBufferManager::CreateSubmitThread()
         m_pending_submits.pop_front();
       }
 
-      SubmitCommandBuffer(submit.index, submit.wait_semaphore, submit.signal_semaphore,
-                          submit.present_swap_chain, submit.present_image_index);
+      SubmitCommandBuffer(submit.index, submit.swap_chain);
     });
   });
 
@@ -244,11 +243,7 @@ void CommandBufferManager::WaitForFence(VkFence fence)
   OnCommandBufferExecuted(command_buffer_index);
 }
 
-void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
-                                               VkSemaphore wait_semaphore,
-                                               VkSemaphore signal_semaphore,
-                                               VkSwapchainKHR present_swap_chain,
-                                               uint32_t present_image_index)
+void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread, SwapChain * swap_chain)
 {
   FrameResources& resources = m_frame_resources[m_current_frame];
 
@@ -277,8 +272,7 @@ void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
     // Push to the pending submit queue.
     {
       std::lock_guard<std::mutex> guard(m_pending_submit_lock);
-      m_pending_submits.push_back({m_current_frame, wait_semaphore, signal_semaphore,
-                                   present_swap_chain, present_image_index});
+      m_pending_submits.push_back({m_current_frame, swap_chain});
     }
 
     // Wake up the worker thread for a single iteration.
@@ -287,16 +281,17 @@ void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
   else
   {
     // Pass through to normal submission path.
-    SubmitCommandBuffer(m_current_frame, wait_semaphore, signal_semaphore, present_swap_chain,
-                        present_image_index);
+    SubmitCommandBuffer(m_current_frame, swap_chain);
   }
 }
 
-void CommandBufferManager::SubmitCommandBuffer(size_t index, VkSemaphore wait_semaphore,
-                                               VkSemaphore signal_semaphore,
-                                               VkSwapchainKHR present_swap_chain,
-                                               uint32_t present_image_index)
+void CommandBufferManager::SubmitCommandBuffer(size_t index, SwapChain * swap_chain)
 {
+  VkSemaphore wait_semaphore = VK_NULL_HANDLE;
+  VkSemaphore signal_semaphore = VK_NULL_HANDLE;
+  VkSwapchainKHR present_swap_chain = VK_NULL_HANDLE;
+  uint32_t present_image_index = 0xFFFFFFFF;
+
   FrameResources& resources = m_frame_resources[index];
 
   // This may be executed on the worker thread, so don't modify any state of the manager class.
@@ -318,16 +313,18 @@ void CommandBufferManager::SubmitCommandBuffer(size_t index, VkSemaphore wait_se
     submit_info.pCommandBuffers = &m_frame_resources[index].command_buffers[1];
   }
 
-  if (wait_semaphore != VK_NULL_HANDLE)
+  if(swap_chain)
   {
+    wait_semaphore = swap_chain->GetImageAvailableSemaphore();
+    signal_semaphore = swap_chain->GetRenderingFinishedSemaphore();
+    present_swap_chain = swap_chain->GetSwapChain();
+    present_image_index = swap_chain->GetCurrentImageIndex();
+
     submit_info.pWaitSemaphores = &wait_semaphore;
     submit_info.waitSemaphoreCount = 1;
-  }
 
-  if (signal_semaphore != VK_NULL_HANDLE)
-  {
-    submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &signal_semaphore;
+    submit_info.signalSemaphoreCount = 1;
   }
 
   VkResult res =
@@ -339,7 +336,7 @@ void CommandBufferManager::SubmitCommandBuffer(size_t index, VkSemaphore wait_se
   }
 
   // Do we have a swap chain to present?
-  if (present_swap_chain != VK_NULL_HANDLE)
+  if (swap_chain)
   {
     // Should have a signal semaphore.
     ASSERT(signal_semaphore != VK_NULL_HANDLE);

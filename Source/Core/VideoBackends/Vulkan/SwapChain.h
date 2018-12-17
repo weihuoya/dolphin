@@ -54,7 +54,35 @@ public:
     return m_swap_chain_images[m_current_swap_chain_image_index].framebuffer;
   }
 
-  VkResult AcquireNextImage(VkSemaphore available_semaphore);
+  VkSemaphore GetImageAvailableSemaphore() const
+  {
+    return m_image_available_semaphore;
+  }
+
+  VkSemaphore GetRenderingFinishedSemaphore() const
+  {
+    return m_rendering_finished_semaphore;
+  }
+
+  VkRenderPass GetRenderPass() const
+  {
+    return m_swap_chain_render_pass;
+  }
+
+  VkRenderPass GetClearRenderPass() const
+  {
+    return m_swap_chain_clear_render_pass;
+  }
+
+
+  void BeginClearRenderPass(VkCommandBuffer command_buffer, const VkRect2D& area,
+                            const VkClearValue* clear_values, u32 num_clear_values);
+  void EndRenderPass(VkCommandBuffer command_buffer);
+
+  VkResult AcquireNextImage();
+
+  bool InitDeviceObjects();
+  void DestroyDeviceObjects();
 
   bool RecreateSurface(void* native_handle);
   bool ResizeSwapChain();
@@ -93,6 +121,11 @@ private:
   VkSwapchainKHR m_swap_chain = VK_NULL_HANDLE;
   std::vector<SwapChainImage> m_swap_chain_images;
   u32 m_current_swap_chain_image_index = 0;
+
+  VkSemaphore m_image_available_semaphore = VK_NULL_HANDLE;
+  VkSemaphore m_rendering_finished_semaphore = VK_NULL_HANDLE;
+  VkRenderPass m_swap_chain_render_pass = VK_NULL_HANDLE;
+  VkRenderPass m_swap_chain_clear_render_pass = VK_NULL_HANDLE;
 
   u32 m_width = 0;
   u32 m_height = 0;

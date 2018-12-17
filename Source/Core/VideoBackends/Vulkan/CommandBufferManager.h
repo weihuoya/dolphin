@@ -23,6 +23,7 @@
 
 #include "VideoBackends/Vulkan/Constants.h"
 #include "VideoBackends/Vulkan/Util.h"
+#include "VideoBackends/Vulkan/SwapChain.h"
 
 namespace Vulkan
 {
@@ -69,11 +70,7 @@ public:
   // Also invokes callbacks for completion.
   void WaitForFence(VkFence fence);
 
-  void SubmitCommandBuffer(bool submit_on_worker_thread,
-                           VkSemaphore wait_semaphore = VK_NULL_HANDLE,
-                           VkSemaphore signal_semaphore = VK_NULL_HANDLE,
-                           VkSwapchainKHR present_swap_chain = VK_NULL_HANDLE,
-                           uint32_t present_image_index = 0xFFFFFFFF);
+  void SubmitCommandBuffer(bool submit_on_worker_thread, SwapChain * swap_chain = nullptr);
 
   void ActivateCommandBuffer();
 
@@ -107,8 +104,7 @@ private:
 
   bool CreateSubmitThread();
 
-  void SubmitCommandBuffer(size_t index, VkSemaphore wait_semaphore, VkSemaphore signal_semaphore,
-                           VkSwapchainKHR present_swap_chain, uint32_t present_image_index);
+  void SubmitCommandBuffer(size_t index, SwapChain * swap_chain);
 
   void OnCommandBufferExecuted(size_t index);
 
@@ -140,10 +136,7 @@ private:
   struct PendingCommandBufferSubmit
   {
     size_t index;
-    VkSemaphore wait_semaphore;
-    VkSemaphore signal_semaphore;
-    VkSwapchainKHR present_swap_chain;
-    uint32_t present_image_index;
+    SwapChain * swap_chain;
   };
   std::deque<PendingCommandBufferSubmit> m_pending_submits;
   std::mutex m_pending_submit_lock;
