@@ -16,6 +16,7 @@ import org.dolphinemu.dolphinemu.features.settings.utils.SettingsFile;
 public class Rumble
 {
   private static Vibrator phoneVibrator;
+  private static VibrationEffect vibrationEffect;
   private static SparseArray<Vibrator> emuVibrators;
 
   public static void initDeviceRumble()
@@ -55,6 +56,15 @@ public class Rumble
       Vibrator vib = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
       if (vib != null && vib.hasVibrator())
         phoneVibrator = vib;
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+      {
+        vibrationEffect = VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE);
+      }
+      else
+      {
+        vibrationEffect = null;
+      }
     }
     else
     {
@@ -76,9 +86,9 @@ public class Rumble
     // Check again that it exists and can vibrate
     if (vib != null && vib.hasVibrator())
     {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+      if (vibrationEffect != null)
       {
-        vib.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE));
+        vib.vibrate(vibrationEffect);
       }
       else
       {
