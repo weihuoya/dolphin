@@ -684,8 +684,6 @@ bool PPCAnalyzer::IsBusyWaitLoop(CodeBlock* block, CodeOp* code, size_t instruct
   // don't detect these at the moment.
   std::bitset<32> write_disallowed_regs;
   std::bitset<32> written_regs;
-  if (instructions > 24)
-    instructions = 24;
   for (size_t i = 0; i <= instructions; ++i)
   {
     if (code[i].opinfo->type == OpType::Branch)
@@ -782,7 +780,6 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
     SetInstructionStats(block, &code[i], opinfo, static_cast<u32>(i));
 
     bool follow = false;
-
     bool conditional_continue = false;
 
     // TODO: Find the optimal value for BRANCH_FOLLOWING_THRESHOLD.
@@ -882,8 +879,6 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
       }
     }
 
-    code[i].branchIsIdleLoop = code[i].branchTo == block->m_address && IsBusyWaitLoop(block, code, i);
-
     if (follow)
     {
       // Follow the unconditional branch.
@@ -894,16 +889,22 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
     {
       // Just pick the next instruction
       address += 4;
-      if (!conditional_continue && opinfo->flags & FL_ENDBLOCK)  // right now we stop early
-      {
-        found_exit = true;
-        break;
-      }
+
       if (conditional_continue)
       {
+        if(code[i].branchTo == block->m_address && i < 25)
+        {
+          code[i].branchIsIdleLoop = IsBusyWaitLoop(block, code, i);
+        }
+
         // If we skip any conditional branch, we can't garantee to get the matching CALL/RET pair.
         // So we stop inling the RET here and let the BLR optitmization handle this case.
         found_call = false;
+      }
+      else if (opinfo->flags & FL_ENDBLOCK)  // right now we stop early
+      {
+        found_exit = true;
+        break;
       }
     }
   }
