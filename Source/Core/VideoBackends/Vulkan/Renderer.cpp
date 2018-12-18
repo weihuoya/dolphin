@@ -550,6 +550,36 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
   // Draw to the screen if we have a swap chain.
   if (m_swap_chain)
   {
+    VkResult res;
+    if (!g_command_buffer_mgr->CheckLastPresentFail())
+    {
+      // Grab the next image from the swap chain in preparation for drawing the window.
+      res = m_swap_chain->AcquireNextImage();
+    }
+    else
+    {
+      // If the last present failed, we need to recreate the swap chain.
+      res = VK_ERROR_OUT_OF_DATE_KHR;
+    }
+
+    if (res == VK_SUBOPTIMAL_KHR || res == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+      // There's an issue here. We can't resize the swap chain while the GPU is still busy with it,
+      // but calling WaitForGPUIdle would create a deadlock as PrepareToSubmitCommandBuffer has been
+      // called by SwapImpl. WaitForGPUIdle waits on the semaphore, which
+      // PrepareToSubmitCommandBuffer has already done, so it blocks indefinitely. To work around
+      // this, we submit the current command buffer, resize the swap chain (which calls
+      // WaitForGPUIdle), and then finally call PrepareToSubmitCommandBuffer to return to the state
+      // that the caller expects.
+      g_command_buffer_mgr->SubmitCommandBuffer(false);
+      m_swap_chain->ResizeSwapChain();
+      BeginFrame();
+      g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
+      res = m_swap_chain->AcquireNextImage();
+    }
+    if (res != VK_SUCCESS)
+      PanicAlert("Failed to grab image from swap chain");
+
     DrawScreen(static_cast<VKTexture*>(texture), xfb_region);
 
     // Submit the current command buffer, signaling rendering finished semaphore when it's done
@@ -607,35 +637,6 @@ void Renderer::SwapInvalid()
 
 void Renderer::DrawScreen(VKTexture* xfb_texture, const EFBRectangle& xfb_region)
 {
-  VkResult res;
-  if (!g_command_buffer_mgr->CheckLastPresentFail())
-  {
-    // Grab the next image from the swap chain in preparation for drawing the window.
-    res = m_swap_chain->AcquireNextImage();
-  }
-  else
-  {
-    // If the last present failed, we need to recreate the swap chain.
-    res = VK_ERROR_OUT_OF_DATE_KHR;
-  }
-
-  if (res == VK_SUBOPTIMAL_KHR || res == VK_ERROR_OUT_OF_DATE_KHR)
-  {
-    // There's an issue here. We can't resize the swap chain while the GPU is still busy with it,
-    // but calling WaitForGPUIdle would create a deadlock as PrepareToSubmitCommandBuffer has been
-    // called by SwapImpl. WaitForGPUIdle waits on the semaphore, which PrepareToSubmitCommandBuffer
-    // has already done, so it blocks indefinitely. To work around this, we submit the current
-    // command buffer, resize the swap chain (which calls WaitForGPUIdle), and then finally call
-    // PrepareToSubmitCommandBuffer to return to the state that the caller expects.
-    g_command_buffer_mgr->SubmitCommandBuffer(false);
-    m_swap_chain->ResizeSwapChain();
-    BeginFrame();
-    g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
-    res = m_swap_chain->AcquireNextImage();
-  }
-  if (res != VK_SUCCESS)
-    PanicAlert("Failed to grab image from swap chain");
-
   // Transition from undefined (or present src, but it can be substituted) to
   // color attachment ready for writing. These transitions must occur outside
   // a render pass, unless the render pass declares a self-dependency.

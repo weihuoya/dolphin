@@ -74,11 +74,6 @@ public:
     return m_swap_chain_clear_render_pass;
   }
 
-
-  void BeginClearRenderPass(VkCommandBuffer command_buffer, const VkRect2D& area,
-                            const VkClearValue* clear_values, u32 num_clear_values);
-  void EndRenderPass(VkCommandBuffer command_buffer);
-
   VkResult AcquireNextImage();
 
   bool InitDeviceObjects();

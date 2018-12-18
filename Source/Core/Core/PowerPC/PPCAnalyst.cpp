@@ -685,7 +685,7 @@ bool PPCAnalyzer::IsBusyWaitLoop(CodeBlock* block, CodeOp* code, size_t instruct
   std::bitset<32> write_disallowed_regs;
   std::bitset<32> written_regs;
   if (instructions > 24)
-	  instructions = 24;
+    instructions = 24;
   for (size_t i = 0; i <= instructions; ++i)
   {
     if (code[i].opinfo->type == OpType::Branch)
@@ -755,7 +755,7 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
   u32 numFollows = 0;
   u32 num_inst = 0;
 
-  const u32 branchFollowThreshold = SConfig::GetInstance().bJITFollowBranch ? 3 : 0;
+  const u32 branchFollowThreshold = SConfig::GetInstance().bJITFollowBranch ? 2 : 0;
 
   for (std::size_t i = 0; i < block_size; ++i)
   {

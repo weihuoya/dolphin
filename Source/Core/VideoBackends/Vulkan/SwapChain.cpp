@@ -512,25 +512,6 @@ bool SwapChain::RecreateSurface(void* native_handle)
   return true;
 }
 
-void SwapChain::BeginClearRenderPass(VkCommandBuffer command_buffer, const VkRect2D& area,
-                                const VkClearValue* clear_values, u32 num_clear_values)
-{
-  VkRenderPassBeginInfo begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-                                      nullptr,
-                                      GetClearRenderPass(),
-                                      GetCurrentFramebuffer(),
-                                      area,
-                                      num_clear_values,
-                                      clear_values};
-
-  vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
-}
-
-void SwapChain::EndRenderPass(VkCommandBuffer command_buffer)
-{
-  vkCmdEndRenderPass(command_buffer);
-}
-
 bool SwapChain::InitDeviceObjects()
 {
   // Create two semaphores, one that is triggered when the swapchain buffer is ready, another after
