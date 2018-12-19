@@ -149,8 +149,8 @@ bool StreamBuffer::ReserveMemory(size_t num_bytes, size_t alignment, bool allow_
   // Check for sane allocations
   if (required_bytes > m_maximum_size)
   {
-    PanicAlert("Attempting to allocate %u bytes from a %u byte stream buffer",
-               static_cast<uint32_t>(num_bytes), static_cast<uint32_t>(m_maximum_size));
+    PanicAlert("Attempting to allocate %u bytes from a %u byte stream buffer, usage: 0x%08x",
+               static_cast<uint32_t>(num_bytes), static_cast<uint32_t>(m_maximum_size), m_usage);
 
     return false;
   }
@@ -235,7 +235,7 @@ void StreamBuffer::CommitMemory(size_t final_num_bytes)
 {
   ASSERT((m_current_offset + final_num_bytes) <= m_current_size);
   ASSERT_MSG(MASTER_LOG, final_num_bytes <= m_last_allocation_size,
-             _trans("StreamBuffer Commit Error.\n\nUsage: 0x%08X, Size: %d, Total: %d\n\nIgnore and continue?"),
+             _trans("StreamBuffer Commit Error.\n\nUsage: 0x%08X, Size: %ld, Total: %ld\n\nIgnore and continue?"),
              m_usage, final_num_bytes, m_last_allocation_size);
 
   // For non-coherent mappings, flush the memory range

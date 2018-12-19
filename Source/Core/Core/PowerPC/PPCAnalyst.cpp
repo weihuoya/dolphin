@@ -765,22 +765,17 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
       break;
     }
 
-    num_inst++;
-
     const UGeckoInstruction inst = result.hex;
     GekkoOPInfo* opinfo = PPCTables::GetOpInfo(inst);
     code[i] = {};
     code[i].opinfo = opinfo;
     code[i].address = address;
     code[i].inst = inst;
-    code[i].skip = false;
     block->m_stats->numCycles += opinfo->numCycles;
     block->m_physical_addresses.insert(result.physical_address);
+    num_inst += 1;
 
     SetInstructionStats(block, &code[i], opinfo, static_cast<u32>(i));
-
-    bool follow = false;
-    bool conditional_continue = false;
 
     // TODO: Find the optimal value for BRANCH_FOLLOWING_THRESHOLD.
     //       If it is small, the performance will be down.
@@ -788,6 +783,7 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
     //       cache clearning will happen many times.
     if (HasOption(OPTION_BRANCH_FOLLOW) && numFollows < branchFollowThreshold)
     {
+      bool follow = false;
       switch (inst.OPCD)
       {
         case 18:
@@ -849,10 +845,22 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
           }
           break;
       }
+
+      if (follow && code[i].branchTo != code[i].address)
+      {
+        // Follow the unconditional branch.
+        numFollows += 1;
+        address = code[i].branchTo;
+        continue;
+      }
     }
+
+    // Just pick the next instruction
+    address += 4;
 
     if (HasOption(OPTION_CONDITIONAL_CONTINUE))
     {
+      bool conditional_continue = false;
       if (inst.OPCD == 16 &&
           ((inst.BO & BO_DONT_DECREMENT_FLAG) == 0 || (inst.BO & BO_DONT_CHECK_CONDITION) == 0))
       {
@@ -877,18 +885,6 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
         // Seen in NES games
         conditional_continue = true;
       }
-    }
-
-    if (follow)
-    {
-      // Follow the unconditional branch.
-      numFollows++;
-      address = code[i].branchTo;
-    }
-    else
-    {
-      // Just pick the next instruction
-      address += 4;
 
       if (conditional_continue)
       {
@@ -900,12 +896,19 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
         // If we skip any conditional branch, we can't garantee to get the matching CALL/RET pair.
         // So we stop inling the RET here and let the BLR optitmization handle this case.
         found_call = false;
+        continue;
       }
-      else if (opinfo->flags & FL_ENDBLOCK)  // right now we stop early
-      {
-        found_exit = true;
-        break;
-      }
+    }
+    else if(code[i].branchTo == block->m_address && i < 25)
+    {
+      code[i].branchIsIdleLoop = IsBusyWaitLoop(block, code, i);
+    }
+
+    if (opinfo->flags & FL_ENDBLOCK)
+    {
+      // right now we stop early
+      found_exit = true;
+      break;
     }
   }
 
