@@ -484,6 +484,12 @@ void CommandBufferManager::DeferImageViewDestruction(VkImageView object)
       [object]() { vkDestroyImageView(g_vulkan_context->GetDevice(), object, nullptr); });
 }
 
+void CommandBufferManager::DeferCallback(const std::function<void()>& callback)
+{
+  FrameResources& resources = m_frame_resources[m_current_frame];
+  resources.cleanup_resources.push_back(callback);
+}
+
 void CommandBufferManager::AddFencePointCallback(
     const void* key, const CommandBufferQueuedCallback& queued_callback,
     const CommandBufferExecutedCallback& executed_callback)

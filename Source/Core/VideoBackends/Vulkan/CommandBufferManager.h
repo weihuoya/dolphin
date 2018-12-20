@@ -85,6 +85,7 @@ public:
   void DeferFramebufferDestruction(VkFramebuffer object);
   void DeferImageDestruction(VkImage object);
   void DeferImageViewDestruction(VkImageView object);
+  void DeferCallback(const std::function<void()>& callback);
 
   // Instruct the manager to fire the specified callback when a fence is flagged to be signaled.
   // This happens when command buffers are executed, and can be tested if signaled, which means
