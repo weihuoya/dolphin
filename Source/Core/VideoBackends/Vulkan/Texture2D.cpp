@@ -13,10 +13,10 @@ namespace Vulkan
 {
 Texture2D::Texture2D(u32 width, u32 height, u32 levels, u32 layers, VkFormat format,
                      VkSampleCountFlagBits samples, VkImageViewType view_type, VkImage image,
-                     VkDeviceMemory device_memory, VkImageView view)
+                     VkDeviceMemory device_memory, VkDeviceSize memory_offset, VkImageView view)
     : m_width(width), m_height(height), m_levels(levels), m_layers(layers), m_format(format),
       m_samples(samples), m_view_type(view_type), m_image(image), m_device_memory(device_memory),
-      m_view(view)
+      m_memory_offset(memory_offset), m_view(view)
 {
 }
 
@@ -28,7 +28,9 @@ Texture2D::~Texture2D()
   if (m_device_memory != VK_NULL_HANDLE)
   {
     g_command_buffer_mgr->DeferImageDestruction(m_image);
-    g_command_buffer_mgr->DeferDeviceMemoryDestruction(m_device_memory);
+    //g_command_buffer_mgr->DeferDeviceMemoryDestruction(m_device_memory);
+    g_command_buffer_mgr->Free(m_device_memory, m_memory_offset);
+    m_device_memory = VK_NULL_HANDLE;
   }
 }
 
@@ -65,21 +67,16 @@ std::unique_ptr<Texture2D> Texture2D::Create(u32 width, u32 height, u32 levels, 
   VkMemoryRequirements memory_requirements;
   vkGetImageMemoryRequirements(g_vulkan_context->GetDevice(), image, &memory_requirements);
 
-  VkMemoryAllocateInfo memory_info = {
-      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, memory_requirements.size,
-      g_vulkan_context->GetMemoryType(memory_requirements.memoryTypeBits,
-                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
-
   VkDeviceMemory device_memory;
-  res = vkAllocateMemory(g_vulkan_context->GetDevice(), &memory_info, nullptr, &device_memory);
-  if (res != VK_SUCCESS)
+  size_t offset = g_command_buffer_mgr->Allocate(memory_requirements, &device_memory);
+  if(offset == VulkanDeviceAllocator::ALLOCATE_FAILED)
   {
     LOG_VULKAN_ERROR(res, "vkAllocateMemory failed: ");
     vkDestroyImage(g_vulkan_context->GetDevice(), image, nullptr);
     return nullptr;
   }
 
-  res = vkBindImageMemory(g_vulkan_context->GetDevice(), image, device_memory, 0);
+  res = vkBindImageMemory(g_vulkan_context->GetDevice(), image, device_memory, offset);
   if (res != VK_SUCCESS)
   {
     LOG_VULKAN_ERROR(res, "vkBindImageMemory failed: ");
@@ -112,7 +109,7 @@ std::unique_ptr<Texture2D> Texture2D::Create(u32 width, u32 height, u32 levels, 
   }
 
   return std::make_unique<Texture2D>(width, height, levels, layers, format, samples, view_type,
-                                     image, device_memory, view);
+                                     image, device_memory, offset, view);
 }
 
 std::unique_ptr<Texture2D> Texture2D::CreateFromExistingImage(u32 width, u32 height, u32 levels,
@@ -146,7 +143,7 @@ std::unique_ptr<Texture2D> Texture2D::CreateFromExistingImage(u32 width, u32 hei
   }
 
   return std::make_unique<Texture2D>(width, height, levels, layers, format, samples, view_type,
-                                     existing_image, memory, view);
+                                     existing_image, memory, 0, view);
 }
 
 void Texture2D::OverrideImageLayout(VkImageLayout new_layout)

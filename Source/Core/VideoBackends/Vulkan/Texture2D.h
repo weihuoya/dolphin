@@ -28,7 +28,7 @@ public:
 
   Texture2D(u32 width, u32 height, u32 levels, u32 layers, VkFormat format,
             VkSampleCountFlagBits samples, VkImageViewType view_type, VkImage image,
-            VkDeviceMemory device_memory, VkImageView view);
+            VkDeviceMemory device_memory, VkDeviceSize memory_offset, VkImageView view);
   ~Texture2D();
 
   static std::unique_ptr<Texture2D> Create(u32 width, u32 height, u32 levels, u32 layers,
@@ -74,6 +74,7 @@ private:
 
   VkImage m_image;
   VkDeviceMemory m_device_memory;
+  VkDeviceSize m_memory_offset;
   VkImageView m_view;
 };
 }

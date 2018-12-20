@@ -12,6 +12,9 @@
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
 
+#define TEXCACHE_MIN_SLAB_SIZE (8 * 1024 * 1024)
+#define TEXCACHE_MAX_SLAB_SIZE (32 * 1024 * 1024)
+
 namespace Vulkan
 {
 CommandBufferManager::CommandBufferManager(bool use_threaded_submission)
@@ -109,6 +112,8 @@ bool CommandBufferManager::CreateCommandBuffers()
     }
   }
 
+  m_allocator = std::make_unique<VulkanDeviceAllocator>(TEXCACHE_MIN_SLAB_SIZE, TEXCACHE_MAX_SLAB_SIZE);
+
   // Activate the first command buffer. ActivateCommandBuffer moves forward, so start with the last
   m_current_frame = m_frame_resources.size() - 1;
   ActivateCommandBuffer();
@@ -118,6 +123,8 @@ bool CommandBufferManager::CreateCommandBuffers()
 void CommandBufferManager::DestroyCommandBuffers()
 {
   VkDevice device = g_vulkan_context->GetDevice();
+
+  m_allocator->Destroy();
 
   for (FrameResources& resources : m_frame_resources)
   {
@@ -377,6 +384,8 @@ void CommandBufferManager::OnCommandBufferExecuted(size_t index)
     iter->executed_callback(resources.fence);
   }
 
+  m_allocator->Begin();
+
   // Clean up all objects pending destruction on this command buffer
   for (auto& it : resources.cleanup_resources)
     it();
@@ -488,6 +497,18 @@ void CommandBufferManager::DeferCallback(const std::function<void()>& callback)
 {
   FrameResources& resources = m_frame_resources[m_current_frame];
   resources.cleanup_resources.push_back(callback);
+}
+
+// May return ALLOCATE_FAILED if the allocation fails.
+size_t CommandBufferManager::Allocate(const VkMemoryRequirements &reqs, VkDeviceMemory *deviceMemory)
+{
+  return m_allocator->Allocate(reqs, deviceMemory);
+}
+
+// Crashes on a double or misfree.
+void CommandBufferManager::Free(VkDeviceMemory deviceMemory, size_t offset)
+{
+  m_allocator->Free(deviceMemory, offset);
 }
 
 void CommandBufferManager::AddFencePointCallback(

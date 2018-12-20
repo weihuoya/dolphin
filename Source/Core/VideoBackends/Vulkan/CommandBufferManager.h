@@ -23,6 +23,7 @@
 #include "VideoBackends/Vulkan/Constants.h"
 #include "VideoBackends/Vulkan/Util.h"
 #include "VideoBackends/Vulkan/SwapChain.h"
+#include "VideoBackends/Vulkan/VulkanDeviceAllocator.h"
 
 namespace Vulkan
 {
@@ -87,6 +88,12 @@ public:
   void DeferImageViewDestruction(VkImageView object);
   void DeferCallback(const std::function<void()>& callback);
 
+  // May return ALLOCATE_FAILED if the allocation fails.
+  size_t Allocate(const VkMemoryRequirements &reqs, VkDeviceMemory *deviceMemory);
+
+  // Crashes on a double or misfree.
+  void Free(VkDeviceMemory deviceMemory, size_t offset);
+
   // Instruct the manager to fire the specified callback when a fence is flagged to be signaled.
   // This happens when command buffers are executed, and can be tested if signaled, which means
   // that all commands up to the point when the callback was fired have completed.
@@ -142,6 +149,7 @@ private:
   Common::Semaphore m_submit_semaphore;
   std::thread m_submit_thread;
   std::unique_ptr<Common::BlockingLoop> m_submit_loop;
+  std::unique_ptr<VulkanDeviceAllocator> m_allocator;
   struct PendingCommandBufferSubmit
   {
     size_t index;
