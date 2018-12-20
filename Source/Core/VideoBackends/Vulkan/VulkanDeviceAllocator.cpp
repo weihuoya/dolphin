@@ -40,7 +40,7 @@ void VulkanDeviceAllocator::Destroy()
     }
 
     ASSERT(slab.deviceMemory);
-    g_command_buffer_mgr->DeferDeviceMemoryDestruction(slab.deviceMemory);
+    vkFreeMemory(g_vulkan_context->GetDevice(), slab.deviceMemory, nullptr);
   }
   slabs_.clear();
   destroyed_ = true;
