@@ -28,9 +28,7 @@ Texture2D::~Texture2D()
   if (m_device_memory != VK_NULL_HANDLE)
   {
     g_command_buffer_mgr->DeferImageDestruction(m_image);
-    //g_command_buffer_mgr->DeferDeviceMemoryDestruction(m_device_memory);
     g_command_buffer_mgr->Free(m_device_memory, m_memory_offset);
-    m_device_memory = VK_NULL_HANDLE;
   }
 }
 

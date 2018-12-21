@@ -323,7 +323,7 @@ void VulkanDeviceAllocator::Decimate()
     }
 
     // Okay, let's free this one up.
-    g_command_buffer_mgr->DeferDeviceMemoryDestruction(slab.deviceMemory);
+    vkFreeMemory(g_vulkan_context->GetDevice(), slab.deviceMemory, nullptr);
     slabs_.erase(slabs_.begin() + index);
 
     // Let's check the next one, which is now in this same slot.
