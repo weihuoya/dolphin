@@ -20,38 +20,50 @@
 
 namespace Gen
 {
+
+//CF - carry flag
+//  Set on high-order bit carry or borrow; cleared otherwise
+//PF - parity flag
+//  Set if low-order eight bits of result contain an even number of "1" bits; cleared otherwise
+//ZF - zero flags
+//  Set if result is zero; cleared otherwise
+//SF - sign flag
+//  Set equal to high-order bit of result (0 if positive 1 if negative)
+//OF - overflow flag
+//  Set if result is too large a positive number or too small a negative number (excluding sign bit) to fit in destination operand; cleared otherwise
+
 enum CCFlags
 {
-  CC_O = 0,
-  CC_NO = 1,
-  CC_B = 2,
-  CC_C = 2,
-  CC_NAE = 2,
-  CC_NB = 3,
-  CC_NC = 3,
-  CC_AE = 3,
-  CC_Z = 4,
-  CC_E = 4,
-  CC_NZ = 5,
-  CC_NE = 5,
-  CC_BE = 6,
-  CC_NA = 6,
-  CC_NBE = 7,
-  CC_A = 7,
-  CC_S = 8,
-  CC_NS = 9,
-  CC_P = 0xA,
-  CC_PE = 0xA,
-  CC_NP = 0xB,
-  CC_PO = 0xB,
-  CC_L = 0xC,
-  CC_NGE = 0xC,
-  CC_NL = 0xD,
-  CC_GE = 0xD,
-  CC_LE = 0xE,
-  CC_NG = 0xE,
-  CC_NLE = 0xF,
-  CC_G = 0xF
+  CC_O = 0, // overflow
+  CC_NO = 1, // not overflow
+  CC_B = 2, // below
+  CC_C = 2, // carry
+  CC_NAE = 2, // not above or equal
+  CC_NB = 3, // not below
+  CC_NC = 3, // not carry
+  CC_AE = 3, // above or equal
+  CC_Z = 4, // zero
+  CC_E = 4, // equal
+  CC_NZ = 5, // not zero
+  CC_NE = 5, // not equal
+  CC_BE = 6, // below or equal
+  CC_NA = 6, // not above
+  CC_NBE = 7, // not below or equal
+  CC_A = 7, // above
+  CC_S = 8, // sign
+  CC_NS = 9, // not sign
+  CC_P = 0xA, // parity
+  CC_PE = 0xA, // parity even
+  CC_NP = 0xB, // not parity
+  CC_PO = 0xB, // parity odd
+  CC_L = 0xC, // less
+  CC_NGE = 0xC, // not greater or equal
+  CC_NL = 0xD, // not less
+  CC_GE = 0xD, // greater or equal
+  CC_LE = 0xE, // less or equal
+  CC_NG = 0xE, // not greater
+  CC_NLE = 0xF, // not less or equal
+  CC_G = 0xF // greater
 };
 
 enum
@@ -499,8 +511,11 @@ public:
 
   // Bit Test
   void BT(int bits, const OpArg& dest, const OpArg& index);
+  // BTS (Bit Test and Set)
   void BTS(int bits, const OpArg& dest, const OpArg& index);
+  // BTR (Bit Test and Reset)
   void BTR(int bits, const OpArg& dest, const OpArg& index);
+  // BTC (Bit Test and Complement)
   void BTC(int bits, const OpArg& dest, const OpArg& index);
 
   // Double-Precision Shift

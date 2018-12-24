@@ -185,6 +185,8 @@ static void DoICacheReset()
   PowerPC::ppcState.iCache.Reset();
 }
 
+// mtspr (Move to Special-Purpose Register)
+// Copies the contents of a general-purpose register into a special-purpose register.
 void Jit64::mtspr(UGeckoInstruction inst)
 {
   INSTRUCTION_START
@@ -241,6 +243,11 @@ void Jit64::mtspr(UGeckoInstruction inst)
 
   case SPR_HID0:
   {
+    // Hardware implementation-dependent register 0 (HID0)
+    // This register controls various functions, such as enabling checkstop conditions,
+    // and locking, enabling, and invalidating the instruction and data caches.
+    // ICFI: Instruction cache flash invalidate
+    // DCFI: Data cache flash invalidate
     RCOpArg Rd = gpr.Use(d, RCMode::Read);
     RegCache::Realize(Rd);
 
@@ -310,7 +317,7 @@ void Jit64::mfspr(UGeckoInstruction inst)
     // Revolution,
     // which won't get past the loading screen.
     // if (js.downcountAmount)
-    //	ADD(64, rax, Imm32(js.downcountAmount));
+    // ADD(64, rax, Imm32(js.downcountAmount));
 
     // a / 12 = (a * 0xAAAAAAAAAAAAAAAB) >> 67
     MOV(64, rdx, Imm64(0xAAAAAAAAAAAAAAABULL));
