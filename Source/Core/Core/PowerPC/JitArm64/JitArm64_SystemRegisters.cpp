@@ -544,17 +544,15 @@ void JitArm64::crXXX(UGeckoInstruction inst)
   ARM64Reg WB = gpr.GetReg();
   ARM64Reg XB = EncodeRegTo64(WB);
 
-  // creqv or crnand or crnor
-  bool negateA = inst.SUBOP10 == 289 || inst.SUBOP10 == 225 || inst.SUBOP10 == 33;
+  // negate: creqv or crnand or crnor
+  bool negate = inst.SUBOP10 == 225 || inst.SUBOP10 == 33;
   // GetCRFieldBit
-  GetCRFieldBit(inst.CRBA >> 2, 3 - (inst.CRBA & 3), XA, negateA);
+  GetCRFieldBit(inst.CRBA >> 2, 3 - (inst.CRBA & 3), XA, negate);
 
   if(needCombined)
   {
-    // crandc or crorc or crnand or crnor
-    bool negateB =
-      inst.SUBOP10 == 129 || inst.SUBOP10 == 417 || inst.SUBOP10 == 225 || inst.SUBOP10 == 33;
-    GetCRFieldBit(inst.CRBB >> 2, 3 - (inst.CRBB & 3), XB, negateB);
+    // negate: crandc or crorc or crnand or crnor
+    GetCRFieldBit(inst.CRBB >> 2, 3 - (inst.CRBB & 3), XB, negate);
 
     // Compute combined bit
     switch (inst.SUBOP10)
