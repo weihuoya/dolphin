@@ -78,8 +78,7 @@ static bool ImportWAD(IOS::HLE::Kernel& ios, const DiscIO::WiiWAD& wad)
                                  IOS::HLE::Device::ES::TicketImportType::Unpersonalised)) < 0 ||
          (ret = es->ImportTitleInit(context, tmd.GetBytes(), wad.GetCertificateChain())) < 0)
   {
-    if (checks_enabled && ret == IOS::HLE::IOSC_FAIL_CHECKVALUE &&
-        AskYesNoT("This WAD has not been signed by Nintendo. Continue to import?"))
+    if (checks_enabled && ret == IOS::HLE::IOSC_FAIL_CHECKVALUE)
     {
       SConfig::GetInstance().m_enable_signature_checks = false;
       continue;

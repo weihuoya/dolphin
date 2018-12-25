@@ -251,6 +251,7 @@ public class RunningSettingDialog extends DialogFragment
         {
           if (seekBar.getMax() > 99)
           {
+            progress = (progress / 5) * 5;
             mTextSettingValue.setText(progress + "%");
           }
           else

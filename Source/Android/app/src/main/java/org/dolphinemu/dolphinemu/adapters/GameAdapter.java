@@ -69,16 +69,47 @@ public final class GameAdapter extends RecyclerView.Adapter<GameViewHolder> impl
     holder.textGameTitle.setText(gameFile.getTitle());
     holder.textCompany.setText(gameFile.getCompany());
 
-    final int[] platforms =
-      {R.string.game_platform_ngc, R.string.game_platform_wii, R.string.game_platform_ware};
+    final int[] platforms = {
+      R.string.game_platform_ngc,
+      R.string.game_platform_wii,
+      R.string.game_platform_ware,
+      R.string.game_platform_n64,
+      R.string.game_platform_nes,
+      R.string.game_platform_sms,
+      R.string.game_platform_smd
+    };
     final Context context = holder.textPlatform.getContext();
     final String[] countryNames = context.getResources().getStringArray(R.array.countryNames);
     int platform = gameFile.getPlatform();
     int country = gameFile.getCountry();
     int discNumber = gameFile.getDiscNumber() + 1;
+    if(platform == 2)
+    {
+      // WiiWAD, Virtual Console
+      String gameId = gameFile.getGameId();
+      switch (gameId.charAt(0))
+      {
+        case 'N':
+          // N64
+          platform = 3;
+          break;
+        case 'F':
+          // NES
+          platform = 4;
+          break;
+        case 'L':
+          // SMS
+          platform = 5;
+          break;
+        case 'M':
+          // SMD
+          platform = 6;
+          break;
+      }
+    }
     String discInfo = discNumber > 1 ? "DISC-" + discNumber : "";
     if(platform < 0 || platform >= platforms.length)
-      platform = platforms.length - 1;
+      platform = 2;
     if(country < 0 || country >= countryNames.length)
       country = countryNames.length - 1;
     holder.textPlatform.setText(context.getString(platforms[platform], countryNames[country], discInfo));
