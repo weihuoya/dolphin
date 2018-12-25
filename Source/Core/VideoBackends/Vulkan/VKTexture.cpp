@@ -134,7 +134,9 @@ void VKTexture::CopyRectangleFromTexture(const AbstractTexture* src,
   ASSERT_MSG(VIDEO,
              static_cast<u32>(src_rect.GetWidth()) <= src_texture->GetWidth() &&
                  static_cast<u32>(src_rect.GetHeight()) <= src_texture->GetHeight(),
-             "Source rect is too large for CopyRectangleFromTexture");
+             "Source rect(%d, %d) is too large for CopyRectangleFromTexture(%d, %d)",
+             src_rect.GetWidth(), src_rect.GetHeight(),
+             src_texture->GetWidth(), src_texture->GetHeight());
 
   ASSERT_MSG(VIDEO,
              static_cast<u32>(dst_rect.GetWidth()) <= m_config.width &&
