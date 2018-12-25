@@ -293,6 +293,10 @@ PixelShaderUid GetPixelShaderUid()
     uid_data->per_pixel_depth = per_pixel_depth;
     uid_data->forced_early_z = forced_early_z;
   }
+  else
+  {
+    uid_data->forced_early_z = true;
+  }
 
   // NOTE: Fragment may not be discarded if alpha test always fails and early depth test is enabled
   // (in this case we need to write a depth value if depth test passes regardless of the alpha
