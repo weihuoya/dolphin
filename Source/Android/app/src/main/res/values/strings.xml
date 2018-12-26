@@ -325,6 +325,8 @@
     <string name="game_platform_nes">[NES] %1$s %2$s</string>
     <string name="game_platform_sms">[SMS] %1$s %2$s</string>
     <string name="game_platform_smd">[SMD] %1$s %2$s</string>
+    <string name="game_platform_c64">[C64] %1$s %2$s</string>
+    <string name="game_platform_snes">[SNES] %1$s %2$s</string>
     <string name="delete_game_setting">Delete Settings</string>
     <string name="delete_game_file">Delete Game</string>
     <string name="clear_game_data">Clear Data</string>
