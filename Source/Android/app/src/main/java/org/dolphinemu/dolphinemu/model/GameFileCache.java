@@ -8,6 +8,7 @@ import org.dolphinemu.dolphinemu.services.GameFileCacheService;
 
 import java.io.File;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -70,13 +71,12 @@ public class GameFileCache
     }
 
     // remove non exists paths
-    for (String p : folderPathsSet)
+    Iterator<String> iter = folderPathsSet.iterator();
+    while(iter.hasNext())
     {
-      File folder = new File(p);
-      if (!folder.exists())
-      {
-        folderPathsSet.remove(p);
-      }
+      File folder = new File(iter.next());
+      if(!folder.exists())
+        iter.remove();
     }
 
     // apply changes

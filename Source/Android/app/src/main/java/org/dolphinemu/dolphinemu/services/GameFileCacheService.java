@@ -8,9 +8,7 @@ import android.support.v4.content.LocalBroadcastManager;
 import org.dolphinemu.dolphinemu.model.GameFile;
 import org.dolphinemu.dolphinemu.model.GameFileCache;
 import org.dolphinemu.dolphinemu.ui.platform.Platform;
-import org.dolphinemu.dolphinemu.utils.DirectoryInitialization;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
