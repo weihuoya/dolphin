@@ -22,7 +22,6 @@ add_library(videovulkan
   VKPipeline.cpp
   VKShader.cpp
   VKTexture.cpp
-  VulkanDeviceAllocator.cpp
   VulkanContext.cpp
   VulkanLoader.cpp
   main.cpp
