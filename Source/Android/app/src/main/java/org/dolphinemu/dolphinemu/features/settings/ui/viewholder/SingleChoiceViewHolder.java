@@ -39,27 +39,27 @@ public final class SingleChoiceViewHolder extends SettingViewHolder
     {
       mTextSettingDescription.setText(item.getDescriptionId());
     }
-    else if(item instanceof SingleChoiceSetting)
+    else if (item instanceof SingleChoiceSetting)
     {
-      SingleChoiceSetting setting = (SingleChoiceSetting)item;
+      SingleChoiceSetting setting = (SingleChoiceSetting) item;
       int selected = setting.getSelectedValue();
       Resources resMgr = mTextSettingDescription.getContext().getResources();
       String[] choices = resMgr.getStringArray(setting.getChoicesId());
       int[] values = resMgr.getIntArray(setting.getValuesId());
-      for(int i = 0; i < values.length; ++i)
+      for (int i = 0; i < values.length; ++i)
       {
-        if(values[i] == selected)
+        if (values[i] == selected)
         {
           mTextSettingDescription.setText(choices[i]);
         }
       }
     }
-    else if(item instanceof StringSingleChoiceSetting)
+    else if (item instanceof StringSingleChoiceSetting)
     {
-      StringSingleChoiceSetting setting = (StringSingleChoiceSetting)item;
+      StringSingleChoiceSetting setting = (StringSingleChoiceSetting) item;
       String[] choices = setting.getChoicesId();
       int valueIndex = setting.getSelectValueIndex();
-      if(valueIndex != -1)
+      if (valueIndex != -1)
         mTextSettingDescription.setText(choices[valueIndex]);
     }
   }
@@ -67,13 +67,14 @@ public final class SingleChoiceViewHolder extends SettingViewHolder
   @Override
   public void onClick(View clicked)
   {
+    int position = getAdapterPosition();
     if (mItem instanceof SingleChoiceSetting)
     {
-      getAdapter().onSingleChoiceClick((SingleChoiceSetting) mItem, getAdapterPosition());
+      getAdapter().onSingleChoiceClick((SingleChoiceSetting) mItem, position);
     }
     else if (mItem instanceof StringSingleChoiceSetting)
     {
-      getAdapter().onStringSingleChoiceClick((StringSingleChoiceSetting) mItem, getAdapterPosition());
+      getAdapter().onStringSingleChoiceClick((StringSingleChoiceSetting) mItem, position);
     }
   }
 }

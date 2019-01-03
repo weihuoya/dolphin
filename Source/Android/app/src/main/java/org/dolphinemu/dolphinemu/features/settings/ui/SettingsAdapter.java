@@ -341,7 +341,7 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
   {
     if (mDialog != null)
     {
-      if(mClickedPosition != -1)
+      if (mClickedPosition != -1)
       {
         notifyItemChanged(mClickedPosition);
         mClickedPosition = -1;
