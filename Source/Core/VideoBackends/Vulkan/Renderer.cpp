@@ -614,7 +614,7 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
   TextureCache::GetInstance()->Cleanup(frameCount);
 }
 
-void Renderer::SwapInvalid()
+void Renderer::Flush()
 {
   // End the current render pass.
   StateTracker::GetInstance()->EndRenderPass();
@@ -630,9 +630,6 @@ void Renderer::SwapInvalid()
 
   // Prep for the next frame (get command buffer ready) before doing anything else.
   BeginFrame();
-
-  // Clean up stale textures.
-  TextureCache::GetInstance()->Cleanup(frameCount);
 }
 
 void Renderer::DrawScreen(VKTexture* xfb_texture, const EFBRectangle& xfb_region)

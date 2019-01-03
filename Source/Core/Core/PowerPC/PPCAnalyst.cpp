@@ -790,11 +790,15 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
           if(block_size > 1)
           {
             // Always follow BX instructions.
-            follow = true;
             if (inst.LK)
             {
+              follow = true;
               found_call = true;
               caller = i;
+            }
+            else if (code[i].branchTo != code[i].address)
+            {
+              follow = true;
             }
           }
           break;
@@ -846,7 +850,7 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
           break;
       }
 
-      if (follow && code[i].branchTo != code[i].address)
+      if (follow)
       {
         // Follow the unconditional branch.
         numFollows += 1;
@@ -861,28 +865,32 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
     if (HasOption(OPTION_CONDITIONAL_CONTINUE))
     {
       bool conditional_continue = false;
-      if (inst.OPCD == 16 &&
-          ((inst.BO & BO_DONT_DECREMENT_FLAG) == 0 || (inst.BO & BO_DONT_CHECK_CONDITION) == 0))
+      if (inst.OPCD == 16)
       {
-        // bcx with conditional branch
-        conditional_continue = true;
+        if ((inst.BO & BO_DONT_DECREMENT_FLAG) == 0 || (inst.BO & BO_DONT_CHECK_CONDITION) == 0)
+        {
+          // bcx with conditional branch
+          conditional_continue = true;
+        }
       }
-      else if (inst.OPCD == 19 && inst.SUBOP10 == 16 &&
-               ((inst.BO & BO_DONT_DECREMENT_FLAG) == 0 ||
-                (inst.BO & BO_DONT_CHECK_CONDITION) == 0))
+      else if (inst.OPCD == 19)
       {
-        // bclrx with conditional branch
-        conditional_continue = true;
+        if(inst.SUBOP10 == 16 &&
+           ((inst.BO & BO_DONT_DECREMENT_FLAG) == 0 || (inst.BO & BO_DONT_CHECK_CONDITION) == 0))
+        {
+          // bclrx with conditional branch
+          conditional_continue = true;
+        }
+        else if (inst.SUBOP10 == 528 && (inst.BO_2 & BO_DONT_CHECK_CONDITION) == 0)
+        {
+          // Rare bcctrx with conditional branch
+          // Seen in NES games
+          conditional_continue = true;
+        }
       }
       else if (inst.OPCD == 3 || (inst.OPCD == 31 && inst.SUBOP10 == 4))
       {
         // tw/twi tests and raises an exception
-        conditional_continue = true;
-      }
-      else if (inst.OPCD == 19 && inst.SUBOP10 == 528 && (inst.BO_2 & BO_DONT_CHECK_CONDITION) == 0)
-      {
-        // Rare bcctrx with conditional branch
-        // Seen in NES games
         conditional_continue = true;
       }
 

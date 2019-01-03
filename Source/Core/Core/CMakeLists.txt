@@ -320,10 +320,6 @@ if(LIBUSB_FOUND)
   )
 endif()
 
-if(NOT APPLE)
-  target_link_libraries(core PUBLIC videovulkan)
-endif()
-
 if(NOT ANDROID)
   target_link_libraries(core
   PRIVATE

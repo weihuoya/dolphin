@@ -715,7 +715,7 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
     }
     else
     {
-      SwapInvalid();
+      Flush();
     }
 
     // Update our last xfb values
@@ -724,7 +724,7 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
   }
   else
   {
-    SwapInvalid();
+    Flush();
   }
 }
 

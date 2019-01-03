@@ -1478,17 +1478,11 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
   ClearEFBCache();
 }
 
-void Renderer::SwapInvalid()
+void Renderer::Flush()
 {
   // ensure all commands are sent to the GPU.
   // Otherwise the driver could batch several frames togehter.
   glFlush();
-
-  // Clean out old stuff from caches. It's not worth it to clean out the shader caches.
-  g_texture_cache->Cleanup(frameCount);
-
-  // Invalidate EFB cache
-  ClearEFBCache();
 }
 
 void Renderer::CheckForSurfaceChange()
