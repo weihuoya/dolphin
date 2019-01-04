@@ -485,14 +485,17 @@ JNIEXPORT jintArray JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_getRunn
   (JNIEnv * env, jobject obj)
 {
   int i = 0;
-  int settings[9];
+  int settings[10];
 
+  // gfx
   settings[i++] = Config::Get(Config::GFX_SHOW_FPS);
   settings[i++] = Config::Get(Config::GFX_HACK_EFB_ACCESS_ENABLE) == false;
   settings[i++] = Config::Get(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM);
   settings[i++] = Config::Get(Config::GFX_HACK_EFB_EMULATE_FORMAT_CHANGES) == false;
   settings[i++] = Config::Get(Config::GFX_ENHANCE_ARBITRARY_MIPMAP_DETECTION);
+  settings[i++] = Config::Get(Config::GFX_HACK_IMMEDIATE_XFB);
 
+  // core
   settings[i++] = SConfig::GetInstance().bSyncGPUOnSkipIdleHack;
   settings[i++] = SConfig::GetInstance().m_OCEnable;
   settings[i++] = static_cast<int>(SConfig::GetInstance().m_OCFactor * 100.0f);
@@ -516,6 +519,7 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_setRunningSe
   Config::SetBaseOrCurrent(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM, settings[i++]);
   Config::SetBaseOrCurrent(Config::GFX_HACK_EFB_EMULATE_FORMAT_CHANGES, settings[i++] == 0);
   Config::SetBaseOrCurrent(Config::GFX_ENHANCE_ARBITRARY_MIPMAP_DETECTION, settings[i++]);
+  Config::SetBaseOrCurrent(Config::GFX_HACK_IMMEDIATE_XFB, settings[i++]);
   g_Config.Refresh();
 
   // core settings will save at end of game

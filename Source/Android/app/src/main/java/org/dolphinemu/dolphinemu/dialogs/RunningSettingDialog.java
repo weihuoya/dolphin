@@ -43,17 +43,18 @@ public class RunningSettingDialog extends DialogFragment
     public static final int SETTING_EFB_TEXTURE = 2;
     public static final int SETTING_IGNORE_FORMAT = 3;
     public static final int SETTING_ARBITRARY_MIPMAP_DETECTION = 4;
+    public static final int SETTING_IMMEDIATE_XFB = 5;
     // core
-    public static final int SETTING_SYNC_ON_SKIP_IDLE = 5;
-    public static final int SETTING_OVERCLOCK_ENABLE = 6;
-    public static final int SETTING_OVERCLOCK_PERCENT = 7;
-    public static final int SETTING_JIT_FOLLOW_BRANCH = 8;
+    public static final int SETTING_SYNC_ON_SKIP_IDLE = 6;
+    public static final int SETTING_OVERCLOCK_ENABLE = 7;
+    public static final int SETTING_OVERCLOCK_PERCENT = 8;
+    public static final int SETTING_JIT_FOLLOW_BRANCH = 9;
     //
-    public static final int SETTING_PHONE_RUMBLE = 9;
-    public static final int SETTING_TOUCH_POINTER = 10;
-    public static final int SETTING_TOUCH_POINTER_SENSITIVE = 11;
-    public static final int SETTING_JOYSTICK_RELATIVE = 12;
-    public static final int SETTING_AUTOHIDE_POINTER = 13;
+    public static final int SETTING_PHONE_RUMBLE = 100;
+    public static final int SETTING_TOUCH_POINTER = 101;
+    public static final int SETTING_TOUCH_POINTER_SENSITIVE = 102;
+    public static final int SETTING_JOYSTICK_RELATIVE = 103;
+    public static final int SETTING_AUTOHIDE_POINTER = 104;
 
     // view type
     public static final int TYPE_CHECKBOX = 0;
@@ -339,6 +340,8 @@ public class RunningSettingDialog extends DialogFragment
         R.string.ignore_format_changes, SettingsItem.TYPE_CHECKBOX, mRunningSettings[i++]));
       mSettings.add(new SettingsItem(SettingsItem.SETTING_ARBITRARY_MIPMAP_DETECTION,
         R.string.arbitrary_mipmap_detection, SettingsItem.TYPE_CHECKBOX, mRunningSettings[i++]));
+      mSettings.add(new SettingsItem(SettingsItem.SETTING_IMMEDIATE_XFB,
+        R.string.immediate_xfb, SettingsItem.TYPE_CHECKBOX, mRunningSettings[i++]));
 
       // core
       mSettings.add(new SettingsItem(SettingsItem.SETTING_SYNC_ON_SKIP_IDLE,
