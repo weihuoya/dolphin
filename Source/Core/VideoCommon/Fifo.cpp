@@ -349,14 +349,13 @@ void RunGpuLoop()
             if (readPtr == fifo.CPEnd + 32)
               readPtr = fifo.CPBase;
 
-            Common::AtomicStore(fifo.CPReadPointer, readPtr);
-            Common::AtomicStore(fifo.SafeCPReadPointer, readPtr);
-            Common::AtomicAdd(fifo.CPReadWriteDistance, -(s32)readSize);
-
-            ASSERT_MSG(COMMANDPROCESSOR, (s32)fifo.CPReadWriteDistance - readSize >= 0,
+            ASSERT_MSG(COMMANDPROCESSOR, fifo.CPReadWriteDistance >= readSize,
                        "Negative fifo.CPReadWriteDistance = %i in FIFO Loop !\nThat can produce "
                        "instability in the game. Please report it.",
                        fifo.CPReadWriteDistance - readSize);
+
+            Common::AtomicStore(fifo.CPReadPointer, readPtr);
+            Common::AtomicAdd(fifo.CPReadWriteDistance, -(s32)readSize);
 
             u8* write_ptr = s_video_buffer_write_ptr;
             if (write_ptr - s_video_buffer_read_ptr >= needSize)
