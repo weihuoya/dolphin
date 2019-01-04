@@ -61,7 +61,6 @@
     <ClCompile Include="VKShader.cpp" />
     <ClCompile Include="VKTexture.cpp" />
     <ClCompile Include="VulkanContext.cpp" />
-    <ClCompile Include="VulkanDeviceAllocator.cpp" />
     <ClCompile Include="VulkanLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -91,7 +90,6 @@
     <ClInclude Include="VKShader.h" />
     <ClInclude Include="VKTexture.h" />
     <ClInclude Include="VulkanContext.h" />
-    <ClInclude Include="VulkanDeviceAllocator.h" />
     <ClInclude Include="VulkanLoader.h" />
   </ItemGroup>
   <ItemGroup>

@@ -15,7 +15,7 @@ import org.dolphinemu.dolphinemu.features.settings.utils.SettingsFile;
 
 public class Rumble
 {
-  private static long timeStamp;
+  private static long lastRumbleTime = 0;
   private static Vibrator phoneVibrator;
   private static VibrationEffect vibrationEffect;
   private static SparseArray<Vibrator> emuVibrators;
@@ -25,7 +25,6 @@ public class Rumble
     Settings settings = new Settings();
     settings.loadSettings(null);
     SettingSection section = settings.getSection(Settings.SECTION_BINDINGS);
-    timeStamp = System.currentTimeMillis();
 
     emuVibrators = new SparseArray<>();
     for (int i = 0; i < 8; i++)
@@ -77,9 +76,9 @@ public class Rumble
   public static void checkRumble(int padId, double state)
   {
     long currentTime = System.currentTimeMillis();
-    if(currentTime - timeStamp < 100)
+    if(currentTime - lastRumbleTime < 100)
       return;
-    timeStamp = currentTime;
+    lastRumbleTime = currentTime;
 
     if (phoneVibrator != null)
       doRumble(phoneVibrator);
