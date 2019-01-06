@@ -64,14 +64,6 @@ PRIVATE
   xxhash
 )
 
-if(NOT ANDROID)
-  target_sources(videocommon PRIVATE
-    UberShaderCommon.cpp
-    UberShaderPixel.cpp
-    UberShaderVertex.cpp
-  )
-endif()
-
 if(_M_X86)
   target_sources(videocommon PRIVATE
     TextureDecoder_x64.cpp
