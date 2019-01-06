@@ -42,12 +42,16 @@
 #include "Core/HW/Sram.h"
 #include "Core/HW/WiiSave.h"
 #include "Core/HW/WiiSaveStructs.h"
+#include "Core/HW/WiimoteEmu/WiimoteEmu.h"
+#include "Core/HW/WiimoteReal/WiimoteReal.h"
 #include "Core/IOS/ES/ES.h"
 #include "Core/IOS/FS/FileSystem.h"
 #include "Core/IOS/IOS.h"
 #include "Core/NetPlayClient.h"  //for NetPlayUI
 #include "DiscIO/Enums.h"
+#include "InputCommon/ControllerEmu/ControlGroup/Extension.h"
 #include "InputCommon/GCPadStatus.h"
+#include "InputCommon/InputConfig.h"
 #include "UICommon/GameFile.h"
 
 #if !defined(_WIN32)
@@ -144,6 +148,20 @@ NetPlayServer::NetPlayServer(const u16 port, const bool forward_port,
   }
 }
 
+static PlayerId* PeerPlayerId(ENetPeer* peer)
+{
+  return static_cast<PlayerId*>(peer->data);
+}
+
+static void ClearPeerPlayerId(ENetPeer* peer)
+{
+  if (peer->data)
+  {
+    delete PeerPlayerId(peer);
+    peer->data = nullptr;
+  }
+}
+
 // called from ---NETPLAY--- thread
 void NetPlayServer::ThreadFunc()
 {
@@ -191,26 +209,10 @@ void NetPlayServer::ThreadFunc()
       {
       case ENET_EVENT_TYPE_CONNECT:
       {
-        ENetPeer* accept_peer = netEvent.peer;
-        unsigned int error;
-        {
-          std::lock_guard<std::recursive_mutex> lkg(m_crit.game);
-          error = OnConnect(accept_peer);
-        }
-
-        if (error)
-        {
-          sf::Packet spac;
-          spac << (MessageId)error;
-          // don't need to lock, this client isn't in the client map
-          Send(accept_peer, spac);
-          if (netEvent.peer->data)
-          {
-            delete (PlayerId*)netEvent.peer->data;
-            netEvent.peer->data = nullptr;
-          }
-          enet_peer_disconnect_later(accept_peer, 0);
-        }
+        // Actual client initialization is deferred to the receive event, so here
+        // we'll just log the new connection.
+        INFO_LOG(NETPLAY, "Peer connected from: %x:%u", netEvent.peer->address.host,
+                 netEvent.peer->address.port);
       }
       break;
       case ENET_EVENT_TYPE_RECEIVE:
@@ -218,18 +220,37 @@ void NetPlayServer::ThreadFunc()
         sf::Packet rpac;
         rpac.append(netEvent.packet->data, netEvent.packet->dataLength);
 
-        auto it = m_players.find(*(PlayerId*)netEvent.peer->data);
-        Client& client = it->second;
-        if (OnData(rpac, client) != 0)
+        if (!netEvent.peer->data)
         {
-          // if a bad packet is received, disconnect the client
-          std::lock_guard<std::recursive_mutex> lkg(m_crit.game);
-          OnDisconnect(client);
-
-          if (netEvent.peer->data)
+          // uninitialized client, we'll assume this is their initialization packet
+          unsigned int error;
           {
-            delete (PlayerId*)netEvent.peer->data;
-            netEvent.peer->data = nullptr;
+            std::lock_guard<std::recursive_mutex> lkg(m_crit.game);
+            error = OnConnect(netEvent.peer, rpac);
+          }
+
+          if (error)
+          {
+            sf::Packet spac;
+            spac << static_cast<MessageId>(error);
+            // don't need to lock, this client isn't in the client map
+            Send(netEvent.peer, spac);
+
+            ClearPeerPlayerId(netEvent.peer);
+            enet_peer_disconnect_later(netEvent.peer, 0);
+          }
+        }
+        else
+        {
+          auto it = m_players.find(*PeerPlayerId(netEvent.peer));
+          Client& client = it->second;
+          if (OnData(rpac, client) != 0)
+          {
+            // if a bad packet is received, disconnect the client
+            std::lock_guard<std::recursive_mutex> lkg(m_crit.game);
+            OnDisconnect(client);
+
+            ClearPeerPlayerId(netEvent.peer);
           }
         }
         enet_packet_destroy(netEvent.packet);
@@ -240,17 +261,13 @@ void NetPlayServer::ThreadFunc()
         std::lock_guard<std::recursive_mutex> lkg(m_crit.game);
         if (!netEvent.peer->data)
           break;
-        auto it = m_players.find(*(PlayerId*)netEvent.peer->data);
+        auto it = m_players.find(*PeerPlayerId(netEvent.peer));
         if (it != m_players.end())
         {
           Client& client = it->second;
           OnDisconnect(client);
 
-          if (netEvent.peer->data)
-          {
-            delete (PlayerId*)netEvent.peer->data;
-            netEvent.peer->data = nullptr;
-          }
+          ClearPeerPlayerId(netEvent.peer);
         }
       }
       break;
@@ -263,23 +280,14 @@ void NetPlayServer::ThreadFunc()
   // close listening socket and client sockets
   for (auto& player_entry : m_players)
   {
-    delete (PlayerId*)player_entry.second.socket->data;
-    player_entry.second.socket->data = nullptr;
+    ClearPeerPlayerId(player_entry.second.socket);
     enet_peer_disconnect(player_entry.second.socket, 0);
   }
 }
 
 // called from ---NETPLAY--- thread
-unsigned int NetPlayServer::OnConnect(ENetPeer* socket)
+unsigned int NetPlayServer::OnConnect(ENetPeer* socket, sf::Packet& rpac)
 {
-  sf::Packet rpac;
-  ENetPacket* epack;
-  do
-  {
-    epack = enet_peer_receive(socket, nullptr);
-  } while (epack == nullptr);
-  rpac.append(epack->data, epack->dataLength);
-
   // give new client first available id
   PlayerId pid = 1;
   for (auto i = m_players.begin(); i != m_players.end(); ++i)
@@ -316,7 +324,6 @@ unsigned int NetPlayServer::OnConnect(ENetPeer* socket)
   rpac >> player.revision;
   rpac >> player.name;
 
-  enet_packet_destroy(epack);
   // try to automatically assign new user a pad
   for (PadMapping& mapping : m_pad_map)
   {
@@ -398,7 +405,7 @@ unsigned int NetPlayServer::OnConnect(ENetPeer* socket)
   // add client to the player list
   {
     std::lock_guard<std::recursive_mutex> lkp(m_crit.players);
-    m_players.emplace(*(PlayerId*)player.socket->data, std::move(player));
+    m_players.emplace(*PeerPlayerId(player.socket), std::move(player));
     UpdatePadMapping();  // sync pad mappings with everyone
     UpdateWiimoteMapping();
   }
@@ -1159,8 +1166,10 @@ bool NetPlayServer::StartGame()
   spac << m_settings.m_OCEnable;
   spac << m_settings.m_OCFactor;
   spac << m_settings.m_ReducePollingRate;
-  spac << m_settings.m_EXIDevice[0];
-  spac << m_settings.m_EXIDevice[1];
+
+  for (auto& device : m_settings.m_EXIDevice)
+    spac << device;
+
   spac << m_settings.m_EFBAccessEnable;
   spac << m_settings.m_BBoxEnable;
   spac << m_settings.m_ForceProgressive;
@@ -1205,6 +1214,16 @@ bool NetPlayServer::StartGame()
   spac << region;
   spac << m_settings.m_SyncCodes;
   spac << m_settings.m_SyncAllWiiSaves;
+
+  for (int i = 0; i < m_settings.m_WiimoteExtension.size(); i++)
+  {
+    const int extension =
+        static_cast<ControllerEmu::Extension*>(
+            static_cast<WiimoteEmu::Wiimote*>(Wiimote::GetConfig()->GetController(i))
+                ->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Extension))
+            ->switch_extension;
+    spac << extension;
+  }
 
   SendAsyncToClients(std::move(spac));
 
