@@ -472,7 +472,7 @@ public final class SettingsFragmentPresenter
       if (shaderFiles != null)
       {
         String[] result = new String[shaderFiles.length + 1];
-        result[0] = "Off";
+        result[0] = mActivity.getString(R.string.off);
         for (int i = 0; i < shaderFiles.length; i++)
         {
           String name = shaderFiles[i].getName();
