@@ -124,17 +124,8 @@ private:
   size_t m_current_frame;
 
   // callbacks when a fence point is set
-  struct FencePointEntity
-  {
-      FencePointEntity(const void* key,
-                       const CommandBufferQueuedCallback& queued_callback,
-                       const CommandBufferExecutedCallback& executed_callback) :
-        entity_key(key), queued_callback(queued_callback), executed_callback(executed_callback) {}
-    const void* entity_key;
-    CommandBufferQueuedCallback queued_callback;
-    CommandBufferExecutedCallback executed_callback;
-  };
-  std::vector<FencePointEntity> m_fence_point_callbacks;
+  std::map<const void*, std::pair<CommandBufferQueuedCallback, CommandBufferExecutedCallback>>
+    m_fence_point_callbacks;
 
   // Threaded command buffer execution
   // Semaphore determines when a command buffer can be queued

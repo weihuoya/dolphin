@@ -253,7 +253,7 @@ void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread, Swa
   // Fire fence tracking callbacks. This can't happen on the worker thread.
   // We invoke these before submitting so that any last-minute commands can be added.
   for (const auto& iter : m_fence_point_callbacks)
-    iter.queued_callback(resources.command_buffers[1], resources.fence);
+    iter.second.first(resources.command_buffers[1], resources.fence);
 
   // This command buffer now has commands, so can't be re-used without waiting.
   resources.needs_fence_wait = true;
@@ -375,9 +375,10 @@ void CommandBufferManager::OnCommandBufferExecuted(size_t index)
   FrameResources& resources = m_frame_resources[index];
 
   // Fire fence tracking callbacks.
-  for (auto iter = m_fence_point_callbacks.begin(); iter != m_fence_point_callbacks.end(); ++iter)
+  for (auto iter = m_fence_point_callbacks.begin(); iter != m_fence_point_callbacks.end();)
   {
-    iter->executed_callback(resources.fence);
+    auto backup_iter = iter++;
+    backup_iter->second.second(resources.fence);
   }
 
   // Clean up all objects pending destruction on this command buffer
@@ -491,27 +492,16 @@ void CommandBufferManager::AddFencePointCallback(
     const void* key, const CommandBufferQueuedCallback& queued_callback,
     const CommandBufferExecutedCallback& executed_callback)
 {
-  for(auto iter = m_fence_point_callbacks.begin(); iter != m_fence_point_callbacks.end(); ++iter)
-  {
-    if(iter->entity_key == key)
-    {
-      ASSERT(false);
-    }
-  }
-  m_fence_point_callbacks.emplace_back(key, queued_callback, executed_callback);
+  // Shouldn't be adding twice.
+  ASSERT(m_fence_point_callbacks.find(key) == m_fence_point_callbacks.end());
+  m_fence_point_callbacks.emplace(key, std::make_pair(queued_callback, executed_callback));
 }
 
 void CommandBufferManager::RemoveFencePointCallback(const void* key)
 {
-  for(auto iter = m_fence_point_callbacks.begin(); iter != m_fence_point_callbacks.end(); ++iter)
-  {
-    if(iter->entity_key == key)
-    {
-      m_fence_point_callbacks.erase(iter);
-      return;
-    }
-  }
-  ASSERT(false);
+  auto iter = m_fence_point_callbacks.find(key);
+  ASSERT(iter != m_fence_point_callbacks.end());
+  m_fence_point_callbacks.erase(iter);
 }
 
 std::unique_ptr<CommandBufferManager> g_command_buffer_mgr;
