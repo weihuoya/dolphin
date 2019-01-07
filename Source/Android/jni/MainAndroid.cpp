@@ -521,6 +521,7 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_setRunningSe
   Config::SetBaseOrCurrent(Config::GFX_ENHANCE_ARBITRARY_MIPMAP_DETECTION, settings[i++]);
   Config::SetBaseOrCurrent(Config::GFX_HACK_IMMEDIATE_XFB, settings[i++]);
   g_Config.Refresh();
+  UpdateActiveConfig();
 
   // core settings will save at end of game
   // and don't save changes to ini file

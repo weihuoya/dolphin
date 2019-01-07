@@ -857,6 +857,9 @@ PFNDOLGENVERTEXARRAYSPROC dolGenVertexArrays;
 PFNDOLISVERTEXARRAYPROC dolIsVertexArray;
 
 // ARB_framebuffer_object
+PFNDODISCARDFRAMEBUFFEREXT doDiscardFramebufferEXT;
+
+// ARB_framebuffer_object
 PFNDOLBINDFRAMEBUFFERPROC dolBindFramebuffer;
 PFNDOLBINDRENDERBUFFERPROC dolBindRenderbuffer;
 PFNDOLBLITFRAMEBUFFERPROC dolBlitFramebuffer;
@@ -1913,6 +1916,9 @@ const GLFunc gl_function_array[] = {
                   "GL_APPLE_vertex_array_object !GL_ARB_vertex_array_object"),
     GLFUNC_SUFFIX(glIsVertexArray, APPLE,
                   "GL_APPLE_vertex_array_object !GL_ARB_vertex_array_object"),
+
+    // EXT_discard_framebuffer
+    GLFUNC_REQUIRES(glDiscardFramebufferEXT, "GL_EXT_discard_framebuffer"),
 
     // ARB_framebuffer_object
     GLFUNC_REQUIRES(glFramebufferTexture1D, "GL_ARB_framebuffer_object"),

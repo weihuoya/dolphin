@@ -20,7 +20,6 @@ namespace Vulkan
 class BoundingBox;
 class FramebufferManager;
 class SwapChain;
-class StagingTexture2D;
 class Texture2D;
 class RasterFont;
 class VKFramebuffer;
@@ -53,7 +52,6 @@ public:
                                                          size_t length) override;
   std::unique_ptr<AbstractPipeline> CreatePipeline(const AbstractPipelineConfig& config) override;
 
-  SwapChain* GetSwapChain() const { return m_swap_chain.get(); }
   BoundingBox* GetBoundingBox() const { return m_bounding_box.get(); }
   void RenderText(const std::string& pstr, int left, int top, u32 color) override;
   u32 AccessEFB(EFBAccessType type, u32 x, u32 y, u32 poke_data) override;
@@ -76,11 +74,7 @@ public:
   void RestoreAPIState() override;
 
   void SetPipeline(const AbstractPipeline* pipeline) override;
-  void SetFramebuffer(const AbstractFramebuffer* framebuffer) override;
-  void SetAndDiscardFramebuffer(const AbstractFramebuffer* framebuffer) override;
-  void SetAndClearFramebuffer(const AbstractFramebuffer* framebuffer,
-                              const ClearColor& color_value = {},
-                              float depth_value = 0.0f) override;
+
   void SetScissorRect(const MathUtil::Rectangle<int>& rc) override;
   void SetTexture(u32 index, const AbstractTexture* texture) override;
   void SetSamplerState(u32 index, const SamplerState& state) override;
@@ -103,7 +97,6 @@ private:
   void OnSwapChainResized();
   void BindEFBToStateTracker();
   void RecreateEFBFramebuffer();
-  void BindFramebuffer(const VKFramebuffer* fb);
 
   void RecompileShaders();
   bool CompileShaders();
@@ -115,8 +108,6 @@ private:
   // Copies/scales an image to the currently-bound framebuffer.
   void BlitScreen(VkRenderPass render_pass, const TargetRectangle& dst_rect,
                   const TargetRectangle& src_rect, const Texture2D* src_tex);
-
-  std::tuple<VkBuffer, u32> UpdateUtilityUniformBuffer(const void* uniforms, u32 uniforms_size);
 
   std::unique_ptr<SwapChain> m_swap_chain;
   std::unique_ptr<BoundingBox> m_bounding_box;

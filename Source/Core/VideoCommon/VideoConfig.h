@@ -46,6 +46,9 @@ struct VideoConfig final
   void VerifyValidity();
   bool IsVSync() const;
 
+  // Check in Render SwapImpl
+  bool bDirty;
+
   // General
   bool bVSync;
   bool bWidescreenHack;

@@ -1238,44 +1238,6 @@ void Renderer::ReinterpretPixelData(unsigned int convtype)
   }
 }
 
-void Renderer::SetFramebuffer(const AbstractFramebuffer* framebuffer)
-{
-  glBindFramebuffer(GL_FRAMEBUFFER, static_cast<const OGLFramebuffer*>(framebuffer)->GetFBO());
-  m_current_framebuffer = framebuffer;
-  m_current_framebuffer_width = framebuffer->GetWidth();
-  m_current_framebuffer_height = framebuffer->GetHeight();
-}
-
-void Renderer::SetAndDiscardFramebuffer(const AbstractFramebuffer* framebuffer)
-{
-  // EXT_discard_framebuffer could be used here to save bandwidth on tilers.
-  SetFramebuffer(framebuffer);
-}
-
-void Renderer::SetAndClearFramebuffer(const AbstractFramebuffer* framebuffer,
-                                      const ClearColor& color_value, float depth_value)
-{
-  SetFramebuffer(framebuffer);
-
-  // NOTE: This disturbs the current scissor/mask setting.
-  // This won't be an issue when we implement proper state tracking.
-  glDisable(GL_SCISSOR_TEST);
-  GLbitfield clear_mask = 0;
-  if (framebuffer->HasColorBuffer())
-  {
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glClearColor(color_value[0], color_value[1], color_value[2], color_value[3]);
-    clear_mask |= GL_COLOR_BUFFER_BIT;
-  }
-  if (framebuffer->HasDepthBuffer())
-  {
-    glDepthMask(GL_TRUE);
-    glClearDepth(depth_value);
-    clear_mask |= GL_DEPTH_BUFFER_BIT;
-  }
-  glClear(clear_mask);
-}
-
 void Renderer::ApplyBlendingState(const BlendingState state, bool force)
 {
   if (!force && m_current_blend_state == state)
@@ -1388,7 +1350,7 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
     auto* xfb_texture = static_cast<OGLTexture*>(texture);
     // Clear the framebuffer before drawing anything.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glClearColor(0, 0, 0, 0);
+    //glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     m_current_framebuffer = nullptr;
     m_current_framebuffer_width = m_backbuffer_width;
@@ -1459,20 +1421,24 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
 
   g_Config.iSaveTargetId = 0;
 
-  int old_anisotropy = g_ActiveConfig.iMaxAnisotropy;
-  UpdateActiveConfig();
-  g_texture_cache->OnConfigChanged(g_ActiveConfig);
+  if(g_ActiveConfig.bDirty)
+  {
+    int old_anisotropy = g_ActiveConfig.iMaxAnisotropy;
+    UpdateActiveConfig();
+    g_texture_cache->OnConfigChanged(g_ActiveConfig);
 
-  if (old_anisotropy != g_ActiveConfig.iMaxAnisotropy)
-    g_sampler_cache->Clear();
+    if (old_anisotropy != g_ActiveConfig.iMaxAnisotropy)
+      g_sampler_cache->Clear();
 
-  // Invalidate shader cache when the host config changes.
-  CheckForHostConfigChanges();
+    // Invalidate shader cache when the host config changes.
+    CheckForHostConfigChanges();
+
+    g_ActiveConfig.bDirty = false;
+  }
 
   // For testing zbuffer targets.
   // Renderer::SetZBufferRender();
-  // SaveTexture("tex.png", GL_TEXTURE_2D, s_FakeZTarget,
-  //	      GetTargetWidth(), GetTargetHeight());
+  // SaveTexture("tex.png", GL_TEXTURE_2D, s_FakeZTarget, GetTargetWidth(), GetTargetHeight());
 
   // Invalidate EFB cache
   ClearEFBCache();

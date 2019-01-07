@@ -107,14 +107,6 @@ public:
   CreateFramebuffer(const AbstractTexture* color_attachment,
                     const AbstractTexture* depth_attachment) = 0;
 
-  // Framebuffer operations.
-  virtual void SetFramebuffer(const AbstractFramebuffer* framebuffer) {}
-  virtual void SetAndDiscardFramebuffer(const AbstractFramebuffer* framebuffer) {}
-  virtual void SetAndClearFramebuffer(const AbstractFramebuffer* framebuffer,
-                                      const ClearColor& color_value = {}, float depth_value = 0.0f)
-  {
-  }
-
   // Drawing with currently-bound pipeline state.
   virtual void Draw(u32 base_vertex, u32 num_vertices) {}
   virtual void DrawIndexed(u32 base_index, u32 num_indices, u32 base_vertex) {}
@@ -208,8 +200,8 @@ protected:
 
   // TODO: Remove the width/height parameters once we make the EFB an abstract framebuffer.
   const AbstractFramebuffer* m_current_framebuffer = nullptr;
-  u32 m_current_framebuffer_width = 1;
-  u32 m_current_framebuffer_height = 1;
+  int m_current_framebuffer_width = 1;
+  int m_current_framebuffer_height = 1;
 
   Common::Flag m_screenshot_request;
   Common::Event m_screenshot_completed;

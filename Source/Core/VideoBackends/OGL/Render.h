@@ -104,11 +104,7 @@ public:
                     const AbstractTexture* depth_attachment) override;
 
   void SetPipeline(const AbstractPipeline* pipeline) override;
-  void SetFramebuffer(const AbstractFramebuffer* framebuffer) override;
-  void SetAndDiscardFramebuffer(const AbstractFramebuffer* framebuffer) override;
-  void SetAndClearFramebuffer(const AbstractFramebuffer* framebuffer,
-                              const ClearColor& color_value = {},
-                              float depth_value = 0.0f) override;
+
   void SetScissorRect(const MathUtil::Rectangle<int>& rc) override;
   void SetTexture(u32 index, const AbstractTexture* texture) override;
   void SetSamplerState(u32 index, const SamplerState& state) override;

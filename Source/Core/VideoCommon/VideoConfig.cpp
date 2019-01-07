@@ -148,6 +148,7 @@ void VideoConfig::Refresh()
   }
 
   VerifyValidity();
+  bDirty = true;
 }
 
 void VideoConfig::VerifyValidity()

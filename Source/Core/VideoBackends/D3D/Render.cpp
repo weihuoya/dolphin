@@ -694,36 +694,6 @@ void Renderer::RestoreAPIState()
   BPFunctions::SetScissor();
 }
 
-void Renderer::SetFramebuffer(const AbstractFramebuffer* framebuffer)
-{
-  const DXFramebuffer* fb = static_cast<const DXFramebuffer*>(framebuffer);
-  D3D::context->OMSetRenderTargets(fb->GetNumRTVs(), fb->GetRTVArray(), fb->GetDSV());
-  m_current_framebuffer = fb;
-  m_current_framebuffer_width = fb->GetWidth();
-  m_current_framebuffer_height = fb->GetHeight();
-}
-
-void Renderer::SetAndDiscardFramebuffer(const AbstractFramebuffer* framebuffer)
-{
-  SetFramebuffer(framebuffer);
-}
-
-void Renderer::SetAndClearFramebuffer(const AbstractFramebuffer* framebuffer,
-                                      const ClearColor& color_value, float depth_value)
-{
-  SetFramebuffer(framebuffer);
-  if (framebuffer->GetColorFormat() != AbstractTextureFormat::Undefined)
-  {
-    D3D::context->ClearRenderTargetView(
-        static_cast<const DXFramebuffer*>(framebuffer)->GetRTVArray()[0], color_value.data());
-  }
-  if (framebuffer->GetDepthFormat() != AbstractTextureFormat::Undefined)
-  {
-    D3D::context->ClearDepthStencilView(static_cast<const DXFramebuffer*>(framebuffer)->GetDSV(),
-                                        D3D11_CLEAR_DEPTH, depth_value, 0);
-  }
-}
-
 void Renderer::SetTexture(u32 index, const AbstractTexture* texture)
 {
   D3D::stateman->SetTexture(

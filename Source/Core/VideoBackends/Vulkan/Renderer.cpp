@@ -180,28 +180,6 @@ Renderer::CreateFramebuffer(const AbstractTexture* color_attachment,
                                static_cast<const VKTexture*>(depth_attachment));
 }
 
-std::tuple<VkBuffer, u32> Renderer::UpdateUtilityUniformBuffer(const void* uniforms,
-                                                               u32 uniforms_size)
-{
-  StreamBuffer* ubo_buf = g_object_cache->GetUtilityShaderUniformBuffer();
-  if (!ubo_buf->ReserveMemory(uniforms_size, g_vulkan_context->GetUniformBufferAlignment()))
-  {
-    Util::ExecuteCurrentCommandsAndRestoreState(false, true);
-    if (!ubo_buf->ReserveMemory(uniforms_size, g_vulkan_context->GetUniformBufferAlignment()))
-    {
-      PanicAlert("Failed to reserve uniform buffer space for utility draw.");
-      return {};
-    }
-  }
-
-  VkBuffer ubo = ubo_buf->GetBuffer();
-  u32 ubo_offset = static_cast<u32>(ubo_buf->GetCurrentOffset());
-  std::memcpy(ubo_buf->GetCurrentHostPointer(), uniforms, uniforms_size);
-  ubo_buf->CommitMemory(uniforms_size);
-
-  return std::tie(ubo, ubo_offset);
-}
-
 void Renderer::SetPipeline(const AbstractPipeline* pipeline)
 {
   StateTracker::GetInstance()->SetPipeline(static_cast<const VKPipeline*>(pipeline));
@@ -607,8 +585,12 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
       g_command_buffer_mgr->GetCurrentCommandBuffer(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
   RestoreAPIState();
 
-  // Determine what (if anything) has changed in the config.
-  CheckForConfigChanges();
+  if(g_ActiveConfig.bDirty)
+  {
+    // Determine what (if anything) has changed in the config.
+    CheckForConfigChanges();
+    g_ActiveConfig.bDirty = false;
+  }
 
   // Clean up stale textures.
   TextureCache::GetInstance()->Cleanup(frameCount);
@@ -831,69 +813,6 @@ void Renderer::RestoreAPIState()
 
   // Instruct the state tracker to re-bind everything before the next draw
   StateTracker::GetInstance()->SetPendingRebind();
-}
-
-void Renderer::BindFramebuffer(const VKFramebuffer* fb)
-{
-  const VkRect2D render_area = {static_cast<int>(fb->GetWidth()),
-                                static_cast<int>(fb->GetHeight())};
-
-  StateTracker::GetInstance()->EndRenderPass();
-  if (m_current_framebuffer)
-    static_cast<const VKFramebuffer*>(m_current_framebuffer)->TransitionForSample();
-
-  fb->TransitionForRender();
-  StateTracker::GetInstance()->SetFramebuffer(fb->GetFB(), render_area);
-  StateTracker::GetInstance()->SetRenderPass(fb->GetLoadRenderPass(), fb->GetClearRenderPass());
-  m_current_framebuffer = fb;
-  m_current_framebuffer_width = fb->GetWidth();
-  m_current_framebuffer_height = fb->GetHeight();
-}
-
-void Renderer::SetFramebuffer(const AbstractFramebuffer* framebuffer)
-{
-  const VKFramebuffer* vkfb = static_cast<const VKFramebuffer*>(framebuffer);
-  BindFramebuffer(vkfb);
-  StateTracker::GetInstance()->BeginRenderPass();
-}
-
-void Renderer::SetAndDiscardFramebuffer(const AbstractFramebuffer* framebuffer)
-{
-  const VKFramebuffer* vkfb = static_cast<const VKFramebuffer*>(framebuffer);
-  BindFramebuffer(vkfb);
-
-  // If we're discarding, begin the discard pass, then switch to a load pass.
-  // This way if the command buffer is flushed, we don't start another discard pass.
-  StateTracker::GetInstance()->SetRenderPass(vkfb->GetDiscardRenderPass(),
-                                             vkfb->GetClearRenderPass());
-  StateTracker::GetInstance()->BeginRenderPass();
-  StateTracker::GetInstance()->SetRenderPass(vkfb->GetLoadRenderPass(), vkfb->GetClearRenderPass());
-}
-
-void Renderer::SetAndClearFramebuffer(const AbstractFramebuffer* framebuffer,
-                                      const ClearColor& color_value, float depth_value)
-{
-  const VKFramebuffer* vkfb = static_cast<const VKFramebuffer*>(framebuffer);
-  BindFramebuffer(vkfb);
-
-  const VkRect2D render_area = {static_cast<int>(vkfb->GetWidth()),
-                                static_cast<int>(vkfb->GetHeight())};
-  std::array<VkClearValue, 2> clear_values;
-  u32 num_clear_values = 0;
-  if (vkfb->GetColorFormat() != AbstractTextureFormat::Undefined)
-  {
-    std::memcpy(clear_values[num_clear_values].color.float32, color_value.data(),
-                sizeof(clear_values[num_clear_values].color.float32));
-    num_clear_values++;
-  }
-  if (vkfb->GetDepthFormat() != AbstractTextureFormat::Undefined)
-  {
-    clear_values[num_clear_values].depthStencil.depth = depth_value;
-    clear_values[num_clear_values].depthStencil.stencil = 0;
-    num_clear_values++;
-  }
-  StateTracker::GetInstance()->BeginClearRenderPass(render_area, clear_values.data(),
-                                                    num_clear_values);
 }
 
 void Renderer::SetTexture(u32 index, const AbstractTexture* texture)

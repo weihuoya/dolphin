@@ -534,7 +534,8 @@ bool SwapChain::InitDeviceObjects()
 
   m_swap_chain_render_pass =
     g_object_cache->GetRenderPass(GetSurfaceFormat().format, VK_FORMAT_UNDEFINED,
-                                  1, VK_ATTACHMENT_LOAD_OP_LOAD);
+                                  1, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
+
   m_swap_chain_clear_render_pass =
     g_object_cache->GetRenderPass(GetSurfaceFormat().format, VK_FORMAT_UNDEFINED,
                                   1, VK_ATTACHMENT_LOAD_OP_CLEAR);
