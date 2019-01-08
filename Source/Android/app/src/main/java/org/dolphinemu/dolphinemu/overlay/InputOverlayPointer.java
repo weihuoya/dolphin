@@ -64,8 +64,8 @@ public class InputOverlayPointer
     }
     else
     {
-      axises[0] = axises[1] = (mCenterY - y) / mHeight / 50 * InputOverlay.sIREmulateSensitive;
-      axises[2] = axises[3] = (mCenterX - x) / mWidth / 100 * InputOverlay.sIREmulateSensitive;
+      axises[0] = axises[1] = (y - mCenterY) / mHeight / 50 * InputOverlay.sIREmulateSensitive;
+      axises[2] = axises[3] = (x - mCenterX) / mWidth / 100 * InputOverlay.sIREmulateSensitive;
     }
 
     for (int i = 0; i < 4; i++)

@@ -143,10 +143,10 @@ public final class InputOverlayDrawableJoystick
       case InputOverlay.JOYSTICK_EMULATE_IR:
         mJoystickType = 0;
 
-        mFactors[0] = -0.8f;
-        mFactors[1] = -0.8f;
-        mFactors[2] = -0.8f;
-        mFactors[3] = -0.8f;
+        mFactors[0] = 0.8f;
+        mFactors[1] = 0.8f;
+        mFactors[2] = 0.4f;
+        mFactors[3] = 0.4f;
 
         mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
         mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
