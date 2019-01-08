@@ -117,6 +117,10 @@ public final class SettingsFragmentPresenter
         addHackSettings(sl);
         break;
 
+      case DEBUG:
+        addDebugSettings(sl);
+        break;
+
       case GCPAD_1:
       case GCPAD_2:
       case GCPAD_3:
@@ -147,14 +151,13 @@ public final class SettingsFragmentPresenter
   private void addConfigSettings(ArrayList<SettingsItem> sl)
   {
     sl.add(new SubmenuSetting(null, null, R.string.general_submenu, 0, MenuTag.CONFIG_GENERAL));
-    sl.add(new SubmenuSetting(null, null, R.string.grid_menu_graphics_settings, 0,
-      MenuTag.GRAPHICS));
+    sl.add(new SubmenuSetting(null, null, R.string.grid_menu_graphics_settings, 0, MenuTag.GRAPHICS));
     sl.add(new SubmenuSetting(null, null, R.string.enhancements_submenu, 0, MenuTag.ENHANCEMENTS));
     sl.add(new SubmenuSetting(null, null, R.string.hacks_submenu, 0, MenuTag.HACKS));
     sl.add(new SubmenuSetting(null, null, R.string.interface_submenu, 0, MenuTag.CONFIG_INTERFACE));
-
     sl.add(new SubmenuSetting(null, null, R.string.gamecube_submenu, 0, MenuTag.CONFIG_GAME_CUBE));
     sl.add(new SubmenuSetting(null, null, R.string.wii_submenu, 0, MenuTag.CONFIG_WII));
+    sl.add(new SubmenuSetting(null, null, R.string.debug_submenu, 0, MenuTag.DEBUG));
   }
 
   private void addGeneralSettings(ArrayList<SettingsItem> sl)
@@ -527,7 +530,8 @@ public final class SettingsFragmentPresenter
       Settings.SECTION_GFX_SETTINGS, R.string.texture_cache_accuracy,
       R.string.texture_cache_accuracy_description, R.array.textureCacheAccuracyEntries,
       R.array.textureCacheAccuracyValues, 128, texCacheAccuracy));
-    sl.add(new CheckBoxSetting(SettingsFile.KEY_GPU_TEXTURE_DECODING, Settings.SECTION_GFX_SETTINGS, R.string.gpu_texture_decoding, R.string.gpu_texture_decoding_description, false, gpuTextureDecoding));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_GPU_TEXTURE_DECODING, Settings.SECTION_GFX_SETTINGS,
+      R.string.gpu_texture_decoding, R.string.gpu_texture_decoding_description, false, gpuTextureDecoding));
 
     sl.add(new HeaderSetting(null, null, R.string.external_frame_buffer, 0));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_XFB_TEXTURE, Settings.SECTION_GFX_HACKS,
@@ -537,8 +541,57 @@ public final class SettingsFragmentPresenter
 
     sl.add(new HeaderSetting(null, null, R.string.other, 0));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_FAST_DEPTH, Settings.SECTION_GFX_SETTINGS,
-      R.string.fast_depth_calculation, R.string.fast_depth_calculation_description, true,
-      fastDepth));
+      R.string.fast_depth_calculation, R.string.fast_depth_calculation_description, true, fastDepth));
+  }
+
+  private void addDebugSettings(ArrayList<SettingsItem> sl)
+  {
+    SettingSection debugSection = mSettings.getSection(Settings.SECTION_DEBUG);
+
+    Setting jitOff = debugSection.getSetting(SettingsFile.KEY_DEBUG_JITOFF);
+    Setting jitLoadStoreOff = debugSection.getSetting(SettingsFile.KEY_DEBUG_JITLOADSTOREOFF);
+    Setting jitLoadStoreFloatingPointOff =
+            debugSection.getSetting(SettingsFile.KEY_DEBUG_JITLOADSTOREFLOATINGPOINTOFF);
+    Setting jitLoadStorePairedOff =
+            debugSection.getSetting(SettingsFile.KEY_DEBUG_JITLOADSTOREPAIREDOFF);
+    Setting jitFloatingPointOff =
+            debugSection.getSetting(SettingsFile.KEY_DEBUG_JITFLOATINGPOINTOFF);
+    Setting jitIntegerOff = debugSection.getSetting(SettingsFile.KEY_DEBUG_JITINTEGEROFF);
+    Setting jitPairedOff = debugSection.getSetting(SettingsFile.KEY_DEBUG_JITPAIREDOFF);
+    Setting jitSystemRegistersOff =
+            debugSection.getSetting(SettingsFile.KEY_DEBUG_JITSYSTEMREGISTEROFF);
+    Setting jitBranchOff = debugSection.getSetting(SettingsFile.KEY_DEBUG_JITBRANCHOFF);
+
+    sl.add(new HeaderSetting(null, null, R.string.debug_warning, 0));
+
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_DEBUG_JITOFF, Settings.SECTION_DEBUG,
+            R.string.debug_jitoff, 0, false,
+            jitOff));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_DEBUG_JITLOADSTOREOFF, Settings.SECTION_DEBUG,
+            R.string.debug_jitloadstoreoff, 0, false,
+            jitLoadStoreOff));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_DEBUG_JITLOADSTOREFLOATINGPOINTOFF,
+            Settings.SECTION_DEBUG,
+            R.string.debug_jitloadstorefloatingoff, 0, false,
+            jitLoadStoreFloatingPointOff));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_DEBUG_JITLOADSTOREPAIREDOFF, Settings.SECTION_DEBUG,
+            R.string.debug_jitloadstorepairedoff, 0, false,
+            jitLoadStorePairedOff));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_DEBUG_JITFLOATINGPOINTOFF, Settings.SECTION_DEBUG,
+            R.string.debug_jitfloatingpointoff, 0, false,
+            jitFloatingPointOff));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_DEBUG_JITINTEGEROFF, Settings.SECTION_DEBUG,
+            R.string.debug_jitintegeroff, 0, false,
+            jitIntegerOff));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_DEBUG_JITPAIREDOFF, Settings.SECTION_DEBUG,
+            R.string.debug_jitpairedoff, 0, false,
+            jitPairedOff));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_DEBUG_JITSYSTEMREGISTEROFF, Settings.SECTION_DEBUG,
+            R.string.debug_jitsystemregistersoffr, 0, false,
+            jitSystemRegistersOff));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_DEBUG_JITBRANCHOFF, Settings.SECTION_DEBUG,
+            R.string.debug_jitbranchoff, 0, false,
+            jitBranchOff));
   }
 
   private void addGcPadSubSettings(ArrayList<SettingsItem> sl, int gcPadNumber, int gcPadType)
