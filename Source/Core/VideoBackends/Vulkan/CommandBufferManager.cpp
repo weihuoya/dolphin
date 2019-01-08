@@ -12,9 +12,6 @@
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
 
-#define TEXCACHE_MIN_SLAB_SIZE (8 * 1024 * 1024)
-#define TEXCACHE_MAX_SLAB_SIZE (32 * 1024 * 1024)
-
 namespace Vulkan
 {
 CommandBufferManager::CommandBufferManager(bool use_threaded_submission)
@@ -24,6 +21,23 @@ CommandBufferManager::CommandBufferManager(bool use_threaded_submission)
 
 CommandBufferManager::~CommandBufferManager()
 {
+}
+
+bool CommandBufferManager::Initialize()
+{
+  if (!CreateCommandBuffers())
+    return false;
+
+  if (m_use_threaded_submission && !CreateSubmitThread())
+    return false;
+
+  return true;
+}
+
+void CommandBufferManager::Shutdown()
+{
+  WaitForGPUIdle();
+
   // If the worker thread is enabled, wait for it to exit.
   if (m_use_threaded_submission)
   {
@@ -36,17 +50,6 @@ CommandBufferManager::~CommandBufferManager()
   vkDeviceWaitIdle(g_vulkan_context->GetDevice());
 
   DestroyCommandBuffers();
-}
-
-bool CommandBufferManager::Initialize()
-{
-  if (!CreateCommandBuffers())
-    return false;
-
-  if (m_use_threaded_submission && !CreateSubmitThread())
-    return false;
-
-  return true;
 }
 
 bool CommandBufferManager::CreateCommandBuffers()
@@ -178,16 +181,15 @@ bool CommandBufferManager::CreateSubmitThread()
   m_submit_loop = std::make_unique<Common::BlockingLoop>();
   m_submit_thread = std::thread([this]() {
     m_submit_loop->Run([this]() {
-      PendingCommandBufferSubmit submit;
+      if (m_pending_submits.empty())
+      {
+        m_submit_loop->AllowSleep();
+        return;
+      }
+
+      PendingCommandBufferSubmit submit = m_pending_submits.front();
       {
         std::lock_guard<std::mutex> guard(m_pending_submit_lock);
-        if (m_pending_submits.empty())
-        {
-          m_submit_loop->AllowSleep();
-          return;
-        }
-
-        submit = m_pending_submits.front();
         m_pending_submits.pop_front();
       }
 
@@ -493,15 +495,12 @@ void CommandBufferManager::AddFencePointCallback(
     const CommandBufferExecutedCallback& executed_callback)
 {
   // Shouldn't be adding twice.
-  ASSERT(m_fence_point_callbacks.find(key) == m_fence_point_callbacks.end());
   m_fence_point_callbacks.emplace(key, std::make_pair(queued_callback, executed_callback));
 }
 
 void CommandBufferManager::RemoveFencePointCallback(const void* key)
 {
-  auto iter = m_fence_point_callbacks.find(key);
-  ASSERT(iter != m_fence_point_callbacks.end());
-  m_fence_point_callbacks.erase(iter);
+  m_fence_point_callbacks.erase(key);
 }
 
 std::unique_ptr<CommandBufferManager> g_command_buffer_mgr;

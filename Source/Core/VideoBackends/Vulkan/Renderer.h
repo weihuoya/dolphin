@@ -13,8 +13,6 @@
 #include "VideoBackends/Vulkan/Constants.h"
 #include "VideoCommon/RenderBase.h"
 
-struct XFBSourceBase;
-
 namespace Vulkan
 {
 class BoundingBox;

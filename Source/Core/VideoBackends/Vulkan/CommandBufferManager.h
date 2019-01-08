@@ -33,6 +33,7 @@ public:
   ~CommandBufferManager();
 
   bool Initialize();
+  void Shutdown();
 
   // These command buffers are allocated per-frame. They are valid until the command buffer
   // is submitted, after that you should call these functions again.

@@ -251,14 +251,14 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
 
 void VideoBackend::Shutdown()
 {
+  if (g_renderer)
+    g_renderer->Shutdown();
+
   if (g_command_buffer_mgr)
-    g_command_buffer_mgr->WaitForGPUIdle();
+    g_command_buffer_mgr->Shutdown();
 
   if (::g_shader_cache)
     ::g_shader_cache->Shutdown();
-
-  if (g_renderer)
-    g_renderer->Shutdown();
 
   g_perf_query.reset();
   ::g_shader_cache.reset();

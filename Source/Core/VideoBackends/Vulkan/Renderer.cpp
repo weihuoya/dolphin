@@ -135,8 +135,8 @@ void Renderer::Shutdown()
   ::Renderer::Shutdown();
 
   // Submit the current command buffer, in case there's a partial frame.
-  //StateTracker::GetInstance()->EndRenderPass();
-  //g_command_buffer_mgr->ExecuteCommandBuffer(false, true);
+  StateTracker::GetInstance()->EndRenderPass();
+  g_command_buffer_mgr->ExecuteCommandBuffer(false, true);
 
   DestroyShaders();
 
@@ -598,20 +598,7 @@ void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region
 
 void Renderer::Flush()
 {
-  // End the current render pass.
-  StateTracker::GetInstance()->EndRenderPass();
-  StateTracker::GetInstance()->OnEndFrame();
-
-  // Ensure the worker thread is not still submitting a previous command buffer.
-  // In other words, the last frame has been submitted (otherwise the next call would
-  // be a race, as the image may not have been consumed yet).
-  g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
-
-  // No swap chain, just execute command buffer.
-  g_command_buffer_mgr->SubmitCommandBuffer(true);
-
-  // Prep for the next frame (get command buffer ready) before doing anything else.
-  BeginFrame();
+  Util::ExecuteCurrentCommandsAndRestoreState(true, false);
 }
 
 void Renderer::DrawScreen(VKTexture* xfb_texture, const EFBRectangle& xfb_region)
