@@ -753,7 +753,8 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
   u32 numFollows = 0;
   u32 num_inst = 0;
 
-  const u32 branchFollowThreshold = SConfig::GetInstance().bJITFollowBranch ? 2 : 0;
+  const u32 branchFollowThreshold =
+    (HasOption(OPTION_BRANCH_FOLLOW) && SConfig::GetInstance().bJITFollowBranch) ? 2 : 0;
 
   for (std::size_t i = 0; i < block_size; ++i)
   {
@@ -781,7 +782,7 @@ u32 PPCAnalyzer::Analyze(u32 address, CodeBlock* block, CodeBuffer* buffer, std:
     //       If it is small, the performance will be down.
     //       If it is big, the size of generated code will be big and
     //       cache clearning will happen many times.
-    if (HasOption(OPTION_BRANCH_FOLLOW) && numFollows < branchFollowThreshold)
+    if (numFollows < branchFollowThreshold)
     {
       bool follow = false;
       switch (inst.OPCD)
