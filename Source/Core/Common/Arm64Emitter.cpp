@@ -2012,7 +2012,7 @@ void ARM64XEmitter::ADRP(ARM64Reg Rd, s32 imm)
   EncodeAddressInst(1, Rd, imm >> 12);
 }
 
-static int UploadPartCount(bool part[4])
+inline int UploadPartCount(bool part[4])
 {
   return part[0] + part[1] + part[2] + part[3];
 }
@@ -4222,17 +4222,20 @@ void ARM64XEmitter::ADDI2R_internal(ARM64Reg Rd, ARM64Reg Rn, u64 imm, bool nega
   // But it supports a few more bits, so use it to avoid MOVK+MOVK+ADD.
   // As this splits the addition in two parts, this must not be done on setting flags.
   bool has_scratch = scratch != INVALID_REG;
-  if (!flags && (imm >= 0x10000u || !has_scratch) && imm < 0x1000000u)
+  if(!flags)
   {
-    AddImmediate(Rd, Rn, imm & 0xFFF, false, negative, false);
-    AddImmediate(Rd, Rd, imm >> 12, true, negative, false);
-    return;
-  }
-  if (!flags && (imm_neg >= 0x10000u || !has_scratch) && imm_neg < 0x1000000u)
-  {
-    AddImmediate(Rd, Rn, imm_neg & 0xFFF, false, neg_neg, false);
-    AddImmediate(Rd, Rd, imm_neg >> 12, true, neg_neg, false);
-    return;
+    if ((imm >= 0x10000u || !has_scratch) && imm < 0x1000000u)
+    {
+      AddImmediate(Rd, Rn, imm & 0xFFF, false, negative, false);
+      AddImmediate(Rd, Rd, imm >> 12, true, negative, false);
+      return;
+    }
+    if ((imm_neg >= 0x10000u || !has_scratch) && imm_neg < 0x1000000u)
+    {
+      AddImmediate(Rd, Rn, imm_neg & 0xFFF, false, neg_neg, false);
+      AddImmediate(Rd, Rd, imm_neg >> 12, true, neg_neg, false);
+      return;
+    }
   }
 
   ASSERT_MSG(DYNA_REC, has_scratch,

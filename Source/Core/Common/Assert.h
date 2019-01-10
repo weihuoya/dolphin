@@ -67,3 +67,16 @@
     if (MAX_LOGLEVEL >= LogTypes::LOG_LEVELS::LDEBUG)                                              \
       ASSERT(_a_);                                                                                 \
   } while (0)
+
+
+#ifdef ANDROID
+//#undef ASSERT_MSG
+#undef DEBUG_ASSERT_MSG
+//#undef ASSERT
+#undef DEBUG_ASSERT
+
+//#define ASSERT_MSG(_t_, _a_, _fmt_, ...)  do {} while(0)
+#define DEBUG_ASSERT_MSG(_t_, _a_, _msg_, ...)  do {} while(0)
+//#define ASSERT(_a_)  do {} while(0)
+#define DEBUG_ASSERT(_a_)  do {} while(0)
+#endif

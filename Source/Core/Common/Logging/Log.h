@@ -122,3 +122,20 @@ void GenericLog(LogTypes::LOG_LEVELS level, LogTypes::LOG_TYPE type, const char*
   {                                                                                                \
     GENERIC_LOG(LogTypes::t, LogTypes::LDEBUG, __VA_ARGS__);                                       \
   } while (0)
+
+
+#ifdef ANDROID
+#undef GENERIC_LOG
+#undef ERROR_LOG
+#undef WARN_LOG
+#undef NOTICE_LOG
+#undef INFO_LOG
+#undef DEBUG_LOG
+
+#define GENERIC_LOG(t, v, ...) do {} while(0)
+#define ERROR_LOG(t, ...) do {} while(0)
+#define WARN_LOG(t, ...) do {} while(0)
+#define NOTICE_LOG(t, ...) do {} while(0)
+#define INFO_LOG(t, ...) do {} while(0)
+#define DEBUG_LOG(t, ...) do {} while(0)
+#endif
