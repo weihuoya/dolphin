@@ -9,7 +9,8 @@ public class InputOverlayPointer
   private float mHeight;
   private float mCenterX;
   private float mCenterY;
-  private final int[] mAxisIDs = new int[4];
+  private int[] mAxisIDs = new int[4];
+  private float[] mAxises = new float[4];
 
   public InputOverlayPointer(float width, float height)
   {
@@ -17,6 +18,8 @@ public class InputOverlayPointer
     mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
     mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_IR + 3;
     mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_IR + 4;
+
+    mAxises[0] = mAxises[1] = mAxises[2] = mAxises[3] = 0;
 
     mWidth = width;
     mHeight = height;
@@ -31,9 +34,6 @@ public class InputOverlayPointer
 
   public void onPointerDown(int id, float x, float y)
   {
-    NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice,
-      NativeLibrary.ButtonType.WIIMOTE_IR_HIDE, NativeLibrary.ButtonState.RELEASED);
-
     mTrackId = id;
     mCenterX = x;
     mCenterY = y;
@@ -48,29 +48,23 @@ public class InputOverlayPointer
   public void onPointerUp(int id, float x, float y)
   {
     mTrackId = -1;
-    setPointerState(0, 0);
-
-    if(InputOverlay.sAutoHidePointer)
-      NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice,
-        NativeLibrary.ButtonType.WIIMOTE_IR_HIDE, NativeLibrary.ButtonState.PRESSED);
+    setPointerState(x, y);
   }
 
   private void setPointerState(float x, float y)
   {
-    float axises[] = new float[4];
-    if(mTrackId == -1)
-    {
-      axises[0] = axises[1] = axises[2] = axises[3] = 0;
-    }
-    else
-    {
-      axises[0] = axises[1] = (y - mCenterY) / mHeight / 50 * InputOverlay.sIREmulateSensitive;
-      axises[2] = axises[3] = (x - mCenterX) / mWidth / 100 * InputOverlay.sIREmulateSensitive;
-    }
+    float[] axises = new float[4];
+    axises[0] = axises[1] = (y - mCenterY) / mHeight / 100 * InputOverlay.sIREmulateSensitive;
+    axises[2] = axises[3] = (x - mCenterX) / mWidth / 200 * InputOverlay.sIREmulateSensitive;
 
     for (int i = 0; i < 4; i++)
     {
-      NativeLibrary.onGamePadMoveEvent(NativeLibrary.TouchScreenDevice, mAxisIDs[i], axises[i]);
+      float value = mAxises[i] + axises[i];
+      NativeLibrary.onGamePadMoveEvent(NativeLibrary.TouchScreenDevice, mAxisIDs[i], value);
+      if (mTrackId == -1)
+      {
+        mAxises[i] = value;
+      }
     }
   }
 }
