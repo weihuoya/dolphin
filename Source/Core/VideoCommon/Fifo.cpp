@@ -365,6 +365,9 @@ void RunGpuLoop()
               s_video_buffer_read_ptr = OpcodeDecoder::Run(
                   DataReader(s_video_buffer_read_ptr, write_ptr), &cyclesExecuted, false, &needSize);
 
+              if ((write_ptr - s_video_buffer_read_ptr) == 0)
+                Common::AtomicStore(fifo.SafeCPReadPointer, fifo.CPReadPointer);
+
               if (param.bSyncGPU)
               {
                 cyclesExecuted = (u32)(cyclesExecuted / param.fSyncGpuOverclock);

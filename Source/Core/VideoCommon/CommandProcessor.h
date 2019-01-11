@@ -25,6 +25,7 @@ struct SCPFifoStruct
   volatile u32 CPWritePointer;
   volatile u32 CPReadPointer;
   volatile u32 CPBreakpoint;
+  volatile u32 SafeCPReadPointer;
 
   volatile u32 bFF_GPLinkEnable;
   volatile u32 bFF_GPReadEnable;
