@@ -319,6 +319,10 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
           if(button.getTrackId() == pointerId)
           {
             button.onPointerUp(pointerId, pointerX, pointerY);
+            if (mOverlayPointer != null && button.getId() == ButtonType.HOTKEYS_UPRIGHT_TOGGLE)
+            {
+              mOverlayPointer.reset();
+            }
             isProcessed = true;
           }
         }

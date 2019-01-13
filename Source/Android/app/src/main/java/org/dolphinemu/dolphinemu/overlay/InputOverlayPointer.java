@@ -27,6 +27,16 @@ public class InputOverlayPointer
     mTrackId = -1;
   }
 
+  public void reset()
+  {
+    mTrackId = -1;
+    mAxises[0] = mAxises[1] = mAxises[2] = mAxises[3] = 0;
+    for (int i = 0; i < 4; i++)
+    {
+      NativeLibrary.onGamePadMoveEvent(NativeLibrary.TouchScreenDevice, mAxisIDs[i], mAxises[i]);
+    }
+  }
+
   public int getTrackId()
   {
     return mTrackId;
