@@ -66,6 +66,7 @@ namespace soundtouch
     /// Maximum allowed BPM rate range. Used to restrict accepted result below a reasonable limit.
     #define MAX_BPM_VALID 190
 
+
 ////////////////////////////////////////////////////////////////////////////////
 
     typedef struct
@@ -183,12 +184,14 @@ namespace soundtouch
             int numSamples                            ///< Number of samples in buffer
         );
 
+
         /// Analyzes the results and returns the BPM rate. Use this function to read result
         /// after whole song data has been input to the class by consecutive calls of
         /// 'inputSamples' function.
         ///
         /// \return Beats-per-minute rate, or zero if detection failed.
         float getBpm();
+
 
         /// Get beat position arrays. Note: The array includes also really low beat detection values 
         /// in absence of clear strong beats. Consumer may wish to filter low values away.

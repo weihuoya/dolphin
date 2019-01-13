@@ -265,3 +265,4 @@ uint FIFOSampleBuffer::adjustAmountOfSamples(uint numSamples)
     }
     return samplesInBuffer;
 }
+
