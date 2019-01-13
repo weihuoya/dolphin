@@ -337,9 +337,8 @@ static void AddBind(const std::string& dev, sBind* bind)
 
 void Init(const std::string& gameId)
 {
-  const int MAX_PAD_NUM = 8;
-  // Initialize our touchScreenKey buttons
-  for (int a = 0; a < MAX_PAD_NUM; ++a)
+  // Initialize pad 0(gc 1) and pad 4(wii 1) as touch overlay controller
+  for (int a = 0; a < 5; a += 4)
   {
     // GC
     AddBind(touchScreenKey, new sBind(a, BUTTON_A, BIND_BUTTON, BUTTON_A, 1.0f));
@@ -576,7 +575,7 @@ void Init(const std::string& gameId)
   IniFile::Section* section = ini.GetOrCreateSection("Android");
   for (u32 a = 0; a < ArraySize(configStrings); ++a)
   {
-    for (int padID = 0; padID < MAX_PAD_NUM; ++padID)
+    for (int padID = 0; padID < 8; ++padID)
     {
       BindType type;
       int bindnum;
@@ -609,7 +608,7 @@ void Init(const std::string& gameId)
   section = ini.GetOrCreateSection("Android");
   for (u32 a = 0; a < ArraySize(configStrings); ++a)
   {
-    for (int padID = 0; padID < MAX_PAD_NUM; ++padID)
+    for (int padID = 0; padID < 8; ++padID)
     {
       BindType type;
       int bindnum;
