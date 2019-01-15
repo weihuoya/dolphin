@@ -42,6 +42,8 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
   public static final String POINTER_PREF_KEY = "TouchPointer";
   public static final String SENSITIVE_PREF_KEY = "IRSensitive";
   public static int sIREmulateSensitive;
+  public static final String RECENTER_PREF_KEY = "IRRecenter";
+  public static boolean sIRRecenter;
   public static final String RELATIVE_PREF_KEY = "JoystickRelative";
   public static boolean sJoystickRelative;
 
@@ -136,6 +138,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     sControllerType = mPreferences.getInt(CONTROL_TYPE_PREF_KEY, CONTROLLER_WIINUNCHUK);
     sJoyStickSetting = mPreferences.getInt(JOYSTICK_PREF_KEY, JOYSTICK_EMULATE_NONE);
     sIREmulateSensitive = mPreferences.getInt(SENSITIVE_PREF_KEY, 200);
+    sIRRecenter = mPreferences.getBoolean(RECENTER_PREF_KEY, false);
 
     if(EmulationActivity.isGameCubeGame())
       sJoyStickSetting = JOYSTICK_EMULATE_NONE;

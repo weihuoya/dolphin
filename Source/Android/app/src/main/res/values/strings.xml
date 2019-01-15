@@ -353,6 +353,7 @@
     <string name="touch_screen_pointer">Touch Screen emulate IR</string>
     <string name="touch_screen_pointer_sensitive">IR Sensitivity</string>
     <string name="touch_screen_pointer_autohide">Auto hide IR pointer</string>
+    <string name="touch_screen_pointer_recenter">IR always back to center</string>
     <string name="joystick_relative_center">Joystick use relative center</string>
     <string name="interface_show_extended_fps">Show Extended FPS</string>
     <string name="use_builtin_title_database">Use Built-In Database of Game Names</string>

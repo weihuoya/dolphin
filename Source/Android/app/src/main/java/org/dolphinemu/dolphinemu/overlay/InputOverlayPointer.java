@@ -70,11 +70,15 @@ public class InputOverlayPointer
     for (int i = 0; i < 4; i++)
     {
       float value = mAxises[i] + axises[i];
-      NativeLibrary.onGamePadMoveEvent(NativeLibrary.TouchScreenDevice, mAxisIDs[i], value);
       if (mTrackId == -1)
       {
+        if(InputOverlay.sIRRecenter)
+        {
+          value = 0;
+        }
         mAxises[i] = value;
       }
+      NativeLibrary.onGamePadMoveEvent(NativeLibrary.TouchScreenDevice, mAxisIDs[i], value);
     }
   }
 }

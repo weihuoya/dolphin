@@ -53,7 +53,8 @@ public class RunningSettingDialog extends DialogFragment
     public static final int SETTING_PHONE_RUMBLE = 100;
     public static final int SETTING_TOUCH_POINTER = 101;
     public static final int SETTING_TOUCH_POINTER_SENSITIVE = 102;
-    public static final int SETTING_JOYSTICK_RELATIVE = 103;
+    public static final int SETTING_TOUCH_POINTER_RECENTER = 103;
+    public static final int SETTING_JOYSTICK_RELATIVE = 104;
 
     // view type
     public static final int TYPE_CHECKBOX = 0;
@@ -288,6 +289,7 @@ public class RunningSettingDialog extends DialogFragment
     private int mRumble;
     private int mTouchPointer;
     private int mIRSensitive;
+    private int mIRRecenter;
     private int mJoystickRelative;
     private int[] mRunningSettings;
     private ArrayList<SettingsItem> mSettings;
@@ -295,31 +297,32 @@ public class RunningSettingDialog extends DialogFragment
     public SettingsAdapter()
     {
       int i = 0;
+      final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getContext());
       mRunningSettings = NativeLibrary.getRunningSettings();
       mSettings = new ArrayList<>();
 
-      mRumble = PreferenceManager.getDefaultSharedPreferences(getContext())
-        .getBoolean(EmulationActivity.RUMBLE_PREF_KEY, true) ? 1 : 0;
+      mRumble = prefs.getBoolean(EmulationActivity.RUMBLE_PREF_KEY, true) ? 1 : 0;
       mSettings.add(new SettingsItem(SettingsItem.SETTING_PHONE_RUMBLE, R.string.emulation_control_rumble,
         SettingsItem.TYPE_CHECKBOX, mRumble));
 
       if(!EmulationActivity.isGameCubeGame())
       {
-        mTouchPointer = PreferenceManager.getDefaultSharedPreferences(getContext())
-          .getBoolean(InputOverlay.POINTER_PREF_KEY, false) ? 1 : 0;
-        mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER, R.string.touch_screen_pointer,
-          SettingsItem.TYPE_CHECKBOX, mTouchPointer));
+        mTouchPointer = prefs.getBoolean(InputOverlay.POINTER_PREF_KEY, false) ? 1 : 0;
+        mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER,
+          R.string.touch_screen_pointer, SettingsItem.TYPE_CHECKBOX, mTouchPointer));
 
-        mIRSensitive = PreferenceManager.getDefaultSharedPreferences(getContext())
-          .getInt(InputOverlay.SENSITIVE_PREF_KEY, 200);
-        mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER_SENSITIVE, R.string.touch_screen_pointer_sensitive,
-          SettingsItem.TYPE_SEEK_BAR, mIRSensitive));
+        mIRSensitive = prefs.getInt(InputOverlay.SENSITIVE_PREF_KEY, 200);
+        mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER_SENSITIVE,
+          R.string.touch_screen_pointer_sensitive, SettingsItem.TYPE_SEEK_BAR, mIRSensitive));
+
+        mIRRecenter = prefs.getBoolean(InputOverlay.RECENTER_PREF_KEY, false) ? 1 : 0;
+        mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER_RECENTER,
+          R.string.touch_screen_pointer_recenter, SettingsItem.TYPE_CHECKBOX, mIRRecenter));
       }
 
-      mJoystickRelative = PreferenceManager.getDefaultSharedPreferences(getContext())
-        .getBoolean(InputOverlay.RELATIVE_PREF_KEY, true) ? 1 : 0;
-      mSettings.add(new SettingsItem(SettingsItem.SETTING_JOYSTICK_RELATIVE, R.string.joystick_relative_center,
-        SettingsItem.TYPE_CHECKBOX, mJoystickRelative));
+      mJoystickRelative = prefs.getBoolean(InputOverlay.RELATIVE_PREF_KEY, true) ? 1 : 0;
+      mSettings.add(new SettingsItem(SettingsItem.SETTING_JOYSTICK_RELATIVE,
+        R.string.joystick_relative_center, SettingsItem.TYPE_CHECKBOX, mJoystickRelative));
 
       // gfx
       mSettings.add(new SettingsItem(SettingsItem.SETTING_SHOW_FPS, R.string.show_fps,
@@ -420,6 +423,14 @@ public class RunningSettingDialog extends DialogFragment
         {
           editor.putInt(InputOverlay.SENSITIVE_PREF_KEY, sensitive);
           InputOverlay.sIREmulateSensitive = sensitive;
+        }
+        mSettings.remove(0);
+
+        int recenter = mSettings.get(0).getValue();
+        if(mIRRecenter != recenter)
+        {
+          editor.putBoolean(InputOverlay.RECENTER_PREF_KEY, recenter > 0);
+          InputOverlay.sIRRecenter = recenter > 0;
         }
         mSettings.remove(0);
       }
