@@ -125,6 +125,9 @@ void GenericLog(LogTypes::LOG_LEVELS level, LogTypes::LOG_TYPE type, const char*
 
 
 #ifdef ANDROID
+#pragma warning(disable : 4505)  // unreferenced local function
+#pragma warning(disable : 4189)  // unreferenced local variable
+
 #undef GENERIC_LOG
 #undef ERROR_LOG
 #undef WARN_LOG

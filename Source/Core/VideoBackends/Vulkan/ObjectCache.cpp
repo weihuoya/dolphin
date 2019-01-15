@@ -360,7 +360,8 @@ VkSampler ObjectCache::GetSampler(const SamplerState& info)
   };
 
   // Can we use anisotropic filtering with this sampler?
-  if (info.anisotropic_filtering && g_vulkan_context->SupportsAnisotropicFiltering())
+  if (g_ActiveConfig.iMaxAnisotropy > 0 &&
+      info.anisotropic_filtering && g_vulkan_context->SupportsAnisotropicFiltering())
   {
     // Cap anisotropy to device limits.
     create_info.anisotropyEnable = VK_TRUE;

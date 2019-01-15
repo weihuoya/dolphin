@@ -138,8 +138,8 @@ constexpr GekkoOPTemplate table4[] = {
 };
 
 constexpr GekkoOPTemplate table4_2[] = {
-    {10, &JitArm64::ps_sumX},                // ps_sum0
-    {11, &JitArm64::ps_sumX},                // ps_sum1
+    {10, &JitArm64::FallBackToInterpreter},                // ps_sum0
+    {11, &JitArm64::FallBackToInterpreter},                // ps_sum1
     {12, &JitArm64::ps_mulsX},               // ps_muls0
     {13, &JitArm64::ps_mulsX},               // ps_muls1
     {14, &JitArm64::ps_maddXX},              // ps_madds0
