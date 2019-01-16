@@ -341,7 +341,7 @@ constexpr GekkoOPTemplate table63[] = {
     {32, &JitArm64::fcmpX},                  // fcmpo
     {0, &JitArm64::fcmpX},                   // fcmpu
     {14, &JitArm64::FallBackToInterpreter},  // fctiwx
-    {15, &JitArm64::fctiwzx},                // fctiwzx
+    {15, &JitArm64::FallBackToInterpreter},                // fctiwzx
     {72, &JitArm64::fp_logic},               // fmrx
     {136, &JitArm64::fp_logic},              // fnabsx
     {40, &JitArm64::fp_logic},               // fnegx

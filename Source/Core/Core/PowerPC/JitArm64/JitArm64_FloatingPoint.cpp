@@ -314,6 +314,8 @@ void JitArm64::fcmpX(UGeckoInstruction inst)
   SetJumpTarget(continue1);
 }
 
+// fctiw: Floating Convert to Integer Word
+// fctiwz: Floating Convert to Integer Word with Round toward Zero
 void JitArm64::fctiwzx(UGeckoInstruction inst)
 {
   INSTRUCTION_START
