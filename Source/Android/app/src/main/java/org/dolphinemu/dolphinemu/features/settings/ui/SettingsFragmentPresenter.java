@@ -172,6 +172,7 @@ public final class SettingsFragmentPresenter
     //Setting mmuEmulation = coreSection.getSetting(SettingsFile.KEY_MMU_EMULATION);
     //Setting fastDiscSpeed = coreSection.getSetting(SettingsFile.KEY_FAST_DISC_SPEED);
     Setting followBranch = coreSection.getSetting(SettingsFile.KEY_JIT_FOLLOW_BRANCH);
+    Setting autoDiscChange = coreSection.getSetting(SettingsFile.KEY_AUTO_DISC_CHANGE);
     Setting audioStretch = coreSection.getSetting(SettingsFile.KEY_AUDIO_STRETCH);
     Setting audioBackend = mSettings.getSection(Settings.SECTION_INI_DSP)
       .getSetting(SettingsFile.KEY_AUDIO_BACKEND);
@@ -183,12 +184,7 @@ public final class SettingsFragmentPresenter
     int defaultCpuCore = NativeLibrary.DefaultCPUCore();
     int emuCoresEntries;
     int emuCoresValues;
-    if (defaultCpuCore == 1)  // x86-64
-    {
-      emuCoresEntries = R.array.emuCoresEntriesX86_64;
-      emuCoresValues = R.array.emuCoresValuesX86_64;
-    }
-    else if (defaultCpuCore == 4)  // AArch64
+    if (defaultCpuCore == 4)  // AArch64
     {
       emuCoresEntries = R.array.emuCoresEntriesARM64;
       emuCoresValues = R.array.emuCoresValuesARM64;
@@ -220,6 +216,8 @@ public final class SettingsFragmentPresenter
       followBranch));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_ENABLE_CHEATS, Settings.SECTION_INI_CORE,
       R.string.enable_cheats, R.string.enable_cheats_description, false, enableCheats));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_AUTO_DISC_CHANGE, Settings.SECTION_INI_CORE,
+      R.string.auto_disc_change, 0, false, autoDiscChange));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_AUDIO_STRETCH, Settings.SECTION_INI_CORE,
       R.string.audio_stretch, R.string.audio_stretch_description, false, audioStretch));
 

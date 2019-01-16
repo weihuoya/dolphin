@@ -40,8 +40,6 @@ public class GameFile
 
   public native int getPlatform();
 
-  public native int getDiscNumber();
-
   public native String getName();
 
   public native String getDescription();
@@ -57,6 +55,10 @@ public class GameFile
   public native String getTitlePath();
 
   public native String getGameId();
+
+  public native int getDiscNumber();
+
+  public native int getRevision();
 
   public native int[] getBanner();
 

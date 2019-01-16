@@ -65,6 +65,35 @@ public final class GameFileCacheService extends IntentService
     return null;
   }
 
+  public static String[] getAllDiscPaths(GameFile game)
+  {
+    String[] paths = new String[2];
+    GameFile matchWithoutRevision = null;
+    paths[0] = game.getPath();
+
+    for (GameFile otherGame : gameFiles.get())
+    {
+      if (game.getGameId().equals(otherGame.getGameId()) &&
+              game.getDiscNumber() != otherGame.getDiscNumber())
+      {
+        if (game.getRevision() == otherGame.getRevision())
+        {
+          paths[1] = otherGame.getPath();
+          return paths;
+        }
+        else
+        {
+          matchWithoutRevision = otherGame;
+        }
+      }
+    }
+
+    if (matchWithoutRevision != null)
+      paths[1] = matchWithoutRevision.getPath();
+
+    return paths;
+  }
+
   private static void startService(Context context, String action)
   {
     Intent intent = new Intent(context, GameFileCacheService.class);

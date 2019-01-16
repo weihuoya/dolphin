@@ -32,7 +32,7 @@ import org.dolphinemu.dolphinemu.utils.Log;
 
 public final class EmulationFragment extends Fragment implements SurfaceHolder.Callback, SensorEventListener
 {
-  private static final String KEY_GAMEPATH = "gamepath";
+  private static final String KEY_GAMEPATHS = "gamepaths";
 
   private SharedPreferences mPreferences;
   private InputOverlay mInputOverlay;
@@ -40,11 +40,10 @@ public final class EmulationFragment extends Fragment implements SurfaceHolder.C
   private DirectoryStateReceiver directoryStateReceiver;
   private EmulationActivity activity;
 
-  public static EmulationFragment newInstance(String gamePath)
+  public static EmulationFragment newInstance(String[] gamePaths)
   {
-
     Bundle args = new Bundle();
-    args.putString(KEY_GAMEPATH, gamePath);
+    args.putStringArray(KEY_GAMEPATHS, gamePaths);
 
     EmulationFragment fragment = new EmulationFragment();
     fragment.setArguments(args);
@@ -80,8 +79,8 @@ public final class EmulationFragment extends Fragment implements SurfaceHolder.C
 
     mPreferences = PreferenceManager.getDefaultSharedPreferences(getActivity());
 
-    String gamePath = getArguments().getString(KEY_GAMEPATH);
-    mEmulationState = new EmulationState(gamePath);
+    String[] gamePaths = getArguments().getStringArray(KEY_GAMEPATHS);
+    mEmulationState = new EmulationState(gamePaths);
   }
 
   /**
@@ -287,7 +286,7 @@ public final class EmulationFragment extends Fragment implements SurfaceHolder.C
       STOPPED, RUNNING, PAUSED
     }
 
-    private final String mGamePath;
+    private final String[] mGamePaths;
     private Thread mEmulationThread;
     private State state;
     private Surface mSurface;
@@ -296,9 +295,9 @@ public final class EmulationFragment extends Fragment implements SurfaceHolder.C
     private boolean mIsTempState;
     private String mStatePath;
 
-    EmulationState(String gamePath)
+    EmulationState(String[] gamePaths)
     {
-      mGamePath = gamePath;
+      mGamePaths = gamePaths;
       // Starting state is stopped.
       state = State.STOPPED;
     }
@@ -416,11 +415,11 @@ public final class EmulationFragment extends Fragment implements SurfaceHolder.C
           NativeLibrary.SurfaceChanged(mSurface);
           if (mStatePath == null || mStatePath.isEmpty())
           {
-            NativeLibrary.Run(mGamePath);
+            NativeLibrary.Run(mGamePaths);
           }
           else
           {
-            NativeLibrary.Run(mGamePath, mStatePath, mIsTempState);
+            NativeLibrary.Run(mGamePaths, mStatePath, mIsTempState);
           }
         }, "NativeEmulation");
         mEmulationThread.start();

@@ -30,6 +30,7 @@ import org.dolphinemu.dolphinemu.dialogs.StateSavesDialog;
 import org.dolphinemu.dolphinemu.fragments.EmulationFragment;
 import org.dolphinemu.dolphinemu.model.GameFile;
 import org.dolphinemu.dolphinemu.overlay.InputOverlay;
+import org.dolphinemu.dolphinemu.services.GameFileCacheService;
 import org.dolphinemu.dolphinemu.ui.main.MainActivity;
 import org.dolphinemu.dolphinemu.ui.main.MainPresenter;
 import org.dolphinemu.dolphinemu.ui.platform.Platform;
@@ -62,12 +63,11 @@ public final class EmulationActivity extends AppCompatActivity
   private boolean activityRecreated;
   private String mSelectedTitle;
   private int mPlatform;
-  private String mPath;
+  private String[] mPaths;
   private String mSavedState;
 
   public static final String RUMBLE_PREF_KEY = "PhoneRumble";
-
-  public static final String EXTRA_SELECTED_GAME = "SelectedGame";
+  public static final String EXTRA_SELECTED_GAMES = "SelectedGames";
   public static final String EXTRA_SELECTED_TITLE = "SelectedTitle";
   public static final String EXTRA_PLATFORM = "Platform";
   public static final String EXTRA_SAVED_STATE = "SavedState";
@@ -76,7 +76,7 @@ public final class EmulationActivity extends AppCompatActivity
   {
     Intent launcher = new Intent(activity, EmulationActivity.class);
 
-    launcher.putExtra(EXTRA_SELECTED_GAME, gameFile.getPath());
+    launcher.putExtra(EXTRA_SELECTED_GAMES, GameFileCacheService.getAllDiscPaths(gameFile));
     launcher.putExtra(EXTRA_SELECTED_TITLE, gameFile.getTitle());
     launcher.putExtra(EXTRA_PLATFORM, gameFile.getPlatform());
     launcher.putExtra(EXTRA_SAVED_STATE, savedState);
@@ -99,7 +99,7 @@ public final class EmulationActivity extends AppCompatActivity
     {
       // Get params we were passed
       Intent gameToEmulate = getIntent();
-      mPath = gameToEmulate.getStringExtra(EXTRA_SELECTED_GAME);
+      mPaths = gameToEmulate.getStringArrayExtra(EXTRA_SELECTED_GAMES);
       mSelectedTitle = gameToEmulate.getStringExtra(EXTRA_SELECTED_TITLE);
       mPlatform = gameToEmulate.getIntExtra(EXTRA_PLATFORM, 0);
       mSavedState = gameToEmulate.getStringExtra(EXTRA_SAVED_STATE);
@@ -144,7 +144,7 @@ public final class EmulationActivity extends AppCompatActivity
       .findFragmentById(R.id.frame_emulation_fragment);
     if (mEmulationFragment == null)
     {
-      mEmulationFragment = EmulationFragment.newInstance(mPath);
+      mEmulationFragment = EmulationFragment.newInstance(mPaths);
       getSupportFragmentManager().beginTransaction()
         .add(R.id.frame_emulation_fragment, mEmulationFragment)
         .commit();
@@ -163,7 +163,7 @@ public final class EmulationActivity extends AppCompatActivity
     {
       saveTemporaryState();
     }
-    outState.putString(EXTRA_SELECTED_GAME, mPath);
+    outState.putStringArray(EXTRA_SELECTED_GAMES, mPaths);
     outState.putString(EXTRA_SELECTED_TITLE, mSelectedTitle);
     outState.putInt(EXTRA_PLATFORM, mPlatform);
     outState.putString(EXTRA_SAVED_STATE, mSavedState);
@@ -172,7 +172,7 @@ public final class EmulationActivity extends AppCompatActivity
 
   protected void restoreState(Bundle savedInstanceState)
   {
-    mPath = savedInstanceState.getString(EXTRA_SELECTED_GAME);
+    mPaths = savedInstanceState.getStringArray(EXTRA_SELECTED_GAMES);
     mSelectedTitle = savedInstanceState.getString(EXTRA_SELECTED_TITLE);
     mPlatform = savedInstanceState.getInt(EXTRA_PLATFORM);
     mSavedState = savedInstanceState.getString(EXTRA_SAVED_STATE);
@@ -655,11 +655,6 @@ public final class EmulationActivity extends AppCompatActivity
   public static boolean isGameCubeGame()
   {
     return sIsGameCubeGame;
-  }
-
-  public static GameFile getGameFile()
-  {
-    return sGameFile;
   }
 
   public boolean isActivityRecreated()

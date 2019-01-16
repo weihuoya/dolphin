@@ -601,9 +601,11 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_RefreshWiimo
   WiimoteReal::Refresh();
 }
 
-static void Run(const std::string& path,
+static void Run(const std::vector<std::string>& paths,
                 std::optional<std::string> savestate_path = {}, bool delete_savestate = false)
 {
+  ASSERT(!paths.empty());
+
   // Install our callbacks
   OSD::AddCallback(OSD::CallbackType::Shutdown, ButtonManager::Shutdown);
 
@@ -617,7 +619,7 @@ static void Run(const std::string& path,
 
   // No use running the loop when booting fails
   s_have_wm_user_stop = false;
-  std::unique_ptr<BootParameters> boot = BootParameters::GenerateFromFile(path, savestate_path);
+  std::unique_ptr<BootParameters> boot = BootParameters::GenerateFromFile(paths, savestate_path);
   boot->delete_savestate = delete_savestate;
   WindowSystemInfo wsi(WindowSystemType::Android, nullptr, s_surf);
   if (BootManager::BootCore(std::move(boot), wsi))
@@ -652,17 +654,18 @@ static void Run(const std::string& path,
   }
 }
 
-JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_Run__Ljava_lang_String_2(
-    JNIEnv* env, jobject obj, jstring jFile)
+JNIEXPORT void JNICALL
+Java_org_dolphinemu_dolphinemu_NativeLibrary_Run___3Ljava_lang_String_2(
+    JNIEnv* env, jobject obj, jobjectArray jPaths)
 {
-  Run(GetJString(env, jFile));
+  Run(JStringArrayToVector(env, jPaths));
 }
 
 JNIEXPORT void JNICALL
-Java_org_dolphinemu_dolphinemu_NativeLibrary_Run__Ljava_lang_String_2Ljava_lang_String_2Z(
-    JNIEnv* env, jobject obj, jstring jFile, jstring jSavestate, jboolean jDeleteSavestate)
+Java_org_dolphinemu_dolphinemu_NativeLibrary_Run___3Ljava_lang_String_2Ljava_lang_String_2Z(
+    JNIEnv* env, jobject obj, jobjectArray jPaths, jstring jSavestate, jboolean jDeleteSavestate)
 {
-  Run(GetJString(env, jFile), GetJString(env, jSavestate), jDeleteSavestate);
+  Run(JStringArrayToVector(env, jPaths), GetJString(env, jSavestate), jDeleteSavestate);
 }
 
 JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_ChangeDisc(JNIEnv* env,
