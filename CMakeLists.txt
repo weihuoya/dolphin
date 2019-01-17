@@ -32,6 +32,7 @@ option(ENABLE_HEADLESS "Enables running Dolphin as a headless variant" OFF)
 option(ENABLE_ALSA "Enables ALSA sound backend" ON)
 option(ENABLE_PULSEAUDIO "Enables PulseAudio sound backend" ON)
 option(ENABLE_LLVM "Enables LLVM support, for disassembly" ON)
+option(ENABLE_TESTS "Enables building the unit tests" ON)
 option(USE_DISCORD_PRESENCE "Enables Discord Rich Presence, show the current game on Discord" ON)
 
 # Maintainers: if you consider blanket disabling this for your users, please
@@ -731,9 +732,11 @@ include_directories("${PROJECT_BINARY_DIR}/Source/Core")
 ########################################
 # Unit testing.
 #
-if(NOT ANDROID)
+if(NOT ANDROID AND ENABLE_TESTS)
   message(STATUS "Using static gtest from Externals")
   add_subdirectory(Externals/gtest EXCLUDE_FROM_ALL)
+else()
+  message(STATUS "Unit tests are disabled")
 endif()
 
 ########################################

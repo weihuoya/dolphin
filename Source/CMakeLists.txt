@@ -38,7 +38,7 @@ add_definitions(-D__STDC_CONSTANT_MACROS)
 add_subdirectory(Core)
 if (ANDROID)
   add_subdirectory(Android/jni)
-else()
+elseif (ENABLE_TESTS)
   add_subdirectory(UnitTests)
 endif()
 

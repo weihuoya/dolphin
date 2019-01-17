@@ -68,7 +68,7 @@ public final class SettingsActivity extends AppCompatActivity implements Setting
 
     if (!TextUtils.isEmpty(mGameId))
     {
-      setTitle("Game Settings: " + mGameId);
+      setTitle(getString(R.string.per_game_settings, mGameId));
     }
   }
 
@@ -134,13 +134,13 @@ public final class SettingsActivity extends AppCompatActivity implements Setting
     {
       if (TextUtils.isEmpty(mGameId))
       {
-        showToastMessage("Saved settings to INI files");
+        showToastMessage(getString(R.string.settings_saved_notice));
         mSettings.saveSettings();
       }
       else
       {
         // custom game settings
-        showToastMessage("Saved settings for " + mGameId);
+        showToastMessage(getString(R.string.settings_saved_notice));
         mSettings.saveCustomGameSettings(mGameId);
       }
       mShouldSave = false;

@@ -163,7 +163,6 @@
 
     <!-- Graphics Settings -->
     <string name="graphics_general">General</string>
-    <string name="graphics_enhancements_and_hacks">Enhancements &amp; Hacks</string>
 
     <!-- Video Preference Fragment -->
     <string name="video_backend">Video Backend</string>
@@ -196,18 +195,8 @@
     <string name="disable_copy_filter_description">Disables the blending of adjacent rows when copying the EFB. This is known in some games as \"deflickering\" or \"smoothing\". Disabling the filter is usually safe, and may result in a sharper image.</string>
     <string name="arbitrary_mipmap_detection">Arbitrary Mipmap Detection</string>
     <string name="arbitrary_mipmap_detection_description">Enables detection of arbitrary mipmaps, which some games use for special distance-based effects.\nMay have false positives that result in blurry textures at increased internal resolution, such as in games that use very low resolution mipmaps. Disabling this can also reduce stutter in games that frequently load new textures.\n\nIf unsure, leave this checked.</string>
-    <string name="stereoscopy_submenu">Stereoscopy</string>
-    <string name="stereoscopy_submenu_description">Stereoscopy allows you to get a better feeling of depth if you have the necessary hardware.\nHeavily decreases emulation speed and sometimes causes issues</string>
     <string name="wide_screen_hack">Widescreen Hack</string>
     <string name="wide_screen_hack_description">Forces the game to output graphics for any aspect ratio. Use with \"Aspect Ratio\" set to \"Force 16:9\" to force 4:3-only games to run at 16:9. Rarely produces good results and often partially breaks graphics and game UIs.\nUnnecessary (and detrimental) if using any AR/Gecko-code widescreen patches. If unsure, leave this unchecked.</string>
-    <string name="stereoscopy_mode">Stereoscopy Mode</string>
-    <string name="stereoscopy_mode_description">Select the stereoscopic 3D mode.</string>
-    <string name="stereoscopy_depth">Depth</string>
-    <string name="stereoscopy_depth_description">Control the distance between the virtual cameras.\nA higher value creates a stronger feeling of depth while a lower value is more comfortable.</string>
-    <string name="stereoscopy_convergence">Convergence</string>
-    <string name="stereoscopy_convergence_description">Control the distance of the convergence plane, this is the distance at which objects will appear to be in front of the screen.\nA higher value creates stronger out-of-screen effects while a lower value is more comfortable.</string>
-    <string name="stereoscopy_swap_eyes">Swap Eyes</string>
-    <string name="stereoscopy_swap_eyes_description">Swap the left and right eye, mostly useful if you want to view side-by-side cross-eyed.</string>
 
     <string name="hacks_submenu">Hacks</string>
     <string name="embedded_frame_buffer">Embedded Frame Buffer</string>
@@ -280,6 +269,8 @@
     <string name="preferences_save_exit">Save and Exit</string>
     <string name="preferences_settings">Settings</string>
     <string name="preferences_game_settings">Game Settings</string>
+    <string name="per_game_settings">Game Settings: %1$s</string>
+    <string name="settings_saved_notice">Saved settings to INI files.</string>
     <string name="preferences_extensions">Extension Bindings</string>
 
     <!-- Emulation Menu -->
@@ -347,7 +338,7 @@
     <string name="game_platform_snes">[SNES] %1$s %2$s</string>
     <string name="delete_game_setting">Delete Settings</string>
     <string name="delete_game_file">Delete Game</string>
-    <string name="clear_game_data">Clear Data</string>
+    <string name="clear_game_data">Clear Cache</string>
     <string name="cheat_code">Cheat Code</string>
     <string name="toast_save_code_ok">Code Saved!</string>
     <string name="toast_save_code_no">Save Failed!</string>

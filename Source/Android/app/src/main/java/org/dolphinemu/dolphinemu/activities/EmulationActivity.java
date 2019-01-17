@@ -58,15 +58,17 @@ public final class EmulationActivity extends AppCompatActivity
   private boolean mMenuVisible;
 
   private static boolean sIsGameCubeGame;
-  private static GameFile sGameFile;
 
   private boolean activityRecreated;
+  private String mGameId;
   private String mSelectedTitle;
   private int mPlatform;
   private String[] mPaths;
   private String mSavedState;
 
   public static final String RUMBLE_PREF_KEY = "PhoneRumble";
+
+  public static final String EXTRA_GAME_ID = "GameId";
   public static final String EXTRA_SELECTED_GAMES = "SelectedGames";
   public static final String EXTRA_SELECTED_TITLE = "SelectedTitle";
   public static final String EXTRA_PLATFORM = "Platform";
@@ -75,19 +77,15 @@ public final class EmulationActivity extends AppCompatActivity
   public static void launch(FragmentActivity activity, GameFile gameFile, String savedState)
   {
     Intent launcher = new Intent(activity, EmulationActivity.class);
-
+    launcher.putExtra(EXTRA_GAME_ID, gameFile.getGameId());
     launcher.putExtra(EXTRA_SELECTED_GAMES, GameFileCacheService.getAllDiscPaths(gameFile));
     launcher.putExtra(EXTRA_SELECTED_TITLE, gameFile.getTitle());
     launcher.putExtra(EXTRA_PLATFORM, gameFile.getPlatform());
     launcher.putExtra(EXTRA_SAVED_STATE, savedState);
-    Bundle options = new Bundle();
-
-    //
-    sGameFile = gameFile;
 
     // I believe this warning is a bug. Activities are FragmentActivity from the support lib
     //noinspection RestrictedApi
-    activity.startActivityForResult(launcher, MainPresenter.REQUEST_EMULATE_GAME, options);
+    activity.startActivityForResult(launcher, MainPresenter.REQUEST_EMULATE_GAME);
   }
 
   @Override
@@ -99,6 +97,7 @@ public final class EmulationActivity extends AppCompatActivity
     {
       // Get params we were passed
       Intent gameToEmulate = getIntent();
+      mGameId = gameToEmulate.getStringExtra(EXTRA_GAME_ID);
       mPaths = gameToEmulate.getStringArrayExtra(EXTRA_SELECTED_GAMES);
       mSelectedTitle = gameToEmulate.getStringExtra(EXTRA_SELECTED_TITLE);
       mPlatform = gameToEmulate.getIntExtra(EXTRA_PLATFORM, 0);
@@ -163,6 +162,7 @@ public final class EmulationActivity extends AppCompatActivity
     {
       saveTemporaryState();
     }
+    outState.putString(EXTRA_GAME_ID, mGameId);
     outState.putStringArray(EXTRA_SELECTED_GAMES, mPaths);
     outState.putString(EXTRA_SELECTED_TITLE, mSelectedTitle);
     outState.putInt(EXTRA_PLATFORM, mPlatform);
@@ -172,6 +172,7 @@ public final class EmulationActivity extends AppCompatActivity
 
   protected void restoreState(Bundle savedInstanceState)
   {
+    mGameId = savedInstanceState.getString(EXTRA_GAME_ID);
     mPaths = savedInstanceState.getStringArray(EXTRA_SELECTED_GAMES);
     mSelectedTitle = savedInstanceState.getString(EXTRA_SELECTED_TITLE);
     mPlatform = savedInstanceState.getInt(EXTRA_PLATFORM);
@@ -317,7 +318,7 @@ public final class EmulationActivity extends AppCompatActivity
 
   private void showStateSaves()
   {
-    StateSavesDialog.newInstance(sGameFile.getGameId()).show(getSupportFragmentManager(), "StateSavesDialog");
+    StateSavesDialog.newInstance(mGameId).show(getSupportFragmentManager(), "StateSavesDialog");
   }
 
   private void showJoystickSettings()
