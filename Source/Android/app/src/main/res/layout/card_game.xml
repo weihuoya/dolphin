@@ -39,7 +39,7 @@
 
             <TextView
                 android:id="@+id/text_game_title"
-                style="@android:style/TextAppearance.Material.Subhead"
+                style="@android:style/TextAppearance.Material.Menu"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"

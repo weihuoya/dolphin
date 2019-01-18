@@ -165,7 +165,7 @@
     <string name="graphics_general">常规设置</string>
 
     <!-- Video Preference Fragment -->
-    <string name="video_backend">视频后端</string>
+    <string name="video_backend">图形后端</string>
     <string name="video_backend_description">Select the API used for graphics rendering.</string>
     <string name="show_fps">显示帧率</string>
     <string name="show_fps_description">显示每秒渲染的帧数。</string>
@@ -187,7 +187,7 @@
     <string name="per_pixel_lighting_description">计算每个像素的光照，而不是每个顶点，运行速度会降低。通常是一个安全的增强，但有时会出现问题。</string>
     <string name="force_texture_filtering">强制纹理过滤</string>
     <string name="force_texture_filtering_description">强制纹理过滤，即使游戏禁用它。可以稍微改善纹理质量，但在一些游戏中会造成毛刺。</string>
-    <string name="force_24bit_color">强制24位颜色</string>
+    <string name="force_24bit_color">强制24位色</string>
     <string name="force_24bit_color_description">强制游戏使用24位颜色通道，减少色带来提高质量。如果不确定，请选中此选项。</string>
     <string name="disable_fog">禁用雾</string>
     <string name="disable_fog_description">去除雾使远处物体更加明显，从而增加整体细节。</string>
@@ -254,7 +254,7 @@
 
     <!-- Game Grid Screen-->
     <string name="grid_menu_config">设置</string>
-    <string name="grid_menu_graphics_settings">图像设置</string>
+    <string name="grid_menu_graphics_settings">图形设置</string>
     <string name="grid_menu_gcpad_settings">NGC手柄</string>
     <string name="grid_menu_wiimote_settings">Wii手柄</string>
     <string name="grid_menu_refresh">刷新游戏库</string>
