@@ -232,7 +232,6 @@
     <!-- Debug -->
     <string name="debug_submenu">Debug</string>
     <string name="debug_warning">Warning: These settings will slow emulation</string>
-    <string name="debug_jit_header">Jit</string>
     <string name="debug_jitoff">Jit Disabled</string>
     <string name="debug_jitloadstoreoff">Jit Load Store Disabled</string>
     <string name="debug_jitloadstorefloatingoff">Jit Load Store Floating Point Disabled</string>
