@@ -326,6 +326,9 @@ void JitArm64::fctiwzx(UGeckoInstruction inst)
 
   bool single = fpr.IsSingle(b, true);
 
+  // temp fix for eternal darkness
+  FALLBACK_IF(!single);
+
   ARM64Reg VB = fpr.R(b, single ? REG_LOWER_PAIR_SINGLE : REG_LOWER_PAIR);
   ARM64Reg VD = fpr.RW(d);
 

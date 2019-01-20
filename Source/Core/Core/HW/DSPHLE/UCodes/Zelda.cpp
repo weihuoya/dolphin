@@ -548,8 +548,9 @@ void ZeldaUCode::RunPendingCommands()
       else if (m_flags & WEIRD_CMD_0C)
       {
         // TODO
-        NOTICE_LOG(DSPHLE, "Received an unhandled 0C command, params: %08x %08x", Read32(),
-                   Read32());
+        u32 p0 = Read32();
+        u32 p1 = Read32();
+        NOTICE_LOG(DSPHLE, "Received an unhandled 0C command, params: %08x %08x", p0, p1);
       }
       else
       {
@@ -563,11 +564,12 @@ void ZeldaUCode::RunPendingCommands()
       if (m_flags & NO_CMD_0D)
       {
         WARN_LOG(DSPHLE, "Received a 0D command which is NOP'd on this UCode.");
-        SendCommandAck(CommandAck::STANDARD, sync);
-        break;
       }
-
-      WARN_LOG(DSPHLE, "CMD0D: %08x", Read32());
+      else
+      {
+        u32 p0 = Read32();
+        WARN_LOG(DSPHLE, "CMD0D: %08x", p0);
+      }
       SendCommandAck(CommandAck::STANDARD, sync);
       break;
 
