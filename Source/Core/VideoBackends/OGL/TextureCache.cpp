@@ -45,7 +45,6 @@ void main()
 }
 )GLSL";
 
-
 constexpr const char GLSL_COLOR_COPY_FS[] = R"GLSL(
 SAMPLER_BINDING(9) uniform sampler2DArray samp9;
 in vec3 f_uv0;
@@ -312,14 +311,6 @@ void TextureCache::ConvertTexture(TCacheEntry* destination, TCacheEntry* source,
 
   g_renderer->RestoreAPIState();
 }
-
-static const std::string decoding_vertex_shader = R"(
-void main()
-{
-  vec2 rawpos = vec2(gl_VertexID&1, gl_VertexID&2);
-  gl_Position = vec4(rawpos*2.0-1.0, 0.0, 1.0);
-}
-)";
 
 void TextureCache::CreateTextureDecodingResources()
 {
