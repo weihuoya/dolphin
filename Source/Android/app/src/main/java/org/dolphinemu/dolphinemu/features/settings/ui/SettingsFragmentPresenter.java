@@ -377,6 +377,7 @@ public final class SettingsFragmentPresenter
     Setting shaderCompilationMode = gfxSection.getSetting(SettingsFile.KEY_SHADER_COMPILATION_MODE);
     Setting waitForShaders = gfxSection.getSetting(SettingsFile.KEY_WAIT_FOR_SHADERS);
     Setting aspectRatio = gfxSection.getSetting(SettingsFile.KEY_ASPECT_RATIO);
+    Setting displayScale = gfxSection.getSetting(SettingsFile.KEY_DISPLAY_SCALE);
 
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_VIDEO_BACKEND_INDEX, Settings.SECTION_INI_CORE,
       R.string.video_backend, 0, R.array.videoBackendEntries,
@@ -393,6 +394,8 @@ public final class SettingsFragmentPresenter
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_ASPECT_RATIO, Settings.SECTION_GFX_SETTINGS,
       R.string.aspect_ratio, 0, R.array.aspectRatioEntries,
       R.array.aspectRatioValues, 0, aspectRatio));
+    sl.add(new SliderSetting(SettingsFile.KEY_DISPLAY_SCALE, Settings.SECTION_GFX_SETTINGS,
+      R.string.setting_display_scale, 0, 200, "%", 100, displayScale));
   }
 
   private void addEnhanceSettings(ArrayList<SettingsItem> sl)

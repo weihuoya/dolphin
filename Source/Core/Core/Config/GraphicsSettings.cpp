@@ -26,6 +26,7 @@ const ConfigInfo<AspectMode> GFX_ASPECT_RATIO{{System::GFX, "Settings", "AspectR
 const ConfigInfo<AspectMode> GFX_SUGGESTED_ASPECT_RATIO{
     {System::GFX, "Settings", "SuggestedAspectRatio"}, AspectMode::Auto};
 const ConfigInfo<bool> GFX_CROP{{System::GFX, "Settings", "Crop"}, false};
+const ConfigInfo<float> GFX_DISPLAY_SCALE{{System::GFX, "Settings", "DisplayScale"}, 1.0f};
 const ConfigInfo<int> GFX_SAFE_TEXTURE_CACHE_COLOR_SAMPLES{
     {System::GFX, "Settings", "SafeTextureCacheColorSamples"}, 128};
 const ConfigInfo<bool> GFX_SHOW_FPS{{System::GFX, "Settings", "ShowFPS"}, false};
@@ -58,7 +59,7 @@ const ConfigInfo<bool> GFX_ENABLE_GPU_TEXTURE_DECODING{
 const ConfigInfo<bool> GFX_ENABLE_PIXEL_LIGHTING{{System::GFX, "Settings", "EnablePixelLighting"},
                                                  false};
 const ConfigInfo<bool> GFX_FAST_DEPTH_CALC{{System::GFX, "Settings", "FastDepthCalc"}, true};
-const ConfigInfo<u32> GFX_MSAA{{System::GFX, "Settings", "MSAA"}, 1};
+const ConfigInfo<int> GFX_MSAA{{System::GFX, "Settings", "MSAA"}, 1};
 const ConfigInfo<bool> GFX_SSAA{{System::GFX, "Settings", "SSAA"}, false};
 const ConfigInfo<int> GFX_EFB_SCALE{{System::GFX, "Settings", "InternalResolution"}, 1};
 const ConfigInfo<bool> GFX_TEXFMT_OVERLAY_ENABLE{{System::GFX, "Settings", "TexFmtOverlayEnable"},

@@ -326,9 +326,6 @@ void JitArm64::fctiwzx(UGeckoInstruction inst)
 
   bool single = fpr.IsSingle(b, true);
 
-  // temp fix for eternal darkness
-  FALLBACK_IF(!single);
-
   ARM64Reg VB = fpr.R(b, single ? REG_LOWER_PAIR_SINGLE : REG_LOWER_PAIR);
   ARM64Reg VD = fpr.RW(d);
 
@@ -344,8 +341,7 @@ void JitArm64::fctiwzx(UGeckoInstruction inst)
   }
   else
   {
-    m_float_emit.FCVT(32, 64, EncodeRegToDouble(VD), EncodeRegToDouble(VB));
-    m_float_emit.FCVTS(EncodeRegToSingle(VD), EncodeRegToSingle(VD), ROUND_Z);
+    m_float_emit.FCVTS(EncodeRegToDouble(VD), EncodeRegToDouble(VB), ROUND_Z);
   }
   m_float_emit.ORR(EncodeRegToDouble(VD), EncodeRegToDouble(VD), EncodeRegToDouble(V0));
   fpr.Unlock(V0);

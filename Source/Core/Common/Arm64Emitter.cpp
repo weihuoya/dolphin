@@ -3486,7 +3486,7 @@ void ARM64FloatEmitter::SMOV(u8 size, ARM64Reg Rd, ARM64Reg Rn, u8 index)
   EmitCopy(b64Bit, 0, imm5, 5, Rd, Rn);
 }
 
-// One source
+// One source, Floating-point convert precision
 void ARM64FloatEmitter::FCVT(u8 size_to, u8 size_from, ARM64Reg Rd, ARM64Reg Rn)
 {
   u32 dst_encoding = 0;

@@ -203,7 +203,7 @@ void JitArm64::ps_sumX(UGeckoInstruction inst)
   ARM64Reg (*reg_encoder)(ARM64Reg) = singles ? EncodeRegToDouble : EncodeRegToQuad;
 
   // temp fix for sonic unleash
-  FALLBACK_IF(!upper && singles);
+  FALLBACK_IF(!upper && singles && d != c);
 
   ARM64Reg VA = fpr.R(a, type);
   ARM64Reg VB = fpr.R(b, type);

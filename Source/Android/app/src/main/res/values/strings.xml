@@ -324,6 +324,7 @@
     <string name="state_saves">State Saves</string>
     <string name="save">Save</string>
     <string name="load">Load</string>
+    <string name="setting_display_scale">Display Scale</string>
     <string name="emulation_joystick_settings">Joystick Emulation</string>
     <string name="emulation_sensor_settings">Sensor Emulation</string>
     <string name="game_platform_wii">[Wii] %1$s %2$s</string>

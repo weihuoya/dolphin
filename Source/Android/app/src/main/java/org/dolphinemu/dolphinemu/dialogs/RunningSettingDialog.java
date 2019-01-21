@@ -55,6 +55,7 @@ public class RunningSettingDialog extends DialogFragment
     public static final int SETTING_TOUCH_POINTER_SENSITIVE = 102;
     public static final int SETTING_TOUCH_POINTER_RECENTER = 103;
     public static final int SETTING_JOYSTICK_RELATIVE = 104;
+    public static final int SETTING_DISPLAY_SCALE = 105;
 
     // view type
     public static final int TYPE_CHECKBOX = 0;
@@ -241,6 +242,10 @@ public class RunningSettingDialog extends DialogFragment
       {
         mSeekBar.setMax(300);
       }
+      else if(mItem.getSetting() == SettingsItem.SETTING_DISPLAY_SCALE)
+      {
+        mSeekBar.setMax(200);
+      }
       else
       {
         mSeekBar.setMax(10);
@@ -337,6 +342,8 @@ public class RunningSettingDialog extends DialogFragment
         R.string.arbitrary_mipmap_detection, SettingsItem.TYPE_CHECKBOX, mRunningSettings[i++]));
       mSettings.add(new SettingsItem(SettingsItem.SETTING_IMMEDIATE_XFB,
         R.string.immediate_xfb, SettingsItem.TYPE_CHECKBOX, mRunningSettings[i++]));
+      mSettings.add(new SettingsItem(SettingsItem.SETTING_DISPLAY_SCALE,
+        R.string.setting_display_scale, SettingsItem.TYPE_SEEK_BAR, mRunningSettings[i++]));
 
       // core
       mSettings.add(new SettingsItem(SettingsItem.SETTING_SYNC_ON_SKIP_IDLE,
@@ -444,7 +451,6 @@ public class RunningSettingDialog extends DialogFragment
       mSettings.remove(0);
 
       editor.apply();
-
 
       // settings
       boolean isChanged = false;

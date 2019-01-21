@@ -54,6 +54,7 @@ struct VideoConfig final
   bool bWidescreenHack;
   AspectMode aspect_mode;
   AspectMode suggested_aspect_mode;
+  float fDisplayScale;
   bool bCrop;  // Aspect ratio controls.
   bool bShaderCache;
 

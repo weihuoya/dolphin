@@ -513,6 +513,9 @@ void Renderer::UpdateDrawRectangle()
     crop_width = win_width;
   }
 
+  draw_width *= g_ActiveConfig.fDisplayScale;
+  draw_height *= g_ActiveConfig.fDisplayScale;
+
   // ensure divisibility by 4 to make it compatible with all the video encoders
   draw_width = std::ceil(draw_width) - static_cast<int>(std::ceil(draw_width)) % 4;
   draw_height = std::ceil(draw_height) - static_cast<int>(std::ceil(draw_height)) % 4;

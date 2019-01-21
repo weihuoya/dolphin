@@ -485,7 +485,7 @@ JNIEXPORT jintArray JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_getRunn
   (JNIEnv * env, jobject obj)
 {
   int i = 0;
-  int settings[10];
+  int settings[11];
 
   // gfx
   settings[i++] = Config::Get(Config::GFX_SHOW_FPS);
@@ -494,6 +494,7 @@ JNIEXPORT jintArray JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_getRunn
   settings[i++] = Config::Get(Config::GFX_HACK_EFB_EMULATE_FORMAT_CHANGES) == false;
   settings[i++] = Config::Get(Config::GFX_ENHANCE_ARBITRARY_MIPMAP_DETECTION);
   settings[i++] = Config::Get(Config::GFX_HACK_IMMEDIATE_XFB);
+  settings[i++] = Config::Get(Config::GFX_DISPLAY_SCALE) * 100;
 
   // core
   settings[i++] = SConfig::GetInstance().bSyncGPUOnSkipIdleHack;
@@ -520,6 +521,7 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_setRunningSe
   Config::SetBaseOrCurrent(Config::GFX_HACK_EFB_EMULATE_FORMAT_CHANGES, settings[i++] == 0);
   Config::SetBaseOrCurrent(Config::GFX_ENHANCE_ARBITRARY_MIPMAP_DETECTION, settings[i++]);
   Config::SetBaseOrCurrent(Config::GFX_HACK_IMMEDIATE_XFB, settings[i++]);
+  Config::SetBaseOrCurrent(Config::GFX_DISPLAY_SCALE, settings[i++] / 100.0f + FLT_EPSILON);
   g_Config.Refresh();
   UpdateActiveConfig();
 
@@ -527,7 +529,7 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_setRunningSe
   // and don't save changes to ini file
   SConfig::GetInstance().bSyncGPUOnSkipIdleHack = settings[i++];
   SConfig::GetInstance().m_OCEnable = settings[i++];
-  SConfig::GetInstance().m_OCFactor = (settings[i++] + 1) / 100.0f;
+  SConfig::GetInstance().m_OCFactor = settings[i++] / 100.0f + FLT_EPSILON;
   SConfig::GetInstance().bJITFollowBranch = settings[i++];
 
   env->ReleaseIntArrayElements(array, settings, 0);
