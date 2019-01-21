@@ -174,10 +174,10 @@
         <item>8x</item>
     </string-array>
     <integer-array name="FSAAValues" translatable="false">
-        <item>0</item>
         <item>1</item>
         <item>2</item>
-        <item>3</item>
+        <item>4</item>
+        <item>8</item>
     </integer-array>
 
     <!-- Anisotropic Filtering Preference -->

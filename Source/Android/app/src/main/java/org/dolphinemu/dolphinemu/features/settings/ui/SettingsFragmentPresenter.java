@@ -419,7 +419,7 @@ public final class SettingsFragmentPresenter
       R.string.internal_resolution, R.string.internal_resolution_description,
       R.array.internalResolutionEntries, R.array.internalResolutionValues, 1, resolution));
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_FSAA, Settings.SECTION_GFX_SETTINGS,
-      R.string.FSAA, R.string.FSAA_description, R.array.FSAAEntries, R.array.FSAAValues, 0,
+      R.string.FSAA, R.string.FSAA_description, R.array.FSAAEntries, R.array.FSAAValues, 1,
       fsaa));
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_ANISOTROPY, Settings.SECTION_GFX_ENHANCEMENTS,
       R.string.anisotropic_filtering, R.string.anisotropic_filtering_description,

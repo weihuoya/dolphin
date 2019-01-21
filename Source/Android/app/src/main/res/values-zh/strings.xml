@@ -212,7 +212,7 @@
     <string name="texture_cache_accuracy">纹理缓存精度</string>
     <string name="texture_cache_accuracy_description">提高缓存精度，模拟器能及时从缓存中更新纹理。如果出现文字显示问题，请提高精度。</string>
     <string name="gpu_texture_decoding">GPU纹理解码</string>
-    <string name="gpu_texture_decoding_description">使用着色器解码纹理，但需要硬件支持。</string>
+    <string name="gpu_texture_decoding_description">使用GPU着色器解码纹理，但需要硬件支持。</string>
     <string name="external_frame_buffer">外部帧缓存</string>
     <string name="xfb_copy_method">只将XFB复制到纹理</string>
     <string name="xfb_copy_method_description">只将XFB保存在GPU，在少数游戏中会造成显示问题。如果不确定，请不要勾选此选项。</string>
