@@ -37,7 +37,7 @@ Cursor::Cursor(const std::string& name_)
 
   numeric_settings.emplace_back(std::make_unique<NumericSetting>(_trans("Center"), 0.5));
   numeric_settings.emplace_back(std::make_unique<NumericSetting>(_trans("Width"), 0.5));
-  numeric_settings.emplace_back(std::make_unique<NumericSetting>(_trans("Height"), 0.5));
+  numeric_settings.emplace_back(std::make_unique<NumericSetting>(_trans("Height"), 0.65));
 
   boolean_settings.emplace_back(std::make_unique<BooleanSetting>(_trans("Relative Input"), false));
   boolean_settings.emplace_back(std::make_unique<BooleanSetting>(_trans("Auto-Hide"), false));
