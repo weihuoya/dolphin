@@ -158,59 +158,17 @@ constexpr char POSTPROCESSING_SHADER_HEADER[] = R"(
 
   // Interfacing functions
   // The EFB may have a zero alpha value, which we don't want to write to the frame dump, so set it to one here.
-  float4 Sample()
-  {
-    return float4(texture(samp0, uv0).xyz, 1.0);
-  }
-
-  float4 SampleLocation(float2 location)
-  {
-    return float4(texture(samp0, float3(location, uv0.z)).xyz, 1.0);
-  }
-
-  float4 SampleLayer(int layer)
-  {
-    return float4(texture(samp0, float3(uv0.xy, float(layer))).xyz, 1.0);
-  }
-
+  #define Sample() float4(texture(samp0, uv0).xyz, 1.0)
+  #define SampleLocation(location) float4(texture(samp0, float3(location, uv0.z)).xyz, 1.0)
   #define SampleOffset(offset) float4(textureOffset(samp0, uv0, offset).xyz, 1.0)
-
-  float4 SampleFontLocation(float2 location)
-  {
-    return texture(samp1, float3(location, 0.0));
-  }
-
-  float2 GetResolution()
-  {
-    return options.resolution.xy;
-  }
-
-  float2 GetInvResolution()
-  {
-    return options.resolution.zw;
-  }
-
-  float2 GetCoordinates()
-  {
-    return uv0.xy;
-  }
-
-  uint GetTime()
-  {
-    return options.time;
-  }
-
-  void SetOutput(float4 color)
-  {
-    ocol0 = color;
-  }
-
-  #define GetOption(x) (options.x)
-  #define OptionEnabled(x) (options.x != 0)
-
-  // Workaround because there is no getter function for src rect/layer.
-  float4 src_rect = options.src_rect;
-  int layer = int(uv0.z);
+  #define SampleFontLocation(location) texture(samp1, float3(location, 0.0))
+  #define SetOutput(color) (ocol0 = color)
+  #define GetResolution() (options.resolution.xy)
+  #define GetInvResolution() (options.resolution.zw)
+  #define GetCoordinates() (uv0.xy)
+  #define GetTime() (options.time)
+  #define GetOption() (options.x)
+  #define OptionEnabled() (options.x != 0)
 )";
 
 void VulkanPostProcessing::UpdateConfig()

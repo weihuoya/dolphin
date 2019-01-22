@@ -162,74 +162,34 @@ void OpenGLPostProcessing::ApplyShader()
 
 void OpenGLPostProcessing::CreateHeader()
 {
-  m_glsl_header =
-      // Required variables
-      // Shouldn't be accessed directly by the PP shader
-      // Texture sampler
-      "SAMPLER_BINDING(8) uniform sampler2D samp8;\n"
-      "SAMPLER_BINDING(9) uniform sampler2DArray samp9;\n"
+  m_glsl_header = R"(
+  SAMPLER_BINDING(8) uniform sampler2D samp8;
+  SAMPLER_BINDING(9) uniform sampler2DArray samp9;
 
-      // Output variable
-      "out float4 ocol0;\n"
-      // Input coordinates
-      "in float2 uv0;\n"
-      // Resolution
-      "uniform float4 resolution;\n"
-      // Time
-      "uniform uint time;\n"
-      // Layer
-      "uniform int layer;\n"
+  // Output variable
+  out float4 ocol0;
+  // Input coordinates
+  in float2 uv0;
+  // Resolution
+  uniform float4 resolution;
+  // Time
+  uniform uint time;
+  // Layer
+  uniform int layer;
 
-      // Interfacing functions
-      "float4 Sample()\n"
-      "{\n"
-      "\treturn texture(samp9, float3(uv0, layer));\n"
-      "}\n"
-
-      "float4 SampleLocation(float2 location)\n"
-      "{\n"
-      "\treturn texture(samp9, float3(location, layer));\n"
-      "}\n"
-
-      "float4 SampleLayer(int layer)\n"
-      "{\n"
-      "\treturn texture(samp9, float3(uv0, layer));\n"
-      "}\n"
-
-      "#define SampleOffset(offset) textureOffset(samp9, float3(uv0, layer), offset)\n"
-
-      "float4 SampleFontLocation(float2 location)\n"
-      "{\n"
-      "\treturn texture(samp8, location);\n"
-      "}\n"
-
-      "float2 GetResolution()\n"
-      "{\n"
-      "\treturn resolution.xy;\n"
-      "}\n"
-
-      "float2 GetInvResolution()\n"
-      "{\n"
-      "\treturn resolution.zw;\n"
-      "}\n"
-
-      "float2 GetCoordinates()\n"
-      "{\n"
-      "\treturn uv0;\n"
-      "}\n"
-
-      "uint GetTime()\n"
-      "{\n"
-      "\treturn time;\n"
-      "}\n"
-
-      "void SetOutput(float4 color)\n"
-      "{\n"
-      "\tocol0 = color;\n"
-      "}\n"
-
-      "#define GetOption(x) (options.x)\n"
-      "#define OptionEnabled(x) (options.x != 0)\n";
+  // Interfacing functions
+  #define Sample() texture(samp9, float3(uv0, layer))
+  #define SampleLocation(location) texture(samp9, float3(location, layer))
+  #define SampleOffset(offset) textureOffset(samp9, float3(uv0, layer), offset)
+  #define SampleFontLocation(location) texture(samp8, location)
+  #define SetOutput(color) (ocol0 = color)
+  #define GetResolution() (resolution.xy)
+  #define GetInvResolution() (resolution.zw)
+  #define GetCoordinates() (uv0)
+  #define GetTime() (time)
+  #define GetOption() (options.x)
+  #define OptionEnabled() (options.x != 0)
+)";
 }
 
 std::string OpenGLPostProcessing::LoadShaderOptions()
