@@ -429,10 +429,8 @@ public final class SettingsFragmentPresenter
       R.array.anisotropicFilteringEntries, R.array.anisotropicFilteringValues, 0,
       anisotropic));
 
-    String[] shaderListEntries = getShaderList(null);
-    String[] shaderListValues = new String[shaderListEntries.length];
-    System.arraycopy(shaderListEntries, 0, shaderListValues, 0, shaderListEntries.length);
-    shaderListValues[0] = "";
+    String[] shaderListValues = getShadersValues();
+    String[] shaderListEntries = getShaderEntries(shaderListValues);
     sl.add(new StringSingleChoiceSetting(SettingsFile.KEY_POST_SHADER,
       Settings.SECTION_GFX_ENHANCEMENTS, R.string.post_processing_shader,
       0, shaderListEntries, shaderListValues, "",
@@ -461,22 +459,25 @@ public final class SettingsFragmentPresenter
       wideScreenHack));
   }
 
-  private String[] getShaderList(String subDir)
+  private String[] getShaderEntries(String[] values)
+  {
+    String[] entries = new String[values.length];
+    System.arraycopy(values, 0, entries, 0, values.length);
+    entries[0] = mActivity.getString(R.string.off);
+    return entries;
+  }
+
+  private String[] getShadersValues()
   {
     try
     {
       String shadersPath = DirectoryInitialization.getDolphinInternalDirectory() + "/Shaders";
-      if (!TextUtils.isEmpty(subDir))
-      {
-        shadersPath += "/" + subDir;
-      }
-
       File file = new File(shadersPath);
       File[] shaderFiles = file.listFiles();
       if (shaderFiles != null)
       {
         String[] result = new String[shaderFiles.length + 1];
-        result[0] = mActivity.getString(R.string.off);
+        result[0] = "";
         for (int i = 0; i < shaderFiles.length; i++)
         {
           String name = shaderFiles[i].getName();
@@ -494,7 +495,6 @@ public final class SettingsFragmentPresenter
     catch (Exception ex)
     {
       Log.debug("[Settings] Unable to find shader files");
-      // return empty list
     }
 
     return new String[]{};

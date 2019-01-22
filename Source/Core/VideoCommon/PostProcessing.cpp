@@ -59,13 +59,33 @@ PostProcessingShaderConfiguration::PostProcessingShaderConfiguration() = default
 
 PostProcessingShaderConfiguration::~PostProcessingShaderConfiguration() = default;
 
+std::string PostProcessingShaderConfiguration::LoadVertexShader()
+{
+  const std::string& shader = g_ActiveConfig.sPostProcessingShader;
+
+  // loading shader code
+  std::string code;
+  std::string path = File::GetUserPath(D_SHADERS_IDX) + shader + ".vglsl";
+  if (!File::Exists(path))
+  {
+    // Fallback to shared user dir
+    path = File::GetSysDirectory() + SHADERS_DIR DIR_SEP + shader + ".vglsl";
+  }
+
+  if (!File::ReadFileToString(path, code))
+  {
+    return "";
+  }
+
+  return code;
+}
+
 std::string PostProcessingShaderConfiguration::LoadShader(std::string shader)
 {
   // Load the shader from the configuration if there isn't one sent to us.
-  if (shader == "")
+  if (shader.empty())
     shader = g_ActiveConfig.sPostProcessingShader;
   m_current_shader = shader;
-
 
   // loading shader code
   std::string code;

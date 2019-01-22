@@ -26,6 +26,8 @@ VulkanPostProcessing::~VulkanPostProcessing()
     vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_default_fragment_shader, nullptr);
   if (m_fragment_shader != VK_NULL_HANDLE)
     vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_fragment_shader, nullptr);
+  if (m_vertex_shader != VK_NULL_HANDLE)
+    vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_vertex_shader, nullptr);
 }
 
 bool VulkanPostProcessing::Initialize(const Texture2D* font_texture)
@@ -42,12 +44,14 @@ void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const Tar
                                            const Texture2D* src_tex, int src_layer,
                                            VkRenderPass render_pass)
 {
+  VkShaderModule vertex_shader = m_vertex_shader != VK_NULL_HANDLE ?
+                                     m_vertex_shader :
+                                     g_shader_cache->GetPassthroughVertexShader();
   VkShaderModule fragment_shader =
       m_fragment_shader != VK_NULL_HANDLE ? m_fragment_shader : m_default_fragment_shader;
   UtilityShaderDraw draw(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                          g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD), render_pass,
-                         g_shader_cache->GetPassthroughVertexShader(), VK_NULL_HANDLE,
-                         fragment_shader);
+                         vertex_shader, VK_NULL_HANDLE, fragment_shader);
 
   // Source is always bound.
   draw.SetPSSampler(0, src_tex->GetView(), g_object_cache->GetLinearSampler());
@@ -241,6 +245,12 @@ bool VulkanPostProcessing::RecompileShader()
     g_shader_cache->ClearPipelineCache();
     vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_fragment_shader, nullptr);
     m_fragment_shader = VK_NULL_HANDLE;
+
+    if (m_vertex_shader != VK_NULL_HANDLE)
+    {
+      vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_vertex_shader, nullptr);
+      m_vertex_shader = VK_NULL_HANDLE;
+    }
   }
 
   // If post-processing is disabled, just use the default shader.
@@ -258,6 +268,17 @@ bool VulkanPostProcessing::RecompileShader()
     // BlitFromTexture will use the default shader as a fallback.
     PanicAlert("Failed to compile post-processing shader %s", m_config.GetShader().c_str());
     return false;
+  }
+
+  std::string vertex_code = m_config.LoadVertexShader();
+  if (!vertex_code.empty())
+  {
+    m_vertex_shader = Util::CompileAndCreateVertexShader(vertex_code);
+    if (m_vertex_shader == VK_NULL_HANDLE)
+    {
+      PanicAlert("Failed to compile post-processing vertex shader %s", m_config.GetShader().c_str());
+      return false;
+    }
   }
 
   return true;
