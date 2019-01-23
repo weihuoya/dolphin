@@ -469,34 +469,25 @@ public final class SettingsFragmentPresenter
 
   private String[] getShadersValues()
   {
-    try
+    String shadersPath = DirectoryInitialization.getDolphinInternalDirectory() + "/Shaders";
+    File file = new File(shadersPath);
+    File[] shaderFiles = file.listFiles();
+    if (shaderFiles != null)
     {
-      String shadersPath = DirectoryInitialization.getDolphinInternalDirectory() + "/Shaders";
-      File file = new File(shadersPath);
-      File[] shaderFiles = file.listFiles();
-      if (shaderFiles != null)
+      String[] result = new String[shaderFiles.length + 1];
+      result[0] = "";
+      for (int i = 0; i < shaderFiles.length; i++)
       {
-        String[] result = new String[shaderFiles.length + 1];
-        result[0] = "";
-        for (int i = 0; i < shaderFiles.length; i++)
+        String name = shaderFiles[i].getName();
+        int extensionIndex = name.indexOf(".glsl");
+        if (extensionIndex > 0)
         {
-          String name = shaderFiles[i].getName();
-          int extensionIndex = name.indexOf(".glsl");
-          if (extensionIndex > 0)
-          {
-            name = name.substring(0, extensionIndex);
-          }
+          name = name.substring(0, extensionIndex);
           result[i + 1] = name;
         }
-
-        return result;
       }
+      return result;
     }
-    catch (Exception ex)
-    {
-      Log.debug("[Settings] Unable to find shader files");
-    }
-
     return new String[]{};
   }
 

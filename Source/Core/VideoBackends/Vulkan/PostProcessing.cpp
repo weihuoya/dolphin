@@ -26,8 +26,6 @@ VulkanPostProcessing::~VulkanPostProcessing()
 {
   if (m_fragment_shader != VK_NULL_HANDLE)
     vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_fragment_shader, nullptr);
-  if (m_vertex_shader != VK_NULL_HANDLE)
-    vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_vertex_shader, nullptr);
 }
 
 bool VulkanPostProcessing::Initialize(const Texture2D* font_texture)
@@ -42,9 +40,7 @@ void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const Tar
                                            const Texture2D* src_tex, int src_layer,
                                            VkRenderPass render_pass)
 {
-  VkShaderModule vertex_shader = m_vertex_shader != VK_NULL_HANDLE ?
-                                     m_vertex_shader :
-                                     g_shader_cache->GetPassthroughVertexShader();
+  VkShaderModule vertex_shader = g_shader_cache->GetPassthroughVertexShader();
   VkShaderModule fragment_shader = m_fragment_shader;
   UtilityShaderDraw draw(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                          g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD), render_pass,
@@ -188,15 +184,8 @@ bool VulkanPostProcessing::RecompileShader()
     g_shader_cache->ClearPipelineCache();
     vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_fragment_shader, nullptr);
     m_fragment_shader = VK_NULL_HANDLE;
-
-    if (m_vertex_shader != VK_NULL_HANDLE)
-    {
-      vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_vertex_shader, nullptr);
-      m_vertex_shader = VK_NULL_HANDLE;
-    }
   }
 
-  std::string vertex_code;
   std::string fragment_code;
   m_load_all_uniforms = false;
 
@@ -207,7 +196,6 @@ bool VulkanPostProcessing::RecompileShader()
     if(!main_code.empty())
     {
       std::string options_code = GetGLSLUniformBlock();
-      vertex_code = m_config.LoadVertexShader();
       fragment_code = options_code + POSTPROCESSING_SHADER_HEADER + main_code;
       m_load_all_uniforms = true;
     }
@@ -227,17 +215,6 @@ bool VulkanPostProcessing::RecompileShader()
     PanicAlert("Failed to compile post-processing shader %s", m_config.GetShader().c_str());
     Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
     return false;
-  }
-
-  if (!vertex_code.empty())
-  {
-    m_vertex_shader = Util::CompileAndCreateVertexShader(vertex_code);
-    if (m_vertex_shader == VK_NULL_HANDLE)
-    {
-      PanicAlert("Failed to compile post-processing vertex shader %s", m_config.GetShader().c_str());
-      Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
-      return false;
-    }
   }
 
   return true;

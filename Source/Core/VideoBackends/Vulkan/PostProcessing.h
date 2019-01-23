@@ -37,7 +37,6 @@ private:
   std::string GetGLSLUniformBlock() const;
 
   const Texture2D* m_font_texture = nullptr;
-  VkShaderModule m_vertex_shader = VK_NULL_HANDLE;
   VkShaderModule m_fragment_shader = VK_NULL_HANDLE;
   bool m_load_all_uniforms;
 };

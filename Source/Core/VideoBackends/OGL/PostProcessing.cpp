@@ -178,7 +178,6 @@ void OpenGLPostProcessing::ApplyShader()
   m_uniform_bindings.clear();
 
   bool load_all_uniform = false;
-  std::string vertex_code;
   std::string fragment_code;
 
   if(!g_ActiveConfig.sPostProcessingShader.empty())
@@ -189,7 +188,6 @@ void OpenGLPostProcessing::ApplyShader()
     {
       std::string glsl_header(s_glsl_header);
       std::string options_code = LoadShaderOptions();
-      vertex_code = m_config.LoadVertexShader();
       fragment_code = glsl_header + options_code + main_code;
       load_all_uniform = true;
     }
@@ -199,13 +197,11 @@ void OpenGLPostProcessing::ApplyShader()
     }
   }
 
-  if(vertex_code.empty())
-    vertex_code = s_vertex_shader;
   if(fragment_code.empty())
     fragment_code = s_fragment_shader;
 
   // and compile it
-  if (!ProgramShaderCache::CompileShader(m_shader, vertex_code, fragment_code))
+  if (!ProgramShaderCache::CompileShader(m_shader, s_vertex_shader, fragment_code))
   {
     ERROR_LOG(VIDEO, "Failed to compile post-processing shader %s", m_config.GetShader().c_str());
     Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
