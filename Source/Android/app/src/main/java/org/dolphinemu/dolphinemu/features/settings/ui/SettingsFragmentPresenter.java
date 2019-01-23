@@ -462,8 +462,42 @@ public final class SettingsFragmentPresenter
   private String[] getShaderEntries(String[] values)
   {
     String[] entries = new String[values.length];
-    System.arraycopy(values, 0, entries, 0, values.length);
     entries[0] = mActivity.getString(R.string.off);
+    for(int i = 1; i < values.length; ++i)
+    {
+      if(values[i].equals("FXAA"))
+      {
+        entries[i] = mActivity.getString(R.string.shader_fxaa);
+      }
+      else if(values[i].equals("invert"))
+      {
+        entries[i] = mActivity.getString(R.string.shader_invert);
+      }
+      else if(values[i].equals("mad_world"))
+      {
+        entries[i] = mActivity.getString(R.string.shader_mad_world);
+      }
+      else if(values[i].equals("CRT"))
+      {
+        entries[i] = mActivity.getString(R.string.shader_crt);
+      }
+      else if(values[i].equals("brighten"))
+      {
+        entries[i] = mActivity.getString(R.string.shader_brighten);
+      }
+      else if(values[i].equals("bloom"))
+      {
+        entries[i] = mActivity.getString(R.string.shader_bloom);
+      }
+      else if(values[i].equals("natural"))
+      {
+        entries[i] = mActivity.getString(R.string.shader_natural);
+      }
+      else
+      {
+        entries[i] = values[i];
+      }
+    }
     return entries;
   }
 

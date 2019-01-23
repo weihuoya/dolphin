@@ -351,6 +351,14 @@
     <string name="use_builtin_title_database">使用游戏名称数据库</string>
     <string name="interface_show_extended_fps_description">显示详细的帧率数据和系统信息。</string>
 
+    <string name="shader_fxaa">FXAA Antialiasing</string>
+    <string name="shader_natural">Natural Color</string>
+    <string name="shader_crt">CRT scanlines</string>
+    <string name="shader_invert">Invert Color</string>
+    <string name="shader_mad_world">Mad World</string>
+    <string name="shader_brighten">Brighten</string>
+    <string name="shader_bloom">Bloom</string>
+
     <string name="sysconf_screensaver">屏幕保护程序</string>
     <string name="sysconf_language">系统语言</string>
     <string name="sysconf_widescreen">宽屏显示</string>

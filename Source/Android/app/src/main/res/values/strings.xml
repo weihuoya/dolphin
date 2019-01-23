@@ -351,6 +351,14 @@
     <string name="use_builtin_title_database">Use Built-In Database of Game Names</string>
     <string name="interface_show_extended_fps_description">Show extended fps information on screen.</string>
 
+    <string name="shader_fxaa">FXAA Antialiasing</string>
+    <string name="shader_natural">Natural Color</string>
+    <string name="shader_crt">CRT scanlines</string>
+    <string name="shader_invert">Invert Color</string>
+    <string name="shader_mad_world">Mad World</string>
+    <string name="shader_brighten">Brighten</string>
+    <string name="shader_bloom">Bloom</string>
+
     <string name="sysconf_screensaver">Screensaver</string>
     <string name="sysconf_language">System Language</string>
     <string name="sysconf_widescreen">Widescreen</string>
