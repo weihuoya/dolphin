@@ -33,14 +33,13 @@ private:
   void FillUniformBuffer(u8* buf, const TargetRectangle& src, const Texture2D* src_tex,
                          int src_layer);
 
-  bool CompileDefaultShader();
   bool RecompileShader();
   std::string GetGLSLUniformBlock() const;
 
   const Texture2D* m_font_texture = nullptr;
   VkShaderModule m_vertex_shader = VK_NULL_HANDLE;
   VkShaderModule m_fragment_shader = VK_NULL_HANDLE;
-  VkShaderModule m_default_fragment_shader = VK_NULL_HANDLE;
+  bool m_load_all_uniforms;
 };
 
 }  // namespace

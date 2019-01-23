@@ -33,11 +33,9 @@ private:
   GLuint m_uniform_src_rect;
   GLuint m_uniform_time;
   GLuint m_uniform_layer;
-  std::string m_glsl_header;
 
   std::unordered_map<std::string, GLuint> m_uniform_bindings;
 
-  void CreateHeader();
   std::string LoadShaderOptions();
 };
 

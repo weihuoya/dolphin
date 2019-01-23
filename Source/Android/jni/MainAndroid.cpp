@@ -615,7 +615,8 @@ static void Run(const std::vector<std::string>& paths,
 
   std::unique_lock<std::mutex> guard(s_host_identity_lock);
 
-  // test
+  // reload settings
+  Config::SetBaseOrCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
   SConfig::GetInstance().LoadSettings();
   VideoBackendBase::ActivateBackend(SConfig::GetInstance().m_strVideoBackend);
 

@@ -8,6 +8,8 @@
 #include "Common/Assert.h"
 #include "Common/StringUtil.h"
 
+#include "Core/Config/GraphicsSettings.h"
+
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 #include "VideoBackends/Vulkan/ObjectCache.h"
 #include "VideoBackends/Vulkan/ShaderCache.h"
@@ -22,8 +24,6 @@ namespace Vulkan
 {
 VulkanPostProcessing::~VulkanPostProcessing()
 {
-  if (m_default_fragment_shader != VK_NULL_HANDLE)
-    vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_default_fragment_shader, nullptr);
   if (m_fragment_shader != VK_NULL_HANDLE)
     vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_fragment_shader, nullptr);
   if (m_vertex_shader != VK_NULL_HANDLE)
@@ -33,8 +33,6 @@ VulkanPostProcessing::~VulkanPostProcessing()
 bool VulkanPostProcessing::Initialize(const Texture2D* font_texture)
 {
   m_font_texture = font_texture;
-  if (!CompileDefaultShader())
-    return false;
 
   RecompileShader();
   return true;
@@ -47,8 +45,7 @@ void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const Tar
   VkShaderModule vertex_shader = m_vertex_shader != VK_NULL_HANDLE ?
                                      m_vertex_shader :
                                      g_shader_cache->GetPassthroughVertexShader();
-  VkShaderModule fragment_shader =
-      m_fragment_shader != VK_NULL_HANDLE ? m_fragment_shader : m_default_fragment_shader;
+  VkShaderModule fragment_shader = m_fragment_shader;
   UtilityShaderDraw draw(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                          g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD), render_pass,
                          vertex_shader, VK_NULL_HANDLE, fragment_shader);
@@ -58,7 +55,7 @@ void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const Tar
 
   // No need to allocate uniforms for the default shader.
   // The config will also still contain the invalid shader at this point.
-  if (fragment_shader != m_default_fragment_shader)
+  if (m_load_all_uniforms)
   {
     size_t uniforms_size = CalculateUniformsSize();
     u8* uniforms = draw.AllocatePSUniforms(uniforms_size);
@@ -179,18 +176,6 @@ void VulkanPostProcessing::UpdateConfig()
   RecompileShader();
 }
 
-bool VulkanPostProcessing::CompileDefaultShader()
-{
-  m_default_fragment_shader = Util::CompileAndCreateFragmentShader(DEFAULT_FRAGMENT_SHADER_SOURCE);
-  if (m_default_fragment_shader == VK_NULL_HANDLE)
-  {
-    PanicAlert("Failed to compile default post-processing shader.");
-    return false;
-  }
-
-  return true;
-}
-
 bool VulkanPostProcessing::RecompileShader()
 {
   // As a driver can return the same new module pointer when destroying a shader and re-compiling,
@@ -211,30 +196,46 @@ bool VulkanPostProcessing::RecompileShader()
     }
   }
 
-  // If post-processing is disabled, just use the default shader.
-  // This way we don't need to allocate uniforms.
-  if (g_ActiveConfig.sPostProcessingShader.empty())
-    return true;
+  std::string vertex_code;
+  std::string fragment_code;
+  m_load_all_uniforms = false;
 
   // Generate GLSL and compile the new shader.
-  std::string main_code = m_config.LoadShader();
-  std::string options_code = GetGLSLUniformBlock();
-  std::string code = options_code + POSTPROCESSING_SHADER_HEADER + main_code;
-  m_fragment_shader = Util::CompileAndCreateFragmentShader(code);
+  if (!g_ActiveConfig.sPostProcessingShader.empty())
+  {
+    std::string main_code = m_config.LoadShader(g_ActiveConfig.sPostProcessingShader);
+    if(!main_code.empty())
+    {
+      std::string options_code = GetGLSLUniformBlock();
+      vertex_code = m_config.LoadVertexShader();
+      fragment_code = options_code + POSTPROCESSING_SHADER_HEADER + main_code;
+      m_load_all_uniforms = true;
+    }
+    else
+    {
+      Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
+    }
+  }
+
+  if(fragment_code.empty())
+    fragment_code = DEFAULT_FRAGMENT_SHADER_SOURCE;
+
+  m_fragment_shader = Util::CompileAndCreateFragmentShader(fragment_code);
   if (m_fragment_shader == VK_NULL_HANDLE)
   {
     // BlitFromTexture will use the default shader as a fallback.
     PanicAlert("Failed to compile post-processing shader %s", m_config.GetShader().c_str());
+    Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
     return false;
   }
 
-  std::string vertex_code = m_config.LoadVertexShader();
   if (!vertex_code.empty())
   {
     m_vertex_shader = Util::CompileAndCreateVertexShader(vertex_code);
     if (m_vertex_shader == VK_NULL_HANDLE)
     {
       PanicAlert("Failed to compile post-processing vertex shader %s", m_config.GetShader().c_str());
+      Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
       return false;
     }
   }

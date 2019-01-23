@@ -20,17 +20,62 @@
 
 namespace OGL
 {
-static const char s_vertex_shader[] = "out vec2 uv0;\n"
-                                      "uniform vec4 src_rect;\n"
-                                      "void main(void) {\n"
-                                      "	vec2 rawpos = vec2(gl_VertexID&1, gl_VertexID&2);\n"
-                                      "	gl_Position = vec4(rawpos*2.0-1.0, 0.0, 1.0);\n"
-                                      "	uv0 = vec2(mix(src_rect.xy, src_rect.zw, rawpos));\n"
-                                      "}\n";
+static const char s_glsl_header[] = R"(
+  SAMPLER_BINDING(8) uniform sampler2D samp8;
+  SAMPLER_BINDING(9) uniform sampler2DArray samp9;
+
+  // Output variable
+  out float4 ocol0;
+  // Input coordinates
+  in float2 uv0;
+  // Resolution
+  uniform float4 resolution;
+  // Time
+  uniform uint time;
+  // Layer
+  uniform int layer;
+
+  // Interfacing functions
+  float4 Sample() { return texture(samp9, float3(uv0, layer)); }
+  float4 SampleLocation(float2 location) { return texture(samp9, float3(location, layer)); }
+  #define SampleOffset(offset) textureOffset(samp9, float3(uv0, layer), offset)
+  float4 SampleFontLocation(float2 location) { return texture(samp8, location); }
+
+  float2 GetResolution() { return resolution.xy; }
+  float2 GetInvResolution() { return resolution.zw; }
+  float2 GetCoordinates() { return uv0; }
+  uint GetTime() { return time; }
+
+  void SetOutput(float4 color) { ocol0 = color; }
+
+  #define GetOption() (options.x)
+  #define OptionEnabled() (options.x != 0)
+)";
+
+static const char s_vertex_shader[] = R"(
+out vec2 uv0;
+uniform vec4 src_rect;
+void main()
+{
+  vec2 rawpos = vec2(gl_VertexID&1, gl_VertexID&2);
+  gl_Position = vec4(rawpos * 2.0-1.0, 0.0, 1.0);
+  uv0 = vec2(mix(src_rect.xy, src_rect.zw, rawpos));
+}
+)";
+
+static const char s_fragment_shader[] = R"(
+out float4 ocol0;
+in float2 uv0;
+uniform int layer;
+SAMPLER_BINDING(9) uniform sampler2DArray samp9;
+void main()
+{
+  ocol0 = texture(samp9, float3(uv0, layer));
+}
+)";
 
 OpenGLPostProcessing::OpenGLPostProcessing() : m_initialized(false)
 {
-  CreateHeader();
 }
 
 OpenGLPostProcessing::~OpenGLPostProcessing()
@@ -132,64 +177,59 @@ void OpenGLPostProcessing::ApplyShader()
   m_shader.Destroy();
   m_uniform_bindings.clear();
 
-  // load shader code
-  std::string main_code = m_config.LoadShader();
-  std::string options_code = LoadShaderOptions();
-  std::string code = m_glsl_header + options_code + main_code;
+  bool load_all_uniform = false;
+  std::string vertex_code;
+  std::string fragment_code;
+
+  if(!g_ActiveConfig.sPostProcessingShader.empty())
+  {
+    // load shader code
+    std::string main_code = m_config.LoadShader(g_ActiveConfig.sPostProcessingShader);
+    if(!main_code.empty())
+    {
+      std::string glsl_header(s_glsl_header);
+      std::string options_code = LoadShaderOptions();
+      vertex_code = m_config.LoadVertexShader();
+      fragment_code = glsl_header + options_code + main_code;
+      load_all_uniform = true;
+    }
+    else
+    {
+      Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
+    }
+  }
+
+  if(vertex_code.empty())
+    vertex_code = s_vertex_shader;
+  if(fragment_code.empty())
+    fragment_code = s_fragment_shader;
 
   // and compile it
-  if (!ProgramShaderCache::CompileShader(m_shader, s_vertex_shader, code))
+  if (!ProgramShaderCache::CompileShader(m_shader, vertex_code, fragment_code))
   {
     ERROR_LOG(VIDEO, "Failed to compile post-processing shader %s", m_config.GetShader().c_str());
     Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
-    code = m_config.LoadShader();
-    ProgramShaderCache::CompileShader(m_shader, s_vertex_shader, code);
   }
 
   // read uniform locations
-  m_uniform_resolution = glGetUniformLocation(m_shader.glprogid, "resolution");
-  m_uniform_time = glGetUniformLocation(m_shader.glprogid, "time");
   m_uniform_src_rect = glGetUniformLocation(m_shader.glprogid, "src_rect");
   m_uniform_layer = glGetUniformLocation(m_shader.glprogid, "layer");
+  m_uniform_resolution = GL_INVALID_VALUE;
+  m_uniform_time = GL_INVALID_VALUE;
 
-  for (const auto& it : m_config.GetOptions())
+  if(load_all_uniform)
   {
-    std::string glsl_name = "options." + it.first;
-    m_uniform_bindings[it.first] = glGetUniformLocation(m_shader.glprogid, glsl_name.c_str());
+    m_uniform_resolution = glGetUniformLocation(m_shader.glprogid, "resolution");
+    m_uniform_time = glGetUniformLocation(m_shader.glprogid, "time");
+
+    for (const auto& it : m_config.GetOptions())
+    {
+      std::string glsl_name = "options." + it.first;
+      m_uniform_bindings[it.first] = glGetUniformLocation(m_shader.glprogid, glsl_name.c_str());
+    }
   }
+
   m_initialized = true;
-}
-
-void OpenGLPostProcessing::CreateHeader()
-{
-  m_glsl_header = R"(
-  SAMPLER_BINDING(8) uniform sampler2D samp8;
-  SAMPLER_BINDING(9) uniform sampler2DArray samp9;
-
-  // Output variable
-  out float4 ocol0;
-  // Input coordinates
-  in float2 uv0;
-  // Resolution
-  uniform float4 resolution;
-  // Time
-  uniform uint time;
-  // Layer
-  uniform int layer;
-
-  // Interfacing functions
-  #define Sample() texture(samp9, float3(uv0, layer))
-  #define SampleLocation(location) texture(samp9, float3(location, layer))
-  #define SampleOffset(offset) textureOffset(samp9, float3(uv0, layer), offset)
-  #define SampleFontLocation(location) texture(samp8, location)
-  #define SetOutput(color) (ocol0 = color)
-  #define GetResolution() (resolution.xy)
-  #define GetInvResolution() (resolution.zw)
-  #define GetCoordinates() (uv0)
-  #define GetTime() (time)
-  #define GetOption() (options.x)
-  #define OptionEnabled() (options.x != 0)
-)";
 }
 
 std::string OpenGLPostProcessing::LoadShaderOptions()
