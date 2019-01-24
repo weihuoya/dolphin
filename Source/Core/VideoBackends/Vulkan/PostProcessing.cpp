@@ -24,6 +24,8 @@ namespace Vulkan
 {
 VulkanPostProcessing::~VulkanPostProcessing()
 {
+  if (m_vertex_shader != VK_NULL_HANDLE)
+    vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_vertex_shader, nullptr);
   if (m_fragment_shader != VK_NULL_HANDLE)
     vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_fragment_shader, nullptr);
 }
@@ -40,8 +42,12 @@ void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const Tar
                                            const Texture2D* src_tex, int src_layer,
                                            VkRenderPass render_pass)
 {
-  VkShaderModule vertex_shader = g_shader_cache->GetPassthroughVertexShader();
+  VkShaderModule vertex_shader = m_vertex_shader;
   VkShaderModule fragment_shader = m_fragment_shader;
+  if (vertex_shader == VK_NULL_HANDLE)
+  {
+    vertex_shader = g_shader_cache->GetPassthroughVertexShader();
+  }
   UtilityShaderDraw draw(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                          g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD), render_pass,
                          vertex_shader, VK_NULL_HANDLE, fragment_shader);
@@ -128,6 +134,22 @@ void VulkanPostProcessing::FillUniformBuffer(u8* buf, const TargetRectangle& src
   }
 }
 
+constexpr char DEFAULT_VERTEX_SHADER_SOURCE[] = R"(
+  layout(location = 0) in vec4 ipos;
+  layout(location = 5) in vec4 icol0;
+  layout(location = 8) in vec3 itex0;
+
+  layout(location = 0) out vec3 uv0;
+  layout(location = 1) out vec4 col0;
+
+  void main()
+  {
+    gl_Position = ipos;
+    uv0 = itex0;
+    col0 = icol0;
+  }
+)";
+
 constexpr char DEFAULT_FRAGMENT_SHADER_SOURCE[] = R"(
   layout(set = 1, binding = 0) uniform sampler2DArray samp0;
 
@@ -141,7 +163,21 @@ constexpr char DEFAULT_FRAGMENT_SHADER_SOURCE[] = R"(
   }
 )";
 
-constexpr char POSTPROCESSING_SHADER_HEADER[] = R"(
+constexpr char POSTPROCESSING_VERTEX_HEADER[] = R"(
+  layout(location = 0) in vec4 ipos;
+  layout(location = 5) in vec4 icol0;
+  layout(location = 8) in vec3 itex0;
+
+  layout(location = 0) out vec3 uv0;
+  layout(location = 1) out vec4 col0;
+
+  #define VERTEX_SETUP gl_Position = ipos; uv0 = itex0; col0 = icol0;
+  #define GetResolution() (options.resolution.xy)
+  #define GetInvResolution() (options.resolution.zw)
+  #define GetCoordinates() (uv0.xy)
+)";
+
+constexpr char POSTPROCESSING_FRAGMENT_HEADER[] = R"(
   SAMPLER_BINDING(0) uniform sampler2DArray samp0;
   SAMPLER_BINDING(1) uniform sampler2DArray samp1;
 
@@ -184,6 +220,12 @@ bool VulkanPostProcessing::RecompileShader()
     g_shader_cache->ClearPipelineCache();
     vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_fragment_shader, nullptr);
     m_fragment_shader = VK_NULL_HANDLE;
+
+    if (m_vertex_shader != VK_NULL_HANDLE)
+    {
+      vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_vertex_shader, nullptr);
+      m_vertex_shader = VK_NULL_HANDLE;
+    }
   }
 
   std::string fragment_code;
@@ -193,10 +235,11 @@ bool VulkanPostProcessing::RecompileShader()
   if (!g_ActiveConfig.sPostProcessingShader.empty())
   {
     std::string main_code = m_config.LoadShader(g_ActiveConfig.sPostProcessingShader);
-    if(!main_code.empty())
+    if (!main_code.empty())
     {
       std::string options_code = GetGLSLUniformBlock();
-      fragment_code = options_code + POSTPROCESSING_SHADER_HEADER + main_code;
+      fragment_code =
+          options_code + POSTPROCESSING_FRAGMENT_HEADER + ConvertToVulkanGLSL(main_code, false);
       m_load_all_uniforms = true;
     }
     else
@@ -205,16 +248,32 @@ bool VulkanPostProcessing::RecompileShader()
     }
   }
 
-  if(fragment_code.empty())
+  if (fragment_code.empty())
     fragment_code = DEFAULT_FRAGMENT_SHADER_SOURCE;
 
   m_fragment_shader = Util::CompileAndCreateFragmentShader(fragment_code);
   if (m_fragment_shader == VK_NULL_HANDLE)
   {
     // BlitFromTexture will use the default shader as a fallback.
-    PanicAlert("Failed to compile post-processing shader %s", m_config.GetShader().c_str());
+    PanicAlert("Failed to compile post-processing shader %s", fragment_code.c_str());
     Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
     return false;
+  }
+
+  std::string main_code = m_config.LoadVertexShader(g_ActiveConfig.sPostProcessingShader);
+  if (!main_code.empty())
+  {
+    std::string options_code = GetGLSLUniformBlock();
+    std::string vertex_code =
+        options_code + POSTPROCESSING_VERTEX_HEADER + ConvertToVulkanGLSL(main_code, true);
+    m_vertex_shader = Util::CompileAndCreateVertexShader(vertex_code);
+    if (m_vertex_shader == VK_NULL_HANDLE)
+    {
+      // BlitFromTexture will use the default shader as a fallback.
+      PanicAlert("Failed to compile post-processing vertex shader %s", vertex_code.c_str());
+      Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
+      return false;
+    }
   }
 
   return true;
@@ -272,6 +331,28 @@ std::string VulkanPostProcessing::GetGLSLUniformBlock() const
   ss << "} options;\n\n";
 
   return ss.str();
+}
+
+std::string VulkanPostProcessing::ConvertToVulkanGLSL(const std::string& code,
+                                                      bool is_vertex_shader) const
+{
+  std::string line;
+  std::string result;
+  std::stringstream instream(code);
+  int location_index = 2;
+  while (std::getline(instream, line))
+  {
+    if (line.find("in ") == 0 || line.find("out ") == 0)
+    {
+      result += StringFromFormat("layout(location = %d) %s\n", location_index++, line.c_str());
+    }
+    else
+    {
+      result += line;
+      result += "\n";
+    }
+  }
+  return result;
 }
 
 }  // namespace Vulkan

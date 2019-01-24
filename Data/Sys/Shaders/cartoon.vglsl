@@ -1,0 +1,28 @@
+out vec4 v_texcoord1;
+out vec4 v_texcoord2;
+out vec4 v_texcoord3;
+out vec4 v_texcoord4;
+out vec4 v_texcoord5;
+out vec4 v_texcoord6;
+
+const float scaleoffset = 0.8; //edge detection offset
+
+void main()
+{
+  VERTEX_SETUP
+
+  vec2 delta = GetInvResolution() * scaleoffset;
+  vec2 dg1 = vec2( delta.x, delta.y);
+  vec2 dg2 = vec2(-delta.x, delta.y);
+  vec2 dx  = vec2( delta.x, 0.0);
+  vec2 dy  = vec2( 0.0, delta.y);
+
+  v_texcoord1.xy = GetCoordinates() - dy;
+  v_texcoord2.xy = GetCoordinates() + dy;
+  v_texcoord3.xy = GetCoordinates() - dx;
+  v_texcoord4.xy = GetCoordinates() + dx;
+  v_texcoord5.xy = GetCoordinates() - dg1;
+  v_texcoord6.xy = GetCoordinates() + dg1;
+  v_texcoord1.zw = GetCoordinates() - dg2;
+  v_texcoord2.zw = GetCoordinates() + dg2;
+}

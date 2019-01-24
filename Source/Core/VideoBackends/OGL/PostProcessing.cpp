@@ -20,7 +20,40 @@
 
 namespace OGL
 {
-static const char s_glsl_header[] = R"(
+static const char s_default_vertex_shader[] = R"(
+out vec2 uv0;
+uniform vec4 src_rect;
+void main()
+{
+  vec2 rawpos = vec2(gl_VertexID&1, gl_VertexID&2);
+  gl_Position = vec4(rawpos * 2.0-1.0, 0.0, 1.0);
+  uv0 = vec2(mix(src_rect.xy, src_rect.zw, rawpos));
+}
+)";
+
+static const char s_default_fragment_shader[] = R"(
+out float4 ocol0;
+in float2 uv0;
+uniform int layer;
+SAMPLER_BINDING(9) uniform sampler2DArray samp9;
+void main()
+{
+  ocol0 = texture(samp9, float3(uv0, layer));
+}
+)";
+
+static const char s_vertex_header[] = R"(
+  out vec2 uv0;
+  uniform vec4 src_rect;
+  // Resolution
+  uniform vec4 resolution;
+  #define VERTEX_SETUP vec2 rawpos = vec2(gl_VertexID&1, gl_VertexID&2); gl_Position = vec4(rawpos * 2.0-1.0, 0.0, 1.0); uv0 = vec2(mix(src_rect.xy, src_rect.zw, rawpos));
+  vec2 GetResolution() { return resolution.xy; }
+  vec2 GetInvResolution() { return resolution.zw; }
+  vec2 GetCoordinates() { return uv0; }
+)";
+
+static const char s_fragment_header[] = R"(
   SAMPLER_BINDING(8) uniform sampler2D samp8;
   SAMPLER_BINDING(9) uniform sampler2DArray samp9;
 
@@ -50,28 +83,6 @@ static const char s_glsl_header[] = R"(
 
   #define GetOption() (options.x)
   #define OptionEnabled() (options.x != 0)
-)";
-
-static const char s_vertex_shader[] = R"(
-out vec2 uv0;
-uniform vec4 src_rect;
-void main()
-{
-  vec2 rawpos = vec2(gl_VertexID&1, gl_VertexID&2);
-  gl_Position = vec4(rawpos * 2.0-1.0, 0.0, 1.0);
-  uv0 = vec2(mix(src_rect.xy, src_rect.zw, rawpos));
-}
-)";
-
-static const char s_fragment_shader[] = R"(
-out float4 ocol0;
-in float2 uv0;
-uniform int layer;
-SAMPLER_BINDING(9) uniform sampler2DArray samp9;
-void main()
-{
-  ocol0 = texture(samp9, float3(uv0, layer));
-}
 )";
 
 OpenGLPostProcessing::OpenGLPostProcessing() : m_initialized(false)
@@ -178,6 +189,7 @@ void OpenGLPostProcessing::ApplyShader()
   m_uniform_bindings.clear();
 
   bool load_all_uniform = false;
+  std::string vertex_code;
   std::string fragment_code;
 
   if(!g_ActiveConfig.sPostProcessingShader.empty())
@@ -186,22 +198,28 @@ void OpenGLPostProcessing::ApplyShader()
     std::string main_code = m_config.LoadShader(g_ActiveConfig.sPostProcessingShader);
     if(!main_code.empty())
     {
-      std::string glsl_header(s_glsl_header);
-      std::string options_code = LoadShaderOptions();
-      fragment_code = glsl_header + options_code + main_code;
+      fragment_code = s_fragment_header + LoadShaderOptions() + main_code;
       load_all_uniform = true;
     }
     else
     {
       Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
     }
+
+    main_code = m_config.LoadVertexShader(g_ActiveConfig.sPostProcessingShader);
+    if(!main_code.empty())
+    {
+      vertex_code = s_vertex_header + main_code;
+    }
   }
 
+  if(vertex_code.empty())
+    vertex_code = s_default_vertex_shader;
   if(fragment_code.empty())
-    fragment_code = s_fragment_shader;
+    fragment_code = s_default_fragment_shader;
 
   // and compile it
-  if (!ProgramShaderCache::CompileShader(m_shader, s_vertex_shader, fragment_code))
+  if (!ProgramShaderCache::CompileShader(m_shader, vertex_code, fragment_code))
   {
     ERROR_LOG(VIDEO, "Failed to compile post-processing shader %s", m_config.GetShader().c_str());
     Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");

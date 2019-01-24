@@ -57,32 +57,56 @@ PostProcessingShaderConfiguration::PostProcessingShaderConfiguration() = default
 
 PostProcessingShaderConfiguration::~PostProcessingShaderConfiguration() = default;
 
-std::string PostProcessingShaderConfiguration::LoadShader(std::string shader)
+std::string PostProcessingShaderConfiguration::LoadVertexShader(const std::string& shader)
+{
+  std::string code;
+  if (shader.empty())
+  {
+    return code;
+  }
+
+  std::string path = File::GetUserPath(D_SHADERS_IDX) + shader + ".vglsl";
+  if (!File::Exists(path))
+  {
+    // Fallback to shared user dir
+    path = File::GetSysDirectory() + SHADERS_DIR DIR_SEP + shader + ".vglsl";
+  }
+
+  if (!File::ReadFileToString(path, code))
+  {
+    ERROR_LOG(VIDEO, "Post-processing shader not found: %s", path.c_str());
+    code.clear();
+  }
+
+  return code;
+}
+
+std::string PostProcessingShaderConfiguration::LoadShader(const std::string& shader)
 {
   // loading shader code
   std::string code;
-  //
   m_current_shader = shader;
-
-  if (!shader.empty())
+  if (shader.empty())
   {
-    std::string path = File::GetUserPath(D_SHADERS_IDX) + shader + ".glsl";
-    if (!File::Exists(path))
-    {
-      // Fallback to shared user dir
-      path = File::GetSysDirectory() + SHADERS_DIR DIR_SEP + shader + ".glsl";
-    }
+    return code;
+  }
 
-    if (!File::ReadFileToString(path, code))
-    {
-      ERROR_LOG(VIDEO, "Post-processing shader not found: %s", path.c_str());
-      code.clear();
-    }
-    else
-    {
-      LoadOptions(code);
-      LoadOptionsConfiguration();
-    }
+  std::string path = File::GetUserPath(D_SHADERS_IDX) + shader + ".glsl";
+  if (!File::Exists(path))
+  {
+    // Fallback to shared user dir
+    path = File::GetSysDirectory() + SHADERS_DIR DIR_SEP + shader + ".glsl";
+  }
+
+  if (File::ReadFileToString(path, code))
+  {
+    LoadOptions(code);
+    LoadOptionsConfiguration();
+  }
+  else
+  {
+    ERROR_LOG(VIDEO, "Post-processing shader not found: %s", path.c_str());
+    code.clear();
   }
 
   return code;

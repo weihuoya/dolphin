@@ -25,6 +25,7 @@ import org.dolphinemu.dolphinemu.utils.DirectoryInitialization;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.List;
 
 public final class SettingsFragmentPresenter
 {
@@ -511,26 +512,24 @@ public final class SettingsFragmentPresenter
 
   private String[] getShadersValues()
   {
+    List<String> values = new ArrayList<>();
     String shadersPath = DirectoryInitialization.getDolphinInternalDirectory() + "/Shaders";
     File file = new File(shadersPath);
     File[] shaderFiles = file.listFiles();
     if (shaderFiles != null)
     {
-      String[] result = new String[shaderFiles.length + 1];
-      result[0] = "";
-      for (int i = 0; i < shaderFiles.length; i++)
+      values.add("");
+      for (int i = 0; i < shaderFiles.length; ++i)
       {
         String name = shaderFiles[i].getName();
         int extensionIndex = name.indexOf(".glsl");
         if (extensionIndex > 0)
         {
-          name = name.substring(0, extensionIndex);
-          result[i + 1] = name;
+          values.add(name.substring(0, extensionIndex));
         }
       }
-      return result;
     }
-    return new String[]{};
+    return values.toArray(new String[0]);
   }
 
   private void addHackSettings(ArrayList<SettingsItem> sl)
