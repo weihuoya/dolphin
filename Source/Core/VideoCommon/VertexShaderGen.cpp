@@ -128,7 +128,6 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
       }
     }
 
-    // We need to always use output blocks for Vulkan, but geometry shaders are also optional.
     if (host_config.backend_geometry_shaders)
     {
       out.Write("VARYING_LOCATION(0) out VertexData {\n");

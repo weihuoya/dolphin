@@ -22,7 +22,6 @@ import org.dolphinemu.dolphinemu.features.settings.model.view.StringSingleChoice
 import org.dolphinemu.dolphinemu.features.settings.model.view.SubmenuSetting;
 import org.dolphinemu.dolphinemu.features.settings.utils.SettingsFile;
 import org.dolphinemu.dolphinemu.utils.DirectoryInitialization;
-import org.dolphinemu.dolphinemu.utils.Log;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -459,6 +458,27 @@ public final class SettingsFragmentPresenter
       wideScreenHack));
   }
 
+  private String capitalize(String text)
+  {
+    if (text.contains("_"))
+    {
+      text = text.replace("_"," ");
+    }
+
+    if (text.contains(" ") && text.length() > 1)
+    {
+      String[] ss = text.split(" ");
+      text = capitalize(ss[0]);
+      for(int i = 1; i < ss.length; ++i)
+      {
+        text += " " + capitalize(ss[i]);
+      }
+      return text;
+    }
+
+    return text.substring(0,1).toUpperCase() + text.substring(1).toLowerCase();
+  }
+
   private String[] getShaderEntries(String[] values)
   {
     String[] entries = new String[values.length];
@@ -473,21 +493,9 @@ public final class SettingsFragmentPresenter
       {
         entries[i] = mActivity.getString(R.string.shader_invert);
       }
-      else if(values[i].equals("mad_world"))
-      {
-        entries[i] = mActivity.getString(R.string.shader_mad_world);
-      }
       else if(values[i].equals("CRT"))
       {
         entries[i] = mActivity.getString(R.string.shader_crt);
-      }
-      else if(values[i].equals("brighten"))
-      {
-        entries[i] = mActivity.getString(R.string.shader_brighten);
-      }
-      else if(values[i].equals("bloom"))
-      {
-        entries[i] = mActivity.getString(R.string.shader_bloom);
       }
       else if(values[i].equals("natural"))
       {
@@ -495,7 +503,7 @@ public final class SettingsFragmentPresenter
       }
       else
       {
-        entries[i] = values[i];
+        entries[i] = capitalize(values[i]);
       }
     }
     return entries;
