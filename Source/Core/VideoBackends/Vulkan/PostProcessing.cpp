@@ -30,12 +30,9 @@ VulkanPostProcessing::~VulkanPostProcessing()
     vkDestroyShaderModule(g_vulkan_context->GetDevice(), m_fragment_shader, nullptr);
 }
 
-bool VulkanPostProcessing::Initialize(const Texture2D* font_texture)
+bool VulkanPostProcessing::Initialize()
 {
-  m_font_texture = font_texture;
-
-  RecompileShader();
-  return true;
+  return RecompileShader();
 }
 
 void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const TargetRectangle& src,
@@ -57,13 +54,19 @@ void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const Tar
 
   // No need to allocate uniforms for the default shader.
   // The config will also still contain the invalid shader at this point.
-  if (m_load_all_uniforms)
+  if (m_load_fragment_uniforms)
   {
     size_t uniforms_size = CalculateUniformsSize();
     u8* uniforms = draw.AllocatePSUniforms(uniforms_size);
     FillUniformBuffer(uniforms, src, src_tex, src_layer);
     draw.CommitPSUniforms(uniforms_size);
-    draw.SetPSSampler(1, m_font_texture->GetView(), g_object_cache->GetLinearSampler());
+
+    if(m_load_vertex_uniforms)
+    {
+      uniforms = draw.AllocateVSUniforms(uniforms_size);
+      FillUniformBuffer(uniforms, src, src_tex, src_layer);
+      draw.CommitVSUniforms(uniforms_size);
+    }
   }
 
   draw.DrawQuad(dst.left, dst.top, dst.GetWidth(), dst.GetHeight(), src.left, src.top, src_layer,
@@ -179,7 +182,6 @@ constexpr char POSTPROCESSING_VERTEX_HEADER[] = R"(
 
 constexpr char POSTPROCESSING_FRAGMENT_HEADER[] = R"(
   SAMPLER_BINDING(0) uniform sampler2DArray samp0;
-  SAMPLER_BINDING(1) uniform sampler2DArray samp1;
 
   layout(location = 0) in float3 uv0;
   layout(location = 1) in float4 col0;
@@ -190,7 +192,6 @@ constexpr char POSTPROCESSING_FRAGMENT_HEADER[] = R"(
   #define Sample() float4(texture(samp0, uv0).xyz, 1.0)
   #define SampleLocation(location) float4(texture(samp0, float3(location, uv0.z)).xyz, 1.0)
   #define SampleOffset(offset) float4(textureOffset(samp0, uv0, offset).xyz, 1.0)
-  #define SampleFontLocation(location) texture(samp1, float3(location, 0.0))
   #define SetOutput(color) (ocol0 = color)
   #define GetResolution() (options.resolution.xy)
   #define GetInvResolution() (options.resolution.zw)
@@ -229,7 +230,8 @@ bool VulkanPostProcessing::RecompileShader()
   }
 
   std::string fragment_code;
-  m_load_all_uniforms = false;
+  m_load_vertex_uniforms = false;
+  m_load_fragment_uniforms = false;
 
   // Generate GLSL and compile the new shader.
   if (!g_ActiveConfig.sPostProcessingShader.empty())
@@ -237,14 +239,32 @@ bool VulkanPostProcessing::RecompileShader()
     std::string main_code = m_config.LoadShader(g_ActiveConfig.sPostProcessingShader);
     if (!main_code.empty())
     {
-      std::string options_code = GetGLSLUniformBlock();
+      std::string options_code = GetGLSLUniformBlock(false);
       fragment_code =
-          options_code + POSTPROCESSING_FRAGMENT_HEADER + ConvertToVulkanGLSL(main_code, false);
-      m_load_all_uniforms = true;
+          options_code + POSTPROCESSING_FRAGMENT_HEADER + ConvertToVulkanGLSL(main_code);
+      m_load_fragment_uniforms = true;
     }
     else
     {
       Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
+    }
+
+    // load vertex shader
+    main_code = m_config.LoadVertexShader(g_ActiveConfig.sPostProcessingShader);
+    if (!main_code.empty())
+    {
+      std::string options_code = GetGLSLUniformBlock(true);
+      std::string vertex_code =
+        options_code + POSTPROCESSING_VERTEX_HEADER + ConvertToVulkanGLSL(main_code);
+      m_vertex_shader = Util::CompileAndCreateVertexShader(vertex_code);
+      m_load_vertex_uniforms = true;
+      if (m_vertex_shader == VK_NULL_HANDLE)
+      {
+        // BlitFromTexture will use the default shader as a fallback.
+        PanicAlert("Failed to compile post-processing vertex shader %s", vertex_code.c_str());
+        Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
+        return false;
+      }
     }
   }
 
@@ -260,30 +280,22 @@ bool VulkanPostProcessing::RecompileShader()
     return false;
   }
 
-  std::string main_code = m_config.LoadVertexShader(g_ActiveConfig.sPostProcessingShader);
-  if (!main_code.empty())
-  {
-    std::string options_code = GetGLSLUniformBlock();
-    std::string vertex_code =
-        options_code + POSTPROCESSING_VERTEX_HEADER + ConvertToVulkanGLSL(main_code, true);
-    m_vertex_shader = Util::CompileAndCreateVertexShader(vertex_code);
-    if (m_vertex_shader == VK_NULL_HANDLE)
-    {
-      // BlitFromTexture will use the default shader as a fallback.
-      PanicAlert("Failed to compile post-processing vertex shader %s", vertex_code.c_str());
-      Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
-      return false;
-    }
-  }
-
   return true;
 }
 
-std::string VulkanPostProcessing::GetGLSLUniformBlock() const
+std::string VulkanPostProcessing::GetGLSLUniformBlock(bool is_vertex_shader) const
 {
   std::stringstream ss;
   u32 unused_counter = 1;
-  ss << "UBO_BINDING(std140, 1) uniform PSBlock {\n";
+
+  if(is_vertex_shader)
+  {
+    ss << "UBO_BINDING(std140, 2) uniform VSBlock {\n";
+  }
+  else
+  {
+    ss << "UBO_BINDING(std140, 1) uniform PSBlock {\n";
+  }
 
   // Builtin uniforms
   ss << "  float4 resolution;\n";
@@ -333,8 +345,7 @@ std::string VulkanPostProcessing::GetGLSLUniformBlock() const
   return ss.str();
 }
 
-std::string VulkanPostProcessing::ConvertToVulkanGLSL(const std::string& code,
-                                                      bool is_vertex_shader) const
+std::string VulkanPostProcessing::ConvertToVulkanGLSL(const std::string& code) const
 {
   std::string line;
   std::string result;

@@ -54,7 +54,6 @@ static const char s_vertex_header[] = R"(
 )";
 
 static const char s_fragment_header[] = R"(
-  SAMPLER_BINDING(8) uniform sampler2D samp8;
   SAMPLER_BINDING(9) uniform sampler2DArray samp9;
 
   // Output variable
@@ -72,7 +71,6 @@ static const char s_fragment_header[] = R"(
   float4 Sample() { return texture(samp9, float3(uv0, layer)); }
   float4 SampleLocation(float2 location) { return texture(samp9, float3(location, layer)); }
   #define SampleOffset(offset) textureOffset(samp9, float3(uv0, layer), offset)
-  float4 SampleFontLocation(float2 location) { return texture(samp8, location); }
 
   float2 GetResolution() { return resolution.xy; }
   float2 GetInvResolution() { return resolution.zw; }

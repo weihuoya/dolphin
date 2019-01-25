@@ -114,8 +114,7 @@ bool Renderer::Initialize()
 
   // Initialize post processing.
   m_post_processor = std::make_unique<VulkanPostProcessing>();
-  if (!static_cast<VulkanPostProcessing*>(m_post_processor.get())
-           ->Initialize(m_raster_font->GetTexture()))
+  if (!static_cast<VulkanPostProcessing*>(m_post_processor.get())->Initialize())
   {
     PanicAlert("failed to initialize post processor.");
     return false;

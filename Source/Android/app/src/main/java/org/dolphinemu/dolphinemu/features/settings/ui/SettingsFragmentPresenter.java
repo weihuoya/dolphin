@@ -466,7 +466,7 @@ public final class SettingsFragmentPresenter
       text = text.replace("_"," ");
     }
 
-    if (text.contains(" ") && text.length() > 1)
+    if (text.length() > 1 && text.contains(" "))
     {
       String[] ss = text.split(" ");
       text = capitalize(ss[0]);
@@ -477,7 +477,7 @@ public final class SettingsFragmentPresenter
       return text;
     }
 
-    return text.substring(0,1).toUpperCase() + text.substring(1).toLowerCase();
+    return text.substring(0, 1).toUpperCase() + text.substring(1);
   }
 
   private String[] getShaderEntries(String[] values)
@@ -486,26 +486,7 @@ public final class SettingsFragmentPresenter
     entries[0] = mActivity.getString(R.string.off);
     for(int i = 1; i < values.length; ++i)
     {
-      if(values[i].equals("FXAA"))
-      {
-        entries[i] = mActivity.getString(R.string.shader_fxaa);
-      }
-      else if(values[i].equals("invert"))
-      {
-        entries[i] = mActivity.getString(R.string.shader_invert);
-      }
-      else if(values[i].equals("CRT"))
-      {
-        entries[i] = mActivity.getString(R.string.shader_crt);
-      }
-      else if(values[i].equals("natural"))
-      {
-        entries[i] = mActivity.getString(R.string.shader_natural);
-      }
-      else
-      {
-        entries[i] = capitalize(values[i]);
-      }
+      entries[i] = capitalize(values[i]);
     }
     return entries;
   }

@@ -10,8 +10,8 @@ const float3 val00 = float3( 1.2, 1.2, 1.2);
 
 void main()
 {
-	float3 c0 = Sample().xyz;
-	float3 c1 = RGBtoYIQ * c0;
-	c1 = float3(pow(c1.x, val00.x), c1.yz * val00.yz);
-	SetOutput(float4(YIQtoRGB * c1, 1.0));
+    float3 c0 = Sample().xyz;
+    float3 c1 = RGBtoYIQ * c0;
+    c1 = float3(pow(c1.x, val00.x), c1.yz * val00.yz);
+    SetOutput(float4(YIQtoRGB * c1, 1.0));
 }
