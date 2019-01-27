@@ -114,6 +114,7 @@ public:
   // Shared shader accessors
   VkShaderModule GetScreenQuadVertexShader() const { return m_screen_quad_vertex_shader; }
   VkShaderModule GetPassthroughVertexShader() const { return m_passthrough_vertex_shader; }
+  VkShaderModule GetClearFragmentShader() const { return m_clear_fragment_shader; }
 
 private:
   bool CreatePipelineCache();
@@ -132,6 +133,7 @@ private:
   // Utility/shared shaders
   VkShaderModule m_screen_quad_vertex_shader = VK_NULL_HANDLE;
   VkShaderModule m_passthrough_vertex_shader = VK_NULL_HANDLE;
+  VkShaderModule m_clear_fragment_shader = VK_NULL_HANDLE;
 };
 
 extern std::unique_ptr<ShaderCache> g_shader_cache;

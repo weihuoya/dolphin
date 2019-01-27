@@ -36,7 +36,6 @@ public:
   VkSurfaceFormatKHR GetSurfaceFormat() const { return m_surface_format; }
   AbstractTextureFormat GetTextureFormat() const { return m_texture_format; }
   bool IsVSyncEnabled() const { return m_vsync_enabled; }
-  bool IsStereoEnabled() const { return m_layers == 2; }
   VkSwapchainKHR GetSwapChain() const { return m_swap_chain; }
   u32 GetWidth() const { return m_width; }
   u32 GetHeight() const { return m_height; }
@@ -53,31 +52,12 @@ public:
   {
     return m_swap_chain_images[m_current_swap_chain_image_index].framebuffer;
   }
-
-  VkSemaphore GetImageAvailableSemaphore() const
-  {
-    return m_image_available_semaphore;
-  }
-
-  VkSemaphore GetRenderingFinishedSemaphore() const
-  {
-    return m_rendering_finished_semaphore;
-  }
-
-  VkRenderPass GetRenderPass() const
-  {
-    return m_swap_chain_render_pass;
-  }
-
-  VkRenderPass GetClearRenderPass() const
-  {
-    return m_swap_chain_clear_render_pass;
-  }
+  VkRenderPass GetLoadRenderPass() const { return m_render_pass; }
+  VkRenderPass GetClearRenderPass() const { return m_clear_render_pass; }
+  VkSemaphore GetImageAvailableSemaphore() const { return m_image_available_semaphore; }
+  VkSemaphore GetRenderingFinishedSemaphore() const { return m_rendering_finished_semaphore; }
 
   VkResult AcquireNextImage();
-
-  bool InitDeviceObjects();
-  void DestroyDeviceObjects();
 
   bool RecreateSurface(void* native_handle);
   bool ResizeSwapChain();
@@ -87,6 +67,9 @@ public:
   bool SetVSync(bool enabled);
 
 private:
+  bool CreateSemaphores();
+  void DestroySemaphores();
+
   bool SelectSurfaceFormat();
   bool SelectPresentMode();
 
@@ -119,8 +102,9 @@ private:
 
   VkSemaphore m_image_available_semaphore = VK_NULL_HANDLE;
   VkSemaphore m_rendering_finished_semaphore = VK_NULL_HANDLE;
-  VkRenderPass m_swap_chain_render_pass = VK_NULL_HANDLE;
-  VkRenderPass m_swap_chain_clear_render_pass = VK_NULL_HANDLE;
+
+  VkRenderPass m_render_pass = VK_NULL_HANDLE;
+  VkRenderPass m_clear_render_pass = VK_NULL_HANDLE;
 
   u32 m_width = 0;
   u32 m_height = 0;

@@ -714,7 +714,19 @@ bool ShaderCache::CompileSharedShaders()
     }
   )";
 
-  std::string header = GetUtilityShaderHeader();
+  static const char CLEAR_FRAGMENT_SHADER_SOURCE[] = R"(
+    layout(location = 0) in float3 uv0;
+    layout(location = 1) in float4 col0;
+    layout(location = 0) out float4 ocol0;
+
+    void main()
+    {
+      ocol0 = col0;
+    }
+
+  )";
+
+  const std::string header = GetUtilityShaderHeader();
 
   m_screen_quad_vertex_shader =
       Util::CompileAndCreateVertexShader(header + SCREEN_QUAD_VERTEX_SHADER_SOURCE);
@@ -725,6 +737,11 @@ bool ShaderCache::CompileSharedShaders()
   {
     return false;
   }
+
+  m_clear_fragment_shader =
+      Util::CompileAndCreateFragmentShader(header + CLEAR_FRAGMENT_SHADER_SOURCE);
+  if (m_clear_fragment_shader == VK_NULL_HANDLE)
+    return false;
 
   return true;
 }
@@ -741,5 +758,6 @@ void ShaderCache::DestroySharedShaders()
 
   DestroyShader(m_screen_quad_vertex_shader);
   DestroyShader(m_passthrough_vertex_shader);
+  DestroyShader(m_clear_fragment_shader);
 }
-}
+}  // namespace Vulkan

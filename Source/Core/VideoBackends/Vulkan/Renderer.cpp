@@ -76,19 +76,6 @@ bool Renderer::Initialize()
 
   BindEFBToStateTracker();
 
-  if (!CompileShaders())
-  {
-    PanicAlert("Failed to compile shaders.");
-    return false;
-  }
-
-  // Swap chain render pass.
-  if (m_swap_chain && !m_swap_chain->InitDeviceObjects())
-  {
-    PanicAlert("Failed to create semaphores.");
-    return false;
-  }
-
   m_bounding_box = std::make_unique<BoundingBox>();
   if (!m_bounding_box->Initialize())
   {
@@ -124,15 +111,6 @@ bool Renderer::Initialize()
 void Renderer::Shutdown()
 {
   ::Renderer::Shutdown();
-
-  // Submit the current command buffer, in case there's a partial frame.
-  //StateTracker::GetInstance()->EndRenderPass();
-  //g_command_buffer_mgr->ExecuteCommandBuffer(false, true);
-
-  DestroyShaders();
-
-  if(m_swap_chain)
-    m_swap_chain->DestroyDeviceObjects();
 }
 
 std::unique_ptr<AbstractTexture> Renderer::CreateTexture(const TextureConfig& config)
@@ -461,7 +439,8 @@ void Renderer::ClearScreen(const EFBRectangle& rc, bool color_enable, bool alpha
                          g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD),
                          FramebufferManager::GetInstance()->GetEFBLoadRenderPass(),
                          g_shader_cache->GetPassthroughVertexShader(),
-                         VK_NULL_HANDLE, m_clear_fragment_shader);
+                         VK_NULL_HANDLE,
+                         g_shader_cache->GetClearFragmentShader());
 
   draw.SetMultisamplingState(FramebufferManager::GetInstance()->GetEFBMultisamplingState());
   draw.SetDepthState(depth_state);
@@ -543,7 +522,7 @@ void Renderer::BindBackbuffer(const ClearColor& clear_color)
 
   // Draw to the backbuffer.
   VkRect2D region = {{0, 0}, {backbuffer->GetWidth(), backbuffer->GetHeight()}};
-  StateTracker::GetInstance()->SetRenderPass(m_swap_chain->GetRenderPass(),
+  StateTracker::GetInstance()->SetRenderPass(m_swap_chain->GetLoadRenderPass(),
                                              m_swap_chain->GetClearRenderPass());
   StateTracker::GetInstance()->SetFramebuffer(m_swap_chain->GetCurrentFramebuffer(), region);
 
@@ -560,16 +539,14 @@ void Renderer::PresentBackbuffer()
 
   // Transition the backbuffer to PRESENT_SRC to ensure all commands drawing
   // to it have finished before present.
-  Texture2D* backbuffer = m_swap_chain->GetCurrentTexture();
-  backbuffer->TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(),
-                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+  m_swap_chain->GetCurrentTexture()->TransitionToLayout(
+      g_command_buffer_mgr->GetCurrentCommandBuffer(), VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
   // Submit the current command buffer, signaling rendering finished semaphore when it's done
   // Because this final command buffer is rendering to the swap chain, we need to wait for
   // the available semaphore to be signaled before executing the buffer. This final submission
   // can happen off-thread in the background while we're preparing the next frame.
   g_command_buffer_mgr->SubmitCommandBuffer(true, m_swap_chain.get());
-
   BeginFrame();
 }
 
@@ -579,7 +556,7 @@ void Renderer::RenderXFBToScreen(const AbstractTexture* texture, const EFBRectan
   VulkanPostProcessing* post_processor = static_cast<VulkanPostProcessing*>(m_post_processor.get());
   post_processor->BlitFromTexture(target_rc, rc,
                                   static_cast<const VKTexture*>(texture)->GetRawTexIdentifier(),
-                                  0, m_swap_chain->GetRenderPass());
+                                  0, m_swap_chain->GetLoadRenderPass());
   // The post-processor uses the old-style Vulkan draws, which mess with the tracked state.
   StateTracker::GetInstance()->SetPendingRebind();
 }
@@ -646,7 +623,6 @@ void Renderer::OnConfigChanged(u32 bits)
   if (bits & (CONFIG_CHANGE_BIT_HOST_CONFIG | CONFIG_CHANGE_BIT_MULTISAMPLES))
   {
     RecreateEFBFramebuffer();
-    RecompileShaders();
     FramebufferManager::GetInstance()->RecompileShaders();
     g_shader_cache->ReloadPipelineCache();
     g_shader_cache->RecompileSharedShaders();
@@ -810,45 +786,4 @@ void Renderer::DrawIndexed(u32 base_index, u32 num_indices, u32 base_vertex)
   vkCmdDrawIndexed(g_command_buffer_mgr->GetCurrentCommandBuffer(), num_indices, 1, base_index,
                    base_vertex, 0);
 }
-
-void Renderer::RecompileShaders()
-{
-  DestroyShaders();
-  if (!CompileShaders())
-    PanicAlert("Failed to recompile shaders.");
-}
-
-bool Renderer::CompileShaders()
-{
-  static const char CLEAR_FRAGMENT_SHADER_SOURCE[] = R"(
-    layout(location = 0) in float3 uv0;
-    layout(location = 1) in float4 col0;
-    layout(location = 0) out float4 ocol0;
-
-    void main()
-    {
-      ocol0 = col0;
-    }
-
-  )";
-
-  std::string source = g_shader_cache->GetUtilityShaderHeader() + CLEAR_FRAGMENT_SHADER_SOURCE;
-  m_clear_fragment_shader = Util::CompileAndCreateFragmentShader(source);
-
-  return m_clear_fragment_shader != VK_NULL_HANDLE;
-}
-
-void Renderer::DestroyShaders()
-{
-  auto DestroyShader = [](VkShaderModule& shader) {
-    if (shader != VK_NULL_HANDLE)
-    {
-      vkDestroyShaderModule(g_vulkan_context->GetDevice(), shader, nullptr);
-      shader = VK_NULL_HANDLE;
-    }
-  };
-
-  DestroyShader(m_clear_fragment_shader);
-}
-
 }  // namespace Vulkan
