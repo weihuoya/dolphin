@@ -44,13 +44,13 @@ struct VideoConfig final
   VideoConfig();
   void Refresh();
   void VerifyValidity();
-  bool IsVSync() const;
 
   // Check in Render SwapImpl
   bool bDirty;
 
   // General
   bool bVSync;
+  bool bVSyncActive;
   bool bWidescreenHack;
   AspectMode aspect_mode;
   AspectMode suggested_aspect_mode;

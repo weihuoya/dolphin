@@ -656,7 +656,7 @@ void Renderer::OnConfigChanged(u32 bits)
   if (m_swap_chain && bits & CONFIG_CHANGE_BIT_VSYNC)
   {
     g_command_buffer_mgr->WaitForGPUIdle();
-    m_swap_chain->SetVSync(g_ActiveConfig.IsVSync());
+    m_swap_chain->SetVSync(g_ActiveConfig.bVSyncActive);
   }
 
   // Wipe sampler cache if force texture filtering or anisotropy changes.
