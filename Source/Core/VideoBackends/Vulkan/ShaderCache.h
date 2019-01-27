@@ -112,6 +112,7 @@ public:
   void ReloadPipelineCache();
 
   // Shared shader accessors
+  VkShaderModule GetScreenQuadVertexShader() const { return m_screen_quad_vertex_shader; }
   VkShaderModule GetPassthroughVertexShader() const { return m_passthrough_vertex_shader; }
 
 private:
@@ -129,6 +130,7 @@ private:
   std::string m_pipeline_cache_filename;
 
   // Utility/shared shaders
+  VkShaderModule m_screen_quad_vertex_shader = VK_NULL_HANDLE;
   VkShaderModule m_passthrough_vertex_shader = VK_NULL_HANDLE;
 };
 

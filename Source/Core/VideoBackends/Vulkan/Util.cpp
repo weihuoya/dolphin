@@ -570,6 +570,22 @@ void UtilityShaderDraw::DrawColoredQuad(int x, int y, int width, int height, u32
   Draw();
 }
 
+void UtilityShaderDraw::SetViewportAndScissor(int x, int y, int width, int height)
+{
+  Util::SetViewportAndScissor(m_command_buffer, x, y, width, height, 0.0f, 1.0f);
+}
+
+void UtilityShaderDraw::DrawWithoutVertexBuffer(u32 vertex_count)
+{
+  m_pipeline_info.vertex_format = nullptr;
+
+  BindDescriptors();
+  if (!BindPipeline())
+    return;
+
+  vkCmdDraw(m_command_buffer, vertex_count, 1, 0, 0);
+}
+
 void UtilityShaderDraw::BindVertexBuffer()
 {
   vkCmdBindVertexBuffers(m_command_buffer, 0, 1, &m_vertex_buffer, &m_vertex_buffer_offset);

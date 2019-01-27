@@ -4,7 +4,6 @@
 
 #include "VideoBackends/Vulkan/PostProcessing.h"
 #include <sstream>
-#include <android/log.h>
 
 #include "Common/Assert.h"
 #include "Common/StringUtil.h"
@@ -40,7 +39,6 @@ void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const Tar
                                            const Texture2D* src_tex, int src_layer,
                                            VkRenderPass render_pass)
 {
-    __android_log_print(ANDROID_LOG_INFO, "zhangwei", "VulkanPostProcessing BlitFromTexture");
   VkShaderModule vertex_shader = m_vertex_shader;
   VkShaderModule fragment_shader = m_fragment_shader;
   if (vertex_shader == VK_NULL_HANDLE)
@@ -58,7 +56,6 @@ void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const Tar
   // The config will also still contain the invalid shader at this point.
   if (m_load_fragment_uniforms)
   {
-    __android_log_print(ANDROID_LOG_INFO, "zhangwei", "VulkanPostProcessing m_load_fragment_uniforms");
     size_t uniforms_size = CalculateUniformsSize();
     u8* uniforms = draw.AllocatePSUniforms(uniforms_size);
     FillUniformBuffer(uniforms, src, src_tex, src_layer);
@@ -66,14 +63,12 @@ void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const Tar
 
     if(m_load_vertex_uniforms)
     {
-      __android_log_print(ANDROID_LOG_INFO, "zhangwei", "VulkanPostProcessing m_load_vertex_uniforms");
       uniforms = draw.AllocateVSUniforms(uniforms_size);
       FillUniformBuffer(uniforms, src, src_tex, src_layer);
       draw.CommitVSUniforms(uniforms_size);
     }
   }
 
-  __android_log_print(ANDROID_LOG_INFO, "zhangwei", "VulkanPostProcessing DrawQuad");
   draw.DrawQuad(dst.left, dst.top, dst.GetWidth(), dst.GetHeight(), src.left, src.top, src_layer,
                 src.GetWidth(), src.GetHeight(), static_cast<int>(src_tex->GetWidth()),
                 static_cast<int>(src_tex->GetHeight()));

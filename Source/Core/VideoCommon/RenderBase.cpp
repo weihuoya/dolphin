@@ -20,7 +20,6 @@
 #include <mutex>
 #include <string>
 #include <tuple>
-#include <android/log.h>
 
 #include "imgui.h"
 
@@ -909,7 +908,6 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
       ResetAPIState();
       BindBackbuffer({0.0f, 0.0f, 0.0f, 1.0f});
       UpdateDrawRectangle();
-        __android_log_print(ANDROID_LOG_INFO, "zhangwei", "RenderBase RenderXFBToScreen");
       RenderXFBToScreen(xfb_entry->texture.get(), xfb_rect);
 
       // Hold the imgui lock while we're presenting.
@@ -920,7 +918,6 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
         DrawDebugText();
         OSD::DrawMessages();
 
-          __android_log_print(ANDROID_LOG_INFO, "zhangwei", "RenderBase RenderImGui");
         RenderImGui();
       }
 
@@ -944,7 +941,6 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
       stats.ResetFrame();
       g_shader_cache->RetrieveAsyncShaders();
       BeginImGuiFrame();
-        __android_log_print(ANDROID_LOG_INFO, "zhangwei", "RenderBase BeginImGuiFrame");
 
       // We invalidate the pipeline object at the start of the frame.
       // This is for the rare case where only a single pipeline configuration is used,

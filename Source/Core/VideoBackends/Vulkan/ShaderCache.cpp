@@ -696,11 +696,32 @@ bool ShaderCache::CompileSharedShaders()
     }
   )";
 
+  static const char SCREEN_QUAD_VERTEX_SHADER_SOURCE[] = R"(
+    layout(location = 0) out vec3 uv0;
+
+    void main()
+    {
+        /*
+         * id   &1    &2   clamp(*2-1)
+         * 0    0,0   0,0  -1,-1      TL
+         * 1    1,0   1,0  1,-1       TR
+         * 2    0,2   0,1  -1,1       BL
+         * 3    1,2   1,1  1,1        BR
+         */
+        vec2 rawpos = vec2(float(gl_VertexID & 1), clamp(float(gl_VertexID & 2), 0.0f, 1.0f));
+        gl_Position = vec4(rawpos * 2.0f - 1.0f, 0.0f, 1.0f);
+        uv0 = vec3(rawpos, 0.0f);
+    }
+  )";
+
   std::string header = GetUtilityShaderHeader();
 
+  m_screen_quad_vertex_shader =
+      Util::CompileAndCreateVertexShader(header + SCREEN_QUAD_VERTEX_SHADER_SOURCE);
   m_passthrough_vertex_shader =
       Util::CompileAndCreateVertexShader(header + PASSTHROUGH_VERTEX_SHADER_SOURCE);
-  if (m_passthrough_vertex_shader == VK_NULL_HANDLE)
+  if (m_screen_quad_vertex_shader == VK_NULL_HANDLE ||
+      m_passthrough_vertex_shader == VK_NULL_HANDLE)
   {
     return false;
   }
@@ -718,6 +739,7 @@ void ShaderCache::DestroySharedShaders()
     }
   };
 
+  DestroyShader(m_screen_quad_vertex_shader);
   DestroyShader(m_passthrough_vertex_shader);
 }
 }
