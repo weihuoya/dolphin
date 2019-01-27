@@ -146,7 +146,8 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
   }
 
   // internal interfaces
-  g_renderer = std::make_unique<Renderer>(backbuffer_width, backbuffer_height);
+  g_renderer =
+      std::make_unique<Renderer>(backbuffer_width, backbuffer_height, wsi.render_surface_scale);
   g_shader_cache = std::make_unique<VideoCommon::ShaderCache>();
   g_texture_cache = std::make_unique<TextureCache>();
   g_vertex_manager = std::make_unique<VertexManager>();
@@ -155,13 +156,14 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
   VertexShaderCache::Init();
   PixelShaderCache::Init();
   GeometryShaderCache::Init();
-  if (!g_shader_cache->Initialize())
+
+  if (!g_renderer->Initialize() || !g_shader_cache->Initialize())
     return false;
 
   D3D::InitUtils();
   BBox::Init();
 
-  return g_renderer->Initialize();
+  return true;
 }
 
 void VideoBackend::Shutdown()

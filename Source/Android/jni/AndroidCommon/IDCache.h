@@ -13,6 +13,7 @@ JavaVM* GetJavaVM();
 jclass GetNativeLibraryClass();
 jmethodID GetDisplayAlertMsg();
 jmethodID GetRumbleOutputMethod();
+jmethodID GetUpdateTouchPointer();
 
 jclass GetGameFileClass();
 jfieldID GetGameFilePointer();

@@ -421,7 +421,7 @@ public class RunningSettingDialog extends DialogFragment
         if(mTouchPointer != pointer)
         {
           editor.putBoolean(InputOverlay.POINTER_PREF_KEY, pointer > 0);
-          NativeLibrary.sEmulationActivity.get().setTouchPointerEnabled(pointer > 0);
+          NativeLibrary.getEmulationActivity().setTouchPointerEnabled(pointer > 0);
         }
         mSettings.remove(0);
 

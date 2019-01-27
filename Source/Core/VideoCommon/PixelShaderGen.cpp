@@ -584,7 +584,6 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
     if (uid_data->per_pixel_depth)
       out.Write("#define depth gl_FragDepth\n");
 
-    // We need to always use output blocks for Vulkan, but geometry shaders are also optional.
     if (host_config.backend_geometry_shaders)
     {
       out.Write("VARYING_LOCATION(0) in VertexData {\n");

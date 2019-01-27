@@ -14,7 +14,7 @@ namespace Vulkan
 {
 // Number of command buffers. Having two allows one buffer to be
 // executed whilst another is being built.
-constexpr size_t NUM_COMMAND_BUFFERS = 3;
+constexpr size_t NUM_COMMAND_BUFFERS = 2;
 
 // Staging buffer usage - optimize for uploads or readbacks
 enum STAGING_BUFFER_TYPE

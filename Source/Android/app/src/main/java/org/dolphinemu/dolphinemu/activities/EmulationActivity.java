@@ -2,6 +2,7 @@ package org.dolphinemu.dolphinemu.activities;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.hardware.Sensor;
@@ -31,6 +32,8 @@ import org.dolphinemu.dolphinemu.fragments.EmulationFragment;
 import org.dolphinemu.dolphinemu.model.GameFile;
 import org.dolphinemu.dolphinemu.overlay.InputOverlay;
 import org.dolphinemu.dolphinemu.services.GameFileCacheService;
+import org.dolphinemu.dolphinemu.overlay.InputOverlay;
+import org.dolphinemu.dolphinemu.overlay.InputOverlayPointer;
 import org.dolphinemu.dolphinemu.ui.main.MainActivity;
 import org.dolphinemu.dolphinemu.ui.main.MainPresenter;
 import org.dolphinemu.dolphinemu.ui.platform.Platform;
@@ -60,26 +63,26 @@ public final class EmulationActivity extends AppCompatActivity
   private static boolean sIsGameCubeGame;
 
   private boolean activityRecreated;
-  private String mGameId;
   private String mSelectedTitle;
+  private String mSelectedGameId;
   private int mPlatform;
   private String[] mPaths;
   private String mSavedState;
 
   public static final String RUMBLE_PREF_KEY = "PhoneRumble";
 
-  public static final String EXTRA_GAME_ID = "GameId";
   public static final String EXTRA_SELECTED_GAMES = "SelectedGames";
   public static final String EXTRA_SELECTED_TITLE = "SelectedTitle";
+  public static final String EXTRA_SELECTED_GAMEID = "SelectedGameId";
   public static final String EXTRA_PLATFORM = "Platform";
   public static final String EXTRA_SAVED_STATE = "SavedState";
 
   public static void launch(FragmentActivity activity, GameFile gameFile, String savedState)
   {
     Intent launcher = new Intent(activity, EmulationActivity.class);
-    launcher.putExtra(EXTRA_GAME_ID, gameFile.getGameId());
     launcher.putExtra(EXTRA_SELECTED_GAMES, GameFileCacheService.getAllDiscPaths(gameFile));
     launcher.putExtra(EXTRA_SELECTED_TITLE, gameFile.getTitle());
+    launcher.putExtra(EXTRA_SELECTED_GAMEID, gameFile.getGameId());
     launcher.putExtra(EXTRA_PLATFORM, gameFile.getPlatform());
     launcher.putExtra(EXTRA_SAVED_STATE, savedState);
 
@@ -97,9 +100,9 @@ public final class EmulationActivity extends AppCompatActivity
     {
       // Get params we were passed
       Intent gameToEmulate = getIntent();
-      mGameId = gameToEmulate.getStringExtra(EXTRA_GAME_ID);
       mPaths = gameToEmulate.getStringArrayExtra(EXTRA_SELECTED_GAMES);
       mSelectedTitle = gameToEmulate.getStringExtra(EXTRA_SELECTED_TITLE);
+      mSelectedGameId = gameToEmulate.getStringExtra(EXTRA_SELECTED_GAMEID);
       mPlatform = gameToEmulate.getIntExtra(EXTRA_PLATFORM, 0);
       mSavedState = gameToEmulate.getStringExtra(EXTRA_SAVED_STATE);
       activityRecreated = false;
@@ -162,9 +165,9 @@ public final class EmulationActivity extends AppCompatActivity
     {
       saveTemporaryState();
     }
-    outState.putString(EXTRA_GAME_ID, mGameId);
     outState.putStringArray(EXTRA_SELECTED_GAMES, mPaths);
     outState.putString(EXTRA_SELECTED_TITLE, mSelectedTitle);
+    outState.putString(EXTRA_SELECTED_GAMEID, mSelectedGameId);
     outState.putInt(EXTRA_PLATFORM, mPlatform);
     outState.putString(EXTRA_SAVED_STATE, mSavedState);
     super.onSaveInstanceState(outState);
@@ -172,9 +175,9 @@ public final class EmulationActivity extends AppCompatActivity
 
   protected void restoreState(Bundle savedInstanceState)
   {
-    mGameId = savedInstanceState.getString(EXTRA_GAME_ID);
     mPaths = savedInstanceState.getStringArray(EXTRA_SELECTED_GAMES);
     mSelectedTitle = savedInstanceState.getString(EXTRA_SELECTED_TITLE);
+    mSelectedGameId = savedInstanceState.getString(EXTRA_SELECTED_GAMEID);
     mPlatform = savedInstanceState.getInt(EXTRA_PLATFORM);
     mSavedState = savedInstanceState.getString(EXTRA_SAVED_STATE);
   }
@@ -318,7 +321,7 @@ public final class EmulationActivity extends AppCompatActivity
 
   private void showStateSaves()
   {
-    StateSavesDialog.newInstance(mGameId).show(getSupportFragmentManager(), "StateSavesDialog");
+    StateSavesDialog.newInstance(mSelectedGameId).show(getSupportFragmentManager(), "StateSavesDialog");
   }
 
   private void showJoystickSettings()
@@ -677,5 +680,10 @@ public final class EmulationActivity extends AppCompatActivity
   public void setTouchPointerEnabled(boolean enabled)
   {
     mEmulationFragment.setTouchPointerEnabled(enabled);
+  }
+
+  public void initInputPointer()
+  {
+
   }
 }

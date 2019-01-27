@@ -117,9 +117,13 @@ union SamplerState
 
 namespace RenderState
 {
+RasterizationState GetInvalidRasterizationState();
 RasterizationState GetNoCullRasterizationState();
+DepthState GetInvalidDepthState();
 DepthState GetNoDepthTestingDepthStencilState();
+BlendingState GetInvalidBlendingState();
 BlendingState GetNoBlendingBlendState();
+SamplerState GetInvalidSamplerState();
 SamplerState GetPointSamplerState();
 SamplerState GetLinearSamplerState();
 }

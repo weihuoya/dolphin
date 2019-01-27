@@ -1,5 +1,4 @@
 package org.dolphinemu.dolphinemu.overlay;
-
 import org.dolphinemu.dolphinemu.NativeLibrary;
 
 public class InputOverlayPointer

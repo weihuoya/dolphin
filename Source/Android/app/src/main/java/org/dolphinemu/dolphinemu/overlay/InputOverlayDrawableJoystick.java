@@ -403,11 +403,6 @@ public final class InputOverlayDrawableJoystick
     return mVirtBounds;
   }
 
-  public int getTrackId()
-  {
-    return mTrackId;
-  }
-
   public int getWidth()
   {
     return mWidth;
@@ -416,5 +411,10 @@ public final class InputOverlayDrawableJoystick
   public int getHeight()
   {
     return mHeight;
+  }
+
+  public int getTrackId()
+  {
+    return mTrackId;
   }
 }

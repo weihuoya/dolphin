@@ -62,20 +62,13 @@ typedef struct _Nv_Stereo_Image_Header
 
 #define NVSTEREO_IMAGE_SIGNATURE 0x4433564e
 
-Renderer::Renderer(int backbuffer_width, int backbuffer_height)
-    : ::Renderer(backbuffer_width, backbuffer_height, AbstractTextureFormat::RGBA8)
+Renderer::Renderer(int backbuffer_width, int backbuffer_height, float backbuffer_scale)
+    : ::Renderer(backbuffer_width, backbuffer_height, backbuffer_scale,
+                 AbstractTextureFormat::RGBA8)
 {
-  m_last_multisamples = g_ActiveConfig.iMultisamples;
   m_last_fullscreen_state = D3D::GetFullscreenState();
   g_framebuffer_manager = std::make_unique<FramebufferManager>(m_target_width, m_target_height);
   SetupDeviceObjects();
-
-  // Clear EFB textures
-  constexpr std::array<float, 4> clear_color{{0.f, 0.f, 0.f, 1.f}};
-  D3D::context->ClearRenderTargetView(FramebufferManager::GetEFBColorTexture()->GetRTV(),
-                                      clear_color.data());
-  D3D::context->ClearDepthStencilView(FramebufferManager::GetEFBDepthTexture()->GetDSV(),
-                                      D3D11_CLEAR_DEPTH, 0.f, 0);
 
   D3D11_VIEWPORT vp = CD3D11_VIEWPORT(0.f, 0.f, (float)m_target_width, (float)m_target_height);
   D3D::context->RSSetViewports(1, &vp);
@@ -234,13 +227,6 @@ Renderer::CreateFramebuffer(const AbstractTexture* color_attachment,
 {
   return DXFramebuffer::Create(static_cast<const DXTexture*>(color_attachment),
                                static_cast<const DXTexture*>(depth_attachment));
-}
-
-void Renderer::RenderText(const std::string& text, int left, int top, u32 color)
-{
-  D3D::DrawTextScaled(static_cast<float>(left + 1), static_cast<float>(top + 1), 20.f, 0.0f,
-                      color & 0xFF000000, text);
-  D3D::DrawTextScaled(static_cast<float>(left), static_cast<float>(top), 20.f, 0.0f, color, text);
 }
 
 std::unique_ptr<AbstractShader> Renderer::CreateShaderFromSource(ShaderStage stage,
@@ -565,69 +551,33 @@ void Renderer::ReinterpretPixelData(unsigned int convtype)
   RestoreAPIState();
 }
 
-// This function has the final picture. We adjust the aspect ratio here.
-void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region, u64 ticks)
+void Renderer::BindBackbuffer(const ClearColor& clear_color)
 {
-  ResetAPIState();
-
-  // Prepare to copy the XFBs to our backbuffer
   CheckForSurfaceChange();
   CheckForSurfaceResize();
-  UpdateDrawRectangle();
 
-  TargetRectangle targetRc = GetTargetRectangle();
-  static constexpr std::array<float, 4> clear_color{{0.f, 0.f, 0.f, 1.f}};
   D3D::context->OMSetRenderTargets(1, &D3D::GetBackBuffer()->GetRTV(), nullptr);
   D3D::context->ClearRenderTargetView(D3D::GetBackBuffer()->GetRTV(), clear_color.data());
   m_current_framebuffer = nullptr;
   m_current_framebuffer_width = m_backbuffer_width;
   m_current_framebuffer_height = m_backbuffer_height;
+}
 
-  // activate linear filtering for the buffer copies
-  D3D::SetLinearCopySampler();
-  auto* xfb_texture = static_cast<DXTexture*>(texture);
+void Renderer::PresentBackbuffer()
+{
+  D3D::Present();
+}
 
-  BlitScreen(xfb_region, targetRc, xfb_texture->GetRawTexIdentifier(),
-             xfb_texture->GetConfig().width, xfb_texture->GetConfig().height);
-
-  // Reset viewport for drawing text
-  D3D11_VIEWPORT vp = CD3D11_VIEWPORT(0.0f, 0.0f, static_cast<float>(m_backbuffer_width),
-                                      static_cast<float>(m_backbuffer_height));
-  D3D::context->RSSetViewports(1, &vp);
-
-  Renderer::DrawDebugText();
-
-  OSD::DrawMessages();
-
-  g_texture_cache->Cleanup(frameCount);
-
-  // Enable configuration changes
-  UpdateActiveConfig();
-  g_texture_cache->OnConfigChanged(g_ActiveConfig);
-
-  // Flip/present backbuffer to frontbuffer here
-  if (D3D::swapchain)
-    D3D::Present();
-
+void Renderer::OnConfigChanged(u32 bits)
+{
   // Resize the back buffers NOW to avoid flickering
-  if (CalculateTargetSize() || m_last_multisamples != g_ActiveConfig.iMultisamples)
+  if (bits & (CONFIG_CHANGE_BIT_TARGET_SIZE | CONFIG_CHANGE_BIT_MULTISAMPLES |
+              CONFIG_CHANGE_BIT_STEREO_MODE))
   {
-    m_last_multisamples = g_ActiveConfig.iMultisamples;
     PixelShaderCache::InvalidateMSAAShaders();
-    UpdateDrawRectangle();
-
     g_framebuffer_manager.reset();
     g_framebuffer_manager = std::make_unique<FramebufferManager>(m_target_width, m_target_height);
-    D3D::context->ClearRenderTargetView(FramebufferManager::GetEFBColorTexture()->GetRTV(),
-                                        clear_color.data());
-    D3D::context->ClearDepthStencilView(FramebufferManager::GetEFBDepthTexture()->GetDSV(),
-                                        D3D11_CLEAR_DEPTH, 0.f, 0);
   }
-
-  CheckForHostConfigChanges();
-
-  // begin next frame
-  RestoreAPIState();
 }
 
 void Renderer::CheckForSurfaceChange()
@@ -756,17 +706,27 @@ void Renderer::BBoxWrite(int index, u16 _value)
   BBox::Set(index, value);
 }
 
-void Renderer::BlitScreen(TargetRectangle src, TargetRectangle dst, D3DTexture2D* src_texture,
-                          u32 src_width, u32 src_height)
+void Renderer::RenderXFBToScreen(const AbstractTexture* texture, const EFBRectangle& rc)
 {
-  D3D11_VIEWPORT vp = CD3D11_VIEWPORT((float)dst.left, (float)dst.top, (float)dst.GetWidth(),
-                                        (float)dst.GetHeight());
-  D3D::context->RSSetViewports(1, &vp);
-  ID3D11PixelShader* pixelShader = PixelShaderCache::GetColorCopyProgram(false);
-  ID3D11GeometryShader* geomShader = nullptr;
-  D3D::drawShadedTexQuad(src_texture->GetSRV(), src.AsRECT(), src_width, src_height, pixelShader,
-                           VertexShaderCache::GetSimpleVertexShader(),
-                           VertexShaderCache::GetSimpleInputLayout(), geomShader);
+  const CD3D11_RECT source_rc(rc.left, rc.top, rc.right, rc.bottom);
+  const TargetRectangle target_rc = GetTargetRectangle();
+
+  // activate linear filtering for the buffer copies
+  D3D::SetLinearCopySampler();
+  SetViewport(static_cast<float>(target_rc.left), static_cast<float>(target_rc.top),
+              static_cast<float>(target_rc.GetWidth()), static_cast<float>(target_rc.GetHeight()),
+              0.0f, 1.0f);
+
+  ID3D11PixelShader* pixelShader = (g_Config.stereo_mode == StereoMode::Anaglyph) ?
+                                       PixelShaderCache::GetAnaglyphProgram() :
+                                       PixelShaderCache::GetColorCopyProgram(false);
+  ID3D11GeometryShader* geomShader = (g_ActiveConfig.stereo_mode == StereoMode::QuadBuffer) ?
+                                         GeometryShaderCache::GetCopyGeometryShader() :
+                                         nullptr;
+  D3D::drawShadedTexQuad(static_cast<const DXTexture*>(texture)->GetRawTexIdentifier()->GetSRV(),
+                         &source_rc, texture->GetWidth(), texture->GetHeight(), pixelShader,
+                         VertexShaderCache::GetSimpleVertexShader(),
+                         VertexShaderCache::GetSimpleInputLayout(), geomShader);
 }
 
 void Renderer::SetFullscreen(bool enable_fullscreen)

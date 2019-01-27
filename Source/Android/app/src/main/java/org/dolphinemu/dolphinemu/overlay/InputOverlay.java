@@ -146,7 +146,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     sSensorGCSetting = SENSOR_GC_NONE;
     sSensorWiiSetting = SENSOR_WII_NONE;
 
-    //
+    // initialize shake states
     for(int i = 0; i < sShakeStates.length; ++i)
     {
       sShakeStates[i] = NativeLibrary.ButtonState.RELEASED;

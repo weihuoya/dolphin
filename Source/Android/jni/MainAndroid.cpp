@@ -117,6 +117,11 @@ void Host_UpdateMainFrame()
 
 void Host_RequestRenderWindowSize(int width, int height)
 {
+  // Update touch pointer
+  JNIEnv* env;
+  IDCache::GetJavaVM()->AttachCurrentThread(&env, nullptr);
+  env->CallStaticVoidMethod(IDCache::GetNativeLibraryClass(), IDCache::GetUpdateTouchPointer());
+  IDCache::GetJavaVM()->DetachCurrentThread();
 }
 
 bool Host_UINeedsControllerState()
@@ -596,6 +601,12 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_SurfaceDestr
   }
 }
 
+JNIEXPORT jfloat JNICALL
+Java_org_dolphinemu_dolphinemu_NativeLibrary_GetGameAspectRatio(JNIEnv* env, jobject obj)
+{
+  return g_renderer->CalculateDrawAspectRatio();
+}
+
 JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_RefreshWiimotes(JNIEnv* env,
                                                                                     jobject obj)
 {
@@ -603,13 +614,61 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_RefreshWiimo
   WiimoteReal::Refresh();
 }
 
-static void Run(const std::vector<std::string>& paths,
+JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_ReloadWiimoteConfig(JNIEnv* env,
+                                                                                        jobject obj)
+{
+  Wiimote::LoadConfig();
+}
+
+// Returns the scale factor for imgui rendering.
+// Based on the scaledDensity of the device's display metrics.
+static float GetRenderSurfaceScale(JNIEnv* env)
+{
+  // NativeLibrary emulation_activity = NativeLibrary.getEmulationActivity();
+  jclass native_library_class = env->FindClass("org/dolphinemu/dolphinemu/NativeLibrary");
+  jmethodID get_emulation_activity_method =
+      env->GetStaticMethodID(native_library_class, "getEmulationActivity",
+                             "()Lorg/dolphinemu/dolphinemu/activities/EmulationActivity;");
+  jobject emulation_activity =
+      env->CallStaticObjectMethod(native_library_class, get_emulation_activity_method);
+
+  // WindowManager window_manager = emulation_activity.getWindowManager();
+  jmethodID get_window_manager_method =
+      env->GetMethodID(env->GetObjectClass(emulation_activity), "getWindowManager",
+                       "()Landroid/view/WindowManager;");
+  jobject window_manager = env->CallObjectMethod(emulation_activity, get_window_manager_method);
+
+  // Display display = window_manager.getDisplay();
+  jmethodID get_display_method = env->GetMethodID(env->GetObjectClass(window_manager),
+                                                  "getDefaultDisplay", "()Landroid/view/Display;");
+  jobject display = env->CallObjectMethod(window_manager, get_display_method);
+
+  // DisplayMetrics metrics = new DisplayMetrics();
+  jclass display_metrics_class = env->FindClass("android/util/DisplayMetrics");
+  jmethodID display_metrics_constructor = env->GetMethodID(display_metrics_class, "<init>", "()V");
+  jobject metrics = env->NewObject(display_metrics_class, display_metrics_constructor);
+
+  // display.getMetrics(metrics);
+  jmethodID get_metrics_method = env->GetMethodID(env->GetObjectClass(display), "getMetrics",
+                                                  "(Landroid/util/DisplayMetrics;)V");
+  env->CallVoidMethod(display, get_metrics_method, metrics);
+
+  // float scaled_density = metrics.scaledDensity;
+  jfieldID scaled_density_field =
+      env->GetFieldID(env->GetObjectClass(metrics), "scaledDensity", "F");
+  float scaled_density = env->GetFloatField(metrics, scaled_density_field);
+  __android_log_print(ANDROID_LOG_INFO, DOLPHIN_TAG, "Using %f for render surface scale.",
+                      scaled_density);
+
+  // cleanup
+  env->DeleteLocalRef(metrics);
+  return scaled_density;
+}
+
+static void Run(JNIEnv* env, const std::vector<std::string>& paths,
                 std::optional<std::string> savestate_path = {}, bool delete_savestate = false)
 {
   ASSERT(!paths.empty());
-
-  // Install our callbacks
-  OSD::AddCallback(OSD::CallbackType::Shutdown, ButtonManager::Shutdown);
 
   RegisterMsgAlertHandler(&MsgAlert);
 
@@ -625,6 +684,7 @@ static void Run(const std::vector<std::string>& paths,
   std::unique_ptr<BootParameters> boot = BootParameters::GenerateFromFile(paths, savestate_path);
   boot->delete_savestate = delete_savestate;
   WindowSystemInfo wsi(WindowSystemType::Android, nullptr, s_surf);
+  wsi.render_surface_scale = GetRenderSurfaceScale(env);
   if (BootManager::BootCore(std::move(boot), wsi))
   {
     ButtonManager::Init(SConfig::GetInstance().GetGameID());
@@ -648,6 +708,8 @@ static void Run(const std::vector<std::string>& paths,
 
   Core::Shutdown();
   SConfig::GetInstance().SaveSettings();
+  ButtonManager::Shutdown();
+  UICommon::Shutdown();
   guard.unlock();
 
   if (s_surf)
@@ -661,14 +723,14 @@ JNIEXPORT void JNICALL
 Java_org_dolphinemu_dolphinemu_NativeLibrary_Run___3Ljava_lang_String_2(
     JNIEnv* env, jobject obj, jobjectArray jPaths)
 {
-  Run(JStringArrayToVector(env, jPaths));
+  Run(env, JStringArrayToVector(env, jPaths));
 }
 
 JNIEXPORT void JNICALL
 Java_org_dolphinemu_dolphinemu_NativeLibrary_Run___3Ljava_lang_String_2Ljava_lang_String_2Z(
     JNIEnv* env, jobject obj, jobjectArray jPaths, jstring jSavestate, jboolean jDeleteSavestate)
 {
-  Run(JStringArrayToVector(env, jPaths), GetJString(env, jSavestate), jDeleteSavestate);
+  Run(env, JStringArrayToVector(env, jPaths), GetJString(env, jSavestate), jDeleteSavestate);
 }
 
 JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_ChangeDisc(JNIEnv* env,

@@ -24,7 +24,16 @@ import java.lang.ref.WeakReference;
  */
 public final class NativeLibrary
 {
-  public static WeakReference<EmulationActivity> sEmulationActivity = new WeakReference<>(null);
+  private static WeakReference<EmulationActivity> sEmulationActivity = new WeakReference<>(null);
+
+  /**
+   * Returns the current instance of EmulationActivity.
+   * There should only ever be one EmulationActivity instantiated.
+   */
+  public static EmulationActivity getEmulationActivity()
+  {
+    return sEmulationActivity.get();
+  }
 
   /**
    * Button type for use in onTouchEvent
@@ -454,6 +463,8 @@ public final class NativeLibrary
    */
   public static native void RefreshWiimotes();
 
+  public static native void ReloadWiimoteConfig();
+
   private static boolean alertResult = false;
 
   public static boolean displayAlertMsg(final String caption, final String text,
@@ -551,4 +562,19 @@ public final class NativeLibrary
     NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
     return activeNetwork != null && activeNetwork.isConnected();
   }
+
+  public static void updateTouchPointer()
+  {
+    final EmulationActivity emulationActivity = sEmulationActivity.get();
+    if (emulationActivity == null)
+    {
+      Log.warning("[NativeLibrary] EmulationActivity is null.");
+    }
+    else
+    {
+      emulationActivity.runOnUiThread(emulationActivity::initInputPointer);
+    }
+  }
+
+  public static native float GetGameAspectRatio();
 }

@@ -204,10 +204,24 @@ SamplerState& SamplerState::operator=(const SamplerState& rhs)
 
 namespace RenderState
 {
+RasterizationState GetInvalidRasterizationState()
+{
+  RasterizationState state;
+  state.hex = UINT32_C(0xFFFFFFFF);
+  return state;
+}
+
 RasterizationState GetNoCullRasterizationState()
 {
   RasterizationState state = {};
   state.cullmode = GenMode::CULL_NONE;
+  return state;
+}
+
+DepthState GetInvalidDepthState()
+{
+  DepthState state;
+  state.hex = UINT32_C(0xFFFFFFFF);
   return state;
 }
 
@@ -217,6 +231,13 @@ DepthState GetNoDepthTestingDepthStencilState()
   state.testenable = false;
   state.updateenable = false;
   state.func = ZMode::ALWAYS;
+  return state;
+}
+
+BlendingState GetInvalidBlendingState()
+{
+  BlendingState state;
+  state.hex = UINT32_C(0xFFFFFFFF);
   return state;
 }
 
@@ -233,6 +254,13 @@ BlendingState GetNoBlendingBlendState()
   state.logicopenable = false;
   state.colorupdate = true;
   state.alphaupdate = true;
+  return state;
+}
+
+SamplerState GetInvalidSamplerState()
+{
+  SamplerState state;
+  state.hex = UINT64_C(0xFFFFFFFFFFFFFFFF);
   return state;
 }
 

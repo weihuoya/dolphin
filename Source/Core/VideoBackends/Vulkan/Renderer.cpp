@@ -21,7 +21,6 @@
 #include "VideoBackends/Vulkan/FramebufferManager.h"
 #include "VideoBackends/Vulkan/ObjectCache.h"
 #include "VideoBackends/Vulkan/PostProcessing.h"
-#include "VideoBackends/Vulkan/RasterFont.h"
 #include "VideoBackends/Vulkan/Renderer.h"
 #include "VideoBackends/Vulkan/StateTracker.h"
 #include "VideoBackends/Vulkan/StreamBuffer.h"
@@ -47,9 +46,9 @@
 
 namespace Vulkan
 {
-Renderer::Renderer(std::unique_ptr<SwapChain> swap_chain)
+Renderer::Renderer(std::unique_ptr<SwapChain> swap_chain, float backbuffer_scale)
     : ::Renderer(swap_chain ? static_cast<int>(swap_chain->GetWidth()) : 1,
-                 swap_chain ? static_cast<int>(swap_chain->GetHeight()) : 0,
+                 swap_chain ? static_cast<int>(swap_chain->GetHeight()) : 0, backbuffer_scale,
                  swap_chain ? swap_chain->GetTextureFormat() : AbstractTextureFormat::Undefined),
       m_swap_chain(std::move(swap_chain))
 {
@@ -80,13 +79,6 @@ bool Renderer::Initialize()
   if (!CompileShaders())
   {
     PanicAlert("Failed to compile shaders.");
-    return false;
-  }
-
-  m_raster_font = std::make_unique<RasterFont>();
-  if (!m_raster_font->Initialize())
-  {
-    PanicAlert("Failed to initialize raster font.");
     return false;
   }
 
@@ -182,17 +174,6 @@ Renderer::CreateFramebuffer(const AbstractTexture* color_attachment,
 void Renderer::SetPipeline(const AbstractPipeline* pipeline)
 {
   StateTracker::GetInstance()->SetPipeline(static_cast<const VKPipeline*>(pipeline));
-}
-
-void Renderer::RenderText(const std::string& text, int left, int top, u32 color)
-{
-  u32 backbuffer_width = m_swap_chain->GetWidth();
-  u32 backbuffer_height = m_swap_chain->GetHeight();
-
-  m_raster_font->PrintMultiLineText(m_swap_chain->GetRenderPass(), text,
-                                    left * 2.0f / static_cast<float>(backbuffer_width) - 1,
-                                    1 - top * 2.0f / static_cast<float>(backbuffer_height),
-                                    backbuffer_width, backbuffer_height, color);
 }
 
 u32 Renderer::AccessEFB(EFBAccessType type, u32 x, u32 y, u32 poke_data)
@@ -502,106 +483,53 @@ void Renderer::ReinterpretPixelData(unsigned int convtype)
   BindEFBToStateTracker();
 }
 
-void Renderer::SwapImpl(AbstractTexture* texture, const EFBRectangle& xfb_region, u64 ticks)
+void Renderer::Flush()
 {
-  // Pending/batched EFB pokes should be included in the final image.
-  FramebufferManager::GetInstance()->FlushEFBPokes();
+  Util::ExecuteCurrentCommandsAndRestoreState(true, false);
+}
 
-  // End the current render pass.
+void Renderer::BindBackbuffer(const ClearColor& clear_color)
+{
   StateTracker::GetInstance()->EndRenderPass();
-  StateTracker::GetInstance()->OnEndFrame();
 
   // Handle host window resizes.
   CheckForSurfaceChange();
   CheckForSurfaceResize();
-
-  // There are a few variables which can alter the final window draw rectangle, and some of them
-  // are determined by guest state. Currently, the only way to catch these is to update every frame.
-  UpdateDrawRectangle();
 
   // Ensure the worker thread is not still submitting a previous command buffer.
   // In other words, the last frame has been submitted (otherwise the next call would
   // be a race, as the image may not have been consumed yet).
   g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
 
-  // Draw to the screen if we have a swap chain.
-  if (m_swap_chain)
+  VkResult res;
+  if (!g_command_buffer_mgr->CheckLastPresentFail())
   {
-    VkResult res;
-    if (!g_command_buffer_mgr->CheckLastPresentFail())
-    {
-      // Grab the next image from the swap chain in preparation for drawing the window.
-      res = m_swap_chain->AcquireNextImage();
-    }
-    else
-    {
-      // If the last present failed, we need to recreate the swap chain.
-      res = VK_ERROR_OUT_OF_DATE_KHR;
-    }
-
-    if (res == VK_SUBOPTIMAL_KHR || res == VK_ERROR_OUT_OF_DATE_KHR)
-    {
-      // There's an issue here. We can't resize the swap chain while the GPU is still busy with it,
-      // but calling WaitForGPUIdle would create a deadlock as PrepareToSubmitCommandBuffer has been
-      // called by SwapImpl. WaitForGPUIdle waits on the semaphore, which
-      // PrepareToSubmitCommandBuffer has already done, so it blocks indefinitely. To work around
-      // this, we submit the current command buffer, resize the swap chain (which calls
-      // WaitForGPUIdle), and then finally call PrepareToSubmitCommandBuffer to return to the state
-      // that the caller expects.
-      g_command_buffer_mgr->SubmitCommandBuffer(false);
-      m_swap_chain->ResizeSwapChain();
-      BeginFrame();
-      g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
-      res = m_swap_chain->AcquireNextImage();
-    }
-    if (res != VK_SUCCESS)
-      PanicAlert("Failed to grab image from swap chain");
-
-    DrawScreen(static_cast<VKTexture*>(texture), xfb_region);
-
-    // Submit the current command buffer, signaling rendering finished semaphore when it's done
-    // Because this final command buffer is rendering to the swap chain, we need to wait for
-    // the available semaphore to be signaled before executing the buffer. This final submission
-    // can happen off-thread in the background while we're preparing the next frame.
-    g_command_buffer_mgr->SubmitCommandBuffer(true, m_swap_chain.get());
+    // Grab the next image from the swap chain in preparation for drawing the window.
+    res = m_swap_chain->AcquireNextImage();
   }
   else
   {
-    // No swap chain, just execute command buffer.
-    g_command_buffer_mgr->SubmitCommandBuffer(true);
+    // If the last present failed, we need to recreate the swap chain.
+    res = VK_ERROR_OUT_OF_DATE_KHR;
   }
 
-  // NOTE: It is important that no rendering calls are made to the EFB between submitting the
-  // (now-previous) frame and after the below config checks are completed. If the target size
-  // changes, as the resize methods to not defer the destruction of the framebuffer, the current
-  // command buffer will contain references to a now non-existent framebuffer.
-
-  // Prep for the next frame (get command buffer ready) before doing anything else.
-  BeginFrame();
-
-  // Restore the EFB color texture to color attachment ready for rendering the next frame.
-  FramebufferManager::GetInstance()->GetEFBColorTexture()->TransitionToLayout(
-      g_command_buffer_mgr->GetCurrentCommandBuffer(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-  RestoreAPIState();
-
-  if(g_ActiveConfig.bDirty)
+  if (res == VK_SUBOPTIMAL_KHR || res == VK_ERROR_OUT_OF_DATE_KHR)
   {
-    // Determine what (if anything) has changed in the config.
-    CheckForConfigChanges();
-    g_ActiveConfig.bDirty = false;
+    // There's an issue here. We can't resize the swap chain while the GPU is still busy with it,
+    // but calling WaitForGPUIdle would create a deadlock as PrepareToSubmitCommandBuffer has been
+    // called by SwapImpl. WaitForGPUIdle waits on the semaphore, which PrepareToSubmitCommandBuffer
+    // has already done, so it blocks indefinitely. To work around this, we submit the current
+    // command buffer, resize the swap chain (which calls WaitForGPUIdle), and then finally call
+    // PrepareToSubmitCommandBuffer to return to the state that the caller expects.
+    g_command_buffer_mgr->SubmitCommandBuffer(false);
+    m_swap_chain->ResizeSwapChain();
+    BeginFrame();
+    g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
+    res = m_swap_chain->AcquireNextImage();
   }
+  if (res != VK_SUCCESS)
+    PanicAlert("Failed to grab image from swap chain");
 
-  // Clean up stale textures.
-  TextureCache::GetInstance()->Cleanup(frameCount);
-}
-
-void Renderer::Flush()
-{
-  Util::ExecuteCurrentCommandsAndRestoreState(true, false);
-}
-
-void Renderer::DrawScreen(VKTexture* xfb_texture, const EFBRectangle& xfb_region)
-{
   // Transition from undefined (or present src, but it can be substituted) to
   // color attachment ready for writing. These transitions must occur outside
   // a render pass, unless the render pass declares a self-dependency.
@@ -622,26 +550,38 @@ void Renderer::DrawScreen(VKTexture* xfb_texture, const EFBRectangle& xfb_region
   // Begin render pass for rendering to the swap chain.
   VkClearValue clear_value = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
   StateTracker::GetInstance()->BeginClearRenderPass(region, &clear_value, 1);
-
-  // Draw
-  BlitScreen(m_swap_chain->GetRenderPass(), GetTargetRectangle(), xfb_region,
-             xfb_texture->GetRawTexIdentifier());
-
-  // Draw OSD
-  Util::SetViewportAndScissor(cmd, 0, 0, backbuffer->GetWidth(), backbuffer->GetHeight());
-  DrawDebugText();
-  OSD::DoCallbacks(OSD::CallbackType::OnFrame);
-  OSD::DrawMessages();
-
-  // End drawing to backbuffer
-  StateTracker::GetInstance()->EndRenderPass();
 }
 
-void Renderer::BlitScreen(VkRenderPass render_pass, const TargetRectangle& dst_rect,
-                          const TargetRectangle& src_rect, const Texture2D* src_tex)
+void Renderer::PresentBackbuffer()
 {
+  // End drawing to backbuffer
+  StateTracker::GetInstance()->EndRenderPass();
+  StateTracker::GetInstance()->OnEndFrame();
+
+  // Transition the backbuffer to PRESENT_SRC to ensure all commands drawing
+  // to it have finished before present.
+  Texture2D* backbuffer = m_swap_chain->GetCurrentTexture();
+  backbuffer->TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(),
+                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+  // Submit the current command buffer, signaling rendering finished semaphore when it's done
+  // Because this final command buffer is rendering to the swap chain, we need to wait for
+  // the available semaphore to be signaled before executing the buffer. This final submission
+  // can happen off-thread in the background while we're preparing the next frame.
+  g_command_buffer_mgr->SubmitCommandBuffer(true, m_swap_chain.get());
+
+  BeginFrame();
+}
+
+void Renderer::RenderXFBToScreen(const AbstractTexture* texture, const EFBRectangle& rc)
+{
+  const TargetRectangle target_rc = GetTargetRectangle();
   VulkanPostProcessing* post_processor = static_cast<VulkanPostProcessing*>(m_post_processor.get());
-  post_processor->BlitFromTexture(dst_rect, src_rect, src_tex, 0, render_pass);
+  post_processor->BlitFromTexture(target_rc, rc,
+                                  static_cast<const VKTexture*>(texture)->GetRawTexIdentifier(),
+                                  0, m_swap_chain->GetRenderPass());
+  // The post-processor uses the old-style Vulkan draws, which mess with the tracked state.
+  StateTracker::GetInstance()->SetPendingRebind();
 }
 
 void Renderer::CheckForSurfaceChange()
@@ -690,36 +630,20 @@ void Renderer::CheckForSurfaceResize()
   OnSwapChainResized();
 }
 
-void Renderer::CheckForConfigChanges()
+void Renderer::OnConfigChanged(u32 bits)
 {
-  // Save the video config so we can compare against to determine which settings have changed.
-  const u32 old_multisamples = g_ActiveConfig.iMultisamples;
-  const int old_anisotropy = g_ActiveConfig.iMaxAnisotropy;
-  const bool old_force_filtering = g_ActiveConfig.bForceFiltering;
-
-  // Copy g_Config to g_ActiveConfig.
-  // NOTE: This can potentially race with the UI thread, however if it does, the changes will be
-  // delayed until the next time CheckForConfigChanges is called.
-  UpdateActiveConfig();
-
-  // Determine which (if any) settings have changed.
-  const bool multisamples_changed = old_multisamples != g_ActiveConfig.iMultisamples;
-  const bool anisotropy_changed = old_anisotropy != g_ActiveConfig.iMaxAnisotropy;
-  const bool force_texture_filtering_changed =
-      old_force_filtering != g_ActiveConfig.bForceFiltering;
-
   // Update texture cache settings with any changed options.
   TextureCache::GetInstance()->OnConfigChanged(g_ActiveConfig);
 
   // Handle settings that can cause the EFB framebuffer to change.
-  if (CalculateTargetSize() || multisamples_changed)
+  if (bits & CONFIG_CHANGE_BIT_TARGET_SIZE)
     RecreateEFBFramebuffer();
 
   // MSAA samples changed, we need to recreate the EFB render pass.
   // If the stereoscopy mode changed, we need to recreate the buffers as well.
   // SSAA changed on/off, we have to recompile shaders.
   // Changing stereoscopy from off<->on also requires shaders to be recompiled.
-  if (CheckForHostConfigChanges())
+  if (bits & (CONFIG_CHANGE_BIT_HOST_CONFIG | CONFIG_CHANGE_BIT_MULTISAMPLES))
   {
     RecreateEFBFramebuffer();
     RecompileShaders();
@@ -729,14 +653,14 @@ void Renderer::CheckForConfigChanges()
   }
 
   // For vsync, we need to change the present mode, which means recreating the swap chain.
-  if (m_swap_chain && g_ActiveConfig.IsVSync() != m_swap_chain->IsVSyncEnabled())
+  if (m_swap_chain && bits & CONFIG_CHANGE_BIT_VSYNC)
   {
     g_command_buffer_mgr->WaitForGPUIdle();
     m_swap_chain->SetVSync(g_ActiveConfig.IsVSync());
   }
 
   // Wipe sampler cache if force texture filtering or anisotropy changes.
-  if (anisotropy_changed || force_texture_filtering_changed)
+  if (bits & (CONFIG_CHANGE_BIT_ANISOTROPY | CONFIG_CHANGE_BIT_FORCE_TEXTURE_FILTERING))
     ResetSamplerStates();
 
   // Check for a changed post-processing shader and recompile if needed.

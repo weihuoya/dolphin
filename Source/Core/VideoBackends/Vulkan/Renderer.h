@@ -7,7 +7,6 @@
 #include <array>
 #include <cstddef>
 #include <memory>
-#include <tuple>
 
 #include "Common/CommonTypes.h"
 #include "VideoBackends/Vulkan/Constants.h"
@@ -19,7 +18,6 @@ class BoundingBox;
 class FramebufferManager;
 class SwapChain;
 class Texture2D;
-class RasterFont;
 class VKFramebuffer;
 class VKPipeline;
 class VKTexture;
@@ -27,7 +25,7 @@ class VKTexture;
 class Renderer : public ::Renderer
 {
 public:
-  Renderer(std::unique_ptr<SwapChain> swap_chain);
+  Renderer(std::unique_ptr<SwapChain> swap_chain, float backbuffer_scale);
   ~Renderer() override;
 
   static Renderer* GetInstance();
@@ -51,15 +49,15 @@ public:
   std::unique_ptr<AbstractPipeline> CreatePipeline(const AbstractPipelineConfig& config) override;
 
   BoundingBox* GetBoundingBox() const { return m_bounding_box.get(); }
-  void RenderText(const std::string& pstr, int left, int top, u32 color) override;
   u32 AccessEFB(EFBAccessType type, u32 x, u32 y, u32 poke_data) override;
   void PokeEFB(EFBAccessType type, const EfbPokeData* points, size_t num_points) override;
   u16 BBoxRead(int index) override;
   void BBoxWrite(int index, u16 value) override;
   TargetRectangle ConvertEFBRectangle(const EFBRectangle& rc) override;
 
-  void SwapImpl(AbstractTexture* texture, const EFBRectangle& rc, u64 ticks) override;
   void Flush() override;
+  void RenderXFBToScreen(const AbstractTexture* texture, const EFBRectangle& rc) override;
+  void OnConfigChanged(u32 bits) override;
 
   void ClearScreen(const EFBRectangle& rc, bool color_enable, bool alpha_enable, bool z_enable,
                    u32 color, u32 z) override;
@@ -82,13 +80,14 @@ public:
                    float far_depth) override;
   void Draw(u32 base_vertex, u32 num_vertices) override;
   void DrawIndexed(u32 base_index, u32 num_indices, u32 base_vertex) override;
+  void BindBackbuffer(const ClearColor& clear_color = {}) override;
+  void PresentBackbuffer() override;
 
 private:
   void BeginFrame();
 
   void CheckForSurfaceChange();
   void CheckForSurfaceResize();
-  void CheckForConfigChanges();
 
   void ResetSamplerStates();
 
@@ -100,16 +99,8 @@ private:
   bool CompileShaders();
   void DestroyShaders();
 
-  // Draw the frame, as well as the OSD to the swap chain.
-  void DrawScreen(VKTexture* xfb_texture, const EFBRectangle& xfb_region);
-
-  // Copies/scales an image to the currently-bound framebuffer.
-  void BlitScreen(VkRenderPass render_pass, const TargetRectangle& dst_rect,
-                  const TargetRectangle& src_rect, const Texture2D* src_tex);
-
   std::unique_ptr<SwapChain> m_swap_chain;
   std::unique_ptr<BoundingBox> m_bounding_box;
-  std::unique_ptr<RasterFont> m_raster_font;
 
   // Keep a copy of sampler states to avoid cache lookups every draw
   std::array<SamplerState, NUM_PIXEL_SHADER_SAMPLERS> m_sampler_states = {};
