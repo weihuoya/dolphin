@@ -43,7 +43,7 @@ void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const Tar
   VkShaderModule fragment_shader = m_fragment_shader;
   if (vertex_shader == VK_NULL_HANDLE)
   {
-    vertex_shader = g_shader_cache->GetPassthroughVertexShader();
+    vertex_shader = g_shader_cache->GetScreenQuadVertexShader();
   }
   UtilityShaderDraw draw(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                          g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD), render_pass,
@@ -69,9 +69,8 @@ void VulkanPostProcessing::BlitFromTexture(const TargetRectangle& dst, const Tar
     }
   }
 
-  draw.DrawQuad(dst.left, dst.top, dst.GetWidth(), dst.GetHeight(), src.left, src.top, src_layer,
-                src.GetWidth(), src.GetHeight(), static_cast<int>(src_tex->GetWidth()),
-                static_cast<int>(src_tex->GetHeight()));
+  draw.SetViewportAndScissor(dst.left, dst.top, dst.GetWidth(), dst.GetHeight());
+  draw.DrawWithoutVertexBuffer(4);
 }
 
 struct BuiltinUniforms
@@ -167,14 +166,9 @@ constexpr char DEFAULT_FRAGMENT_SHADER_SOURCE[] = R"(
 )";
 
 constexpr char POSTPROCESSING_VERTEX_HEADER[] = R"(
-  layout(location = 0) in vec4 ipos;
-  layout(location = 5) in vec4 icol0;
-  layout(location = 8) in vec3 itex0;
-
   layout(location = 0) out vec3 uv0;
-  layout(location = 1) out vec4 col0;
 
-  #define VERTEX_SETUP gl_Position = ipos; uv0 = itex0; col0 = icol0;
+  #define VERTEX_SETUP vec2 rawpos = vec2(float(gl_VertexID & 1), clamp(float(gl_VertexID & 2), 0.0f, 1.0f)); gl_Position = vec4(rawpos * 2.0f - 1.0f, 0.0f, 1.0f); uv0 = vec3(rawpos, 0.0f);
   #define GetResolution() (options.resolution.xy)
   #define GetInvResolution() (options.resolution.zw)
   #define GetCoordinates() (uv0.xy)
@@ -350,7 +344,7 @@ std::string VulkanPostProcessing::ConvertToVulkanGLSL(const std::string& code) c
   std::string line;
   std::string result;
   std::stringstream instream(code);
-  int location_index = 2;
+  int location_index = 1;
   while (std::getline(instream, line))
   {
     if (line.find("in ") == 0 || line.find("out ") == 0)

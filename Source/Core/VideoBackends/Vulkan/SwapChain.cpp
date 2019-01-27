@@ -413,7 +413,7 @@ bool SwapChain::SetupSwapChainImages()
   ASSERT(res == VK_SUCCESS);
 
   m_render_pass = g_object_cache->GetRenderPass(m_surface_format.format, VK_FORMAT_UNDEFINED, 1,
-                                                VK_ATTACHMENT_LOAD_OP_LOAD);
+                                                VK_ATTACHMENT_LOAD_OP_DONT_CARE);
   m_clear_render_pass = g_object_cache->GetRenderPass(m_surface_format.format, VK_FORMAT_UNDEFINED,
                                                       1, VK_ATTACHMENT_LOAD_OP_CLEAR);
   if (m_render_pass == VK_NULL_HANDLE || m_clear_render_pass == VK_NULL_HANDLE)

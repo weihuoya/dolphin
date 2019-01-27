@@ -254,7 +254,7 @@ void Renderer::DrawDebugText()
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - (10.0f * m_backbuffer_scale),
                                    10.0f * m_backbuffer_scale),
                             ImGuiCond_Always, ImVec2(1.0f, 0.0f));
-    ImGui::SetNextWindowSize(ImVec2(100.0f * m_backbuffer_scale, 30.0f * m_backbuffer_scale));
+    ImGui::SetNextWindowSize(ImVec2(178.0f * m_backbuffer_scale, 26.0f * m_backbuffer_scale));
 
     if (ImGui::Begin("FPS", nullptr,
                      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs |
@@ -272,8 +272,7 @@ void Renderer::DrawDebugText()
   if (show_movie_window)
   {
     // Position under the FPS display.
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - (10.0f * m_backbuffer_scale),
-                                   50.0f * m_backbuffer_scale),
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x, 0),
                             ImGuiCond_FirstUseEver, ImVec2(1.0f, 0.0f));
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(150.0f * m_backbuffer_scale, 20.0f * m_backbuffer_scale),
@@ -647,6 +646,8 @@ bool Renderer::InitializeImGui()
   }
 
   // Don't create an ini file. TODO: Do we want this in the future?
+  ImGui::GetStyle().Alpha = 0.6;
+  ImGui::GetStyle().WindowPadding.y = 6;
   ImGui::GetIO().IniFilename = nullptr;
   ImGui::GetIO().DisplayFramebufferScale.x = m_backbuffer_scale;
   ImGui::GetIO().DisplayFramebufferScale.y = m_backbuffer_scale;

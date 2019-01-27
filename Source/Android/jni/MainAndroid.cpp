@@ -709,7 +709,6 @@ static void Run(JNIEnv* env, const std::vector<std::string>& paths,
   Core::Shutdown();
   SConfig::GetInstance().SaveSettings();
   ButtonManager::Shutdown();
-  UICommon::Shutdown();
   guard.unlock();
 
   if (s_surf)
