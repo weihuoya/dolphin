@@ -204,9 +204,11 @@ void EnhancementsWidget::SaveSettings()
 
   Config::SetBaseOrCurrent(Config::GFX_SSAA, is_ssaa);
 
-  Config::SetBaseOrCurrent(
-      Config::GFX_ENHANCE_POST_SHADER,
-      m_pp_effect->currentIndex() == 0 ? "(off)" : m_pp_effect->currentText().toStdString());
+  const bool anaglyph = g_Config.stereo_mode == StereoMode::Anaglyph;
+  Config::SetBaseOrCurrent(Config::GFX_ENHANCE_POST_SHADER,
+                           (!anaglyph && m_pp_effect->currentIndex() == 0) ?
+                               "(off)" :
+                               m_pp_effect->currentText().toStdString());
 
   PostProcessingShaderConfiguration pp_shader;
   if (Config::Get(Config::GFX_ENHANCE_POST_SHADER) != "(off)")
