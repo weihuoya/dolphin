@@ -417,6 +417,7 @@ public final class SettingsFragmentPresenter
             enhancementSection.getSetting(SettingsFile.KEY_ARBITRARY_MIPMAP_DETECTION);
     Setting wideScreenHack = gfxSection.getSetting(SettingsFile.KEY_WIDE_SCREEN_HACK);
     Setting force24BitColor = enhancementSection.getSetting(SettingsFile.KEY_FORCE_24_BIT_COLOR);
+    Setting backendMultithreading = gfxSection.getSetting(SettingsFile.KEY_BACKEND_MULTITHREADING);
 
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_INTERNAL_RES, Settings.SECTION_GFX_SETTINGS,
       R.string.internal_resolution, R.string.internal_resolution_description,
@@ -455,8 +456,12 @@ public final class SettingsFragmentPresenter
       Settings.SECTION_GFX_ENHANCEMENTS, R.string.arbitrary_mipmap_detection,
       R.string.arbitrary_mipmap_detection_description, true, arbitraryMipmapDetection));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_WIDE_SCREEN_HACK, Settings.SECTION_GFX_SETTINGS,
-      R.string.wide_screen_hack, R.string.wide_screen_hack_description, false,
-      wideScreenHack));
+            R.string.wide_screen_hack, R.string.wide_screen_hack_description, false,
+            wideScreenHack));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_BACKEND_MULTITHREADING,
+            Settings.SECTION_GFX_SETTINGS,
+            R.string.backend_multithreading, R.string.backend_multithreading_description, false,
+            backendMultithreading));
   }
 
   private String capitalize(String text)

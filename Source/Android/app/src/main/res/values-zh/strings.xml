@@ -197,6 +197,8 @@
     <string name="arbitrary_mipmap_detection_description">某些游戏需要该功能修正显示。\n可能导致内部分辨率增加时纹理模糊，禁用此功能可以减少频繁加载新纹理的游戏中的卡顿。</string>
     <string name="wide_screen_hack">宽屏修正</string>
     <string name="wide_screen_hack_description">强制游戏输出任意宽高比。 强制4：3的游戏以16：9运行，通常会有部分显示问题。如果使用了宽屏补丁，则不要选中此项。</string>
+    <string name="backend_multithreading">Vulkan多线程</string> <!--Backend Multithreading is only disabled by default on Android  -->
+    <string name="backend_multithreading_description">启用Vulkan多线程在部分设备上可能会影响性能。</string>
 
     <string name="hacks_submenu">黑科技</string>
     <string name="embedded_frame_buffer">内部帧缓存</string>

@@ -75,6 +75,7 @@ public final class SettingsFile
   public static final String KEY_ARBITRARY_MIPMAP_DETECTION = "ArbitraryMipmapDetection";
   public static final String KEY_WIDE_SCREEN_HACK = "wideScreenHack";
   public static final String KEY_FORCE_24_BIT_COLOR = "ForceTrueColor";
+  public static final String KEY_BACKEND_MULTITHREADING = "BackendMultithreading";
 
   public static final String KEY_SKIP_EFB = "EFBAccessEnable";
   public static final String KEY_IGNORE_FORMAT = "EFBEmulateFormatChanges";

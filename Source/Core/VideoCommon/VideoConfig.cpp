@@ -47,9 +47,6 @@ VideoConfig::VideoConfig()
   backend_info.bSupportsMultithreading = false;
   backend_info.bSupportsST3CTextures = false;
   backend_info.bSupportsBPTCTextures = false;
-
-  bEnableValidationLayer = false;
-  bBackendMultithreading = true;
 }
 
 void VideoConfig::Refresh()
