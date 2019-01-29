@@ -789,6 +789,14 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     }
   }
 
+  public void updateTouchPointer()
+  {
+    if(mOverlayPointer != null)
+    {
+      mOverlayPointer.updateTouchPointer();
+    }
+  }
+
   private void saveControlPosition(int buttonId, Rect bounds)
   {
     final Context context = getContext();

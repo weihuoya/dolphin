@@ -519,15 +519,15 @@ JNIEXPORT jintArray JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_getRunn
     {
       if(s->m_name == "Width")
       {
-        settings[i] = s->m_value * 100.0;
+        settings[i] = s->m_value * 100.0f;
       }
       else if(s->m_name == "Height")
       {
-        settings[i + 1] = s->m_value * 100.0;
+        settings[i + 1] = s->m_value * 100.0f;
       }
       else if(s->m_name == "Center")
       {
-        settings[i + 2] = s->m_value * 100.0;
+        settings[i + 2] = s->m_value * 100.0f;
       }
     }
     i += 3;
@@ -543,7 +543,7 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_setRunningSe
 {
   int i = 0;
   IniFile ini;
-  jint * settings = env->GetIntArrayElements(array, 0);
+  jint * settings = env->GetIntArrayElements(array, nullptr);
   const std::string& gameId = SConfig::GetInstance().GetGameID();
   std::string settingfile = File::GetUserPath(D_GAMESETTINGS_IDX) + DIR_SEP + gameId + ".ini";
 
@@ -584,15 +584,15 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_setRunningSe
     {
       if(s->m_name == "Width")
       {
-        s->m_value = settings[i + 0] / 100.0;
+        s->m_value = settings[i + 0] / 100.0f;
       }
       else if(s->m_name == "Height")
       {
-        s->m_value = settings[i + 1] / 100.0;
+        s->m_value = settings[i + 1] / 100.0f;
       }
       else if(s->m_name == "Center")
       {
-        s->m_value = settings[i + 2] / 100.0;
+        s->m_value = settings[i + 2] / 100.0f;
       }
     }
 

@@ -644,7 +644,7 @@ bool Renderer::InitializeImGui()
   }
 
   // Don't create an ini file. TODO: Do we want this in the future?
-  ImGui::GetStyle().Alpha = 0.7;
+  ImGui::GetStyle().Alpha = 0.7f;
   ImGui::GetStyle().WindowPadding.y = 6;
   ImGui::GetStyle().DisplaySafeAreaPadding.x = 0;
   ImGui::GetStyle().DisplaySafeAreaPadding.y = 0;

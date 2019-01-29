@@ -26,6 +26,12 @@ public class InputOverlayPointer
     mTrackId = -1;
   }
 
+  public void updateTouchPointer()
+  {
+    float deviceAR = mWidth / mHeight;
+    float gameAR = NativeLibrary.GetGameAspectRatio();
+  }
+
   public void reset()
   {
     mTrackId = -1;

@@ -717,12 +717,8 @@ void Renderer::RenderXFBToScreen(const AbstractTexture* texture, const EFBRectan
               static_cast<float>(target_rc.GetWidth()), static_cast<float>(target_rc.GetHeight()),
               0.0f, 1.0f);
 
-  ID3D11PixelShader* pixelShader = (g_Config.stereo_mode == StereoMode::Anaglyph) ?
-                                       PixelShaderCache::GetAnaglyphProgram() :
-                                       PixelShaderCache::GetColorCopyProgram(false);
-  ID3D11GeometryShader* geomShader = (g_ActiveConfig.stereo_mode == StereoMode::QuadBuffer) ?
-                                         GeometryShaderCache::GetCopyGeometryShader() :
-                                         nullptr;
+  ID3D11PixelShader* pixelShader = PixelShaderCache::GetColorCopyProgram(false);
+  ID3D11GeometryShader* geomShader = nullptr;
   D3D::drawShadedTexQuad(static_cast<const DXTexture*>(texture)->GetRawTexIdentifier()->GetSRV(),
                          &source_rc, texture->GetWidth(), texture->GetHeight(), pixelShader,
                          VertexShaderCache::GetSimpleVertexShader(),

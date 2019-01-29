@@ -572,7 +572,7 @@ public final class NativeLibrary
     }
     else
     {
-      emulationActivity.runOnUiThread(emulationActivity::initInputPointer);
+      emulationActivity.runOnUiThread(emulationActivity::updateTouchPointer);
     }
   }
 

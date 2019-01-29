@@ -682,8 +682,8 @@ public final class EmulationActivity extends AppCompatActivity
     mEmulationFragment.setTouchPointerEnabled(enabled);
   }
 
-  public void initInputPointer()
+  public void updateTouchPointer()
   {
-
+    mEmulationFragment.updateTouchPointer();
   }
 }
