@@ -61,7 +61,7 @@ static float DrawMessage(int index, const Message& msg, const ImVec2& position, 
 
   float window_height = 0.0f;
   if (ImGui::Begin(window_name.c_str(), nullptr,
-                   ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs |
+                   ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground |
                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoNav |
                        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing))

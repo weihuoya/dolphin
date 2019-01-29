@@ -801,17 +801,15 @@ void Callback_VideoCopiedToXFB(bool video_update)
 
 void UpdateTitle()
 {
-  const SConfig& _CoreParameter = SConfig::GetInstance();
   u32 ElapseTime = (u32)s_timer.GetTimeDifference();
   s_request_refresh_info = false;
 
   if (ElapseTime == 0)
     ElapseTime = 1;
 
-  float FPS = (float)(s_drawn_frame.load() * 1000.0 / ElapseTime);
-  float VPS = (float)(s_drawn_video.load() * 1000.0 / ElapseTime);
-  float Speed = (float)(s_drawn_video.load() * (100 * 1000.0) /
-                        (VideoInterface::GetTargetRefreshRate() * ElapseTime));
+  float FPS = s_drawn_frame.load() * 1000.0f / ElapseTime;
+  float VPS = s_drawn_video.load() * 1000.0f / ElapseTime;
+  float Speed = VPS * 100.0f / VideoInterface::GetTargetRefreshRate();
 
   std::string SFPS;
 
@@ -827,33 +825,9 @@ void UpdateTitle()
       (u32)Movie::GetCurrentInputCount(), (u32)Movie::GetCurrentFrame(), FPS,
       VPS, Speed);
   }
-  else if (_CoreParameter.m_InterfaceExtendedFPSInfo)
-  {
-    // Use extended or summary information. The summary information does not print the ticks data,
-    // that's more of a debugging interest, it can always be optional of course if someone is
-    // interested.
-    static u64 ticks = 0;
-    static u64 idleTicks = 0;
-    u64 newTicks = CoreTiming::GetTicks();
-    u64 newIdleTicks = CoreTiming::GetIdleTicks();
-
-    u64 diff = (newTicks - ticks) / 1000000;
-    u64 idleDiff = (newIdleTicks - idleTicks) / 1000000;
-
-    ticks = newTicks;
-    idleTicks = newIdleTicks;
-
-    float TicksPercentage =
-        (float)diff / (float)(SystemTimers::GetTicksPerSecond() / 1000000) * 100;
-
-    SFPS = StringFromFormat(
-      "FPS: %.0f - VPS: %.0f - %.0f%% | CPU: ~%i MHz [Real: %i + IdleSkip: %i] / %i MHz (~%3.0f%%)",
-      FPS, VPS, Speed,
-      (int)(diff), (int)(diff - idleDiff), (int)(idleDiff), SystemTimers::GetTicksPerSecond() / 1000000, TicksPercentage);
-  }
   else if(g_ActiveConfig.bShowFPS)
   {
-    SFPS = StringFromFormat("FPS: %.0f - VPS: %.0f - %.0f%%", FPS, VPS, Speed);
+    SFPS = StringFromFormat("FPS:%.0f VPS:%.0f (%.0f%%)", FPS, VPS, Speed);
   }
 
   // Update the audio timestretcher with the current speed
@@ -866,7 +840,7 @@ void UpdateTitle()
 #ifdef __ANDROID__
   g_renderer->UpdateDebugTitle(SFPS);
 #else
-  if (_CoreParameter.m_show_active_title)
+  if (SConfig::GetInstance().m_show_active_title)
   {
     const std::string& title = SConfig::GetInstance().GetTitleDescription();
     if (!title.empty())

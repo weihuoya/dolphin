@@ -143,7 +143,6 @@ void SConfig::SaveInterfaceSettings(IniFile& ini)
   interface->Set("OnScreenDisplayMessages", bOnScreenDisplayMessages);
   interface->Set("HideCursor", bHideCursor);
   interface->Set("LanguageCode", m_InterfaceLanguage);
-  interface->Set("ExtendedFPSInfo", m_InterfaceExtendedFPSInfo);
   interface->Set("ShowActiveTitle", m_show_active_title);
   interface->Set("UseBuiltinTitleDatabase", m_use_builtin_title_database);
   interface->Set("ThemeName", theme_name);
@@ -433,7 +432,6 @@ void SConfig::LoadInterfaceSettings(IniFile& ini)
   interface->Get("OnScreenDisplayMessages", &bOnScreenDisplayMessages, true);
   interface->Get("HideCursor", &bHideCursor, false);
   interface->Get("LanguageCode", &m_InterfaceLanguage, "");
-  interface->Get("ExtendedFPSInfo", &m_InterfaceExtendedFPSInfo, false);
   interface->Get("ShowActiveTitle", &m_show_active_title, true);
   interface->Get("UseBuiltinTitleDatabase", &m_use_builtin_title_database, true);
   interface->Get("ThemeName", &theme_name, DEFAULT_THEME_DIR);

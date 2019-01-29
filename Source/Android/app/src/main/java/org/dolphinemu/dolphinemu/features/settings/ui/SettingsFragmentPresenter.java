@@ -238,8 +238,6 @@ public final class SettingsFragmentPresenter
       .getSetting(SettingsFile.KEY_OSD_MESSAGES);
     Setting useBuiltinTitleDatabase = mSettings.getSection(Settings.SECTION_INI_INTERFACE)
       .getSetting(SettingsFile.KEY_BUILTIN_TITLE_DATABASE);
-    Setting showDebugInfo = mSettings.getSection(Settings.SECTION_INI_INTERFACE)
-      .getSetting(SettingsFile.KEY_SHOW_DEBUG_INFO);
 
     sl.add(new CheckBoxSetting(SettingsFile.KEY_USE_PANIC_HANDLERS, Settings.SECTION_INI_INTERFACE,
       R.string.panic_handlers, R.string.panic_handlers_description, true, usePanicHandlers));
@@ -248,9 +246,6 @@ public final class SettingsFragmentPresenter
       onScreenDisplayMessages));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_BUILTIN_TITLE_DATABASE, Settings.SECTION_INI_INTERFACE,
       R.string.use_builtin_title_database, 0, true, useBuiltinTitleDatabase));
-    sl.add(new CheckBoxSetting(SettingsFile.KEY_SHOW_DEBUG_INFO, Settings.SECTION_INI_INTERFACE,
-      R.string.interface_show_extended_fps, R.string.interface_show_extended_fps_description,
-      false, showDebugInfo));
   }
 
   private void addGameCubeSettings(ArrayList<SettingsItem> sl)

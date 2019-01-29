@@ -32,7 +32,6 @@ import java.util.ArrayList;
 
 public class RunningSettingDialog extends DialogFragment
 {
-
   public class SettingsItem
   {
     //
@@ -56,6 +55,9 @@ public class RunningSettingDialog extends DialogFragment
     public static final int SETTING_TOUCH_POINTER_RECENTER = 103;
     public static final int SETTING_JOYSTICK_RELATIVE = 104;
     public static final int SETTING_DISPLAY_SCALE = 105;
+    public static final int SETTING_IR_WIDTH = 106;
+    public static final int SETTING_IR_HEIGHT = 107;
+    public static final int SETTING_IR_CENTER = 108;
 
     // view type
     public static final int TYPE_CHECKBOX = 0;
@@ -230,6 +232,7 @@ public class RunningSettingDialog extends DialogFragment
       mTextSettingName = root.findViewById(R.id.text_setting_name);
       mTextSettingValue = root.findViewById(R.id.text_setting_value);
       mSeekBar = root.findViewById(R.id.seekbar);
+      mSeekBar.setProgress(99);
     }
 
     @Override
@@ -237,18 +240,23 @@ public class RunningSettingDialog extends DialogFragment
     {
       mItem = item;
       mTextSettingName.setText(item.getName());
-      if (mItem.getSetting() == SettingsItem.SETTING_OVERCLOCK_PERCENT ||
-        mItem.getSetting() == SettingsItem.SETTING_TOUCH_POINTER_SENSITIVE)
+      switch (item.getSetting())
       {
-        mSeekBar.setMax(300);
-      }
-      else if(mItem.getSetting() == SettingsItem.SETTING_DISPLAY_SCALE)
-      {
-        mSeekBar.setMax(200);
-      }
-      else
-      {
-        mSeekBar.setMax(10);
+        case SettingsItem.SETTING_OVERCLOCK_PERCENT:
+        case SettingsItem.SETTING_TOUCH_POINTER_SENSITIVE:
+          mSeekBar.setMax(300);
+          break;
+        case SettingsItem.SETTING_DISPLAY_SCALE:
+          mSeekBar.setMax(200);
+          break;
+        case SettingsItem.SETTING_IR_WIDTH:
+        case SettingsItem.SETTING_IR_HEIGHT:
+        case SettingsItem.SETTING_IR_CENTER:
+          mSeekBar.setMax(100);
+          break;
+        default:
+          mSeekBar.setMax(10);
+          break;
       }
       mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener()
       {
@@ -354,6 +362,16 @@ public class RunningSettingDialog extends DialogFragment
         R.string.overclock_title, SettingsItem.TYPE_SEEK_BAR, mRunningSettings[i++]));
       mSettings.add(new SettingsItem(SettingsItem.SETTING_JIT_FOLLOW_BRANCH,
         R.string.jit_follow_branch, SettingsItem.TYPE_CHECKBOX, mRunningSettings[i++]));
+
+      if(!EmulationActivity.isGameCubeGame())
+      {
+        mSettings.add(new SettingsItem(SettingsItem.SETTING_IR_WIDTH,
+          R.string.ir_width, SettingsItem.TYPE_SEEK_BAR, mRunningSettings[i++]));
+        mSettings.add(new SettingsItem(SettingsItem.SETTING_IR_HEIGHT,
+          R.string.ir_height, SettingsItem.TYPE_SEEK_BAR, mRunningSettings[i++]));
+        mSettings.add(new SettingsItem(SettingsItem.SETTING_IR_CENTER,
+          R.string.ir_center, SettingsItem.TYPE_SEEK_BAR, mRunningSettings[i++]));
+      }
 
       // cheat code
       /*String[] codes = EmulationActivity.getGameFile().getCodes();
