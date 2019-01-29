@@ -349,9 +349,7 @@
     <string name="touch_screen_pointer_autohide">Auto hide IR pointer</string>
     <string name="touch_screen_pointer_recenter">IR光标总是回到起始点</string>
     <string name="joystick_relative_center">摇杆使用相对位置</string>
-    <string name="interface_show_extended_fps">显示更多帧率信息</string>
     <string name="use_builtin_title_database">使用游戏名称数据库</string>
-    <string name="interface_show_extended_fps_description">显示详细的帧率数据和系统信息。</string>
 
     <string name="sysconf_screensaver">屏幕保护程序</string>
     <string name="sysconf_language">系统语言</string>
@@ -374,4 +372,10 @@
     <string name="nnf_list_cancel">@android:string/cancel</string>
     <string name="nnf_new_folder_ok">@android:string/ok</string>
     <string name="nnf_new_folder_cancel">@android:string/cancel</string>
+
+    <!-- Misc -->
+    <string name="ir_height">IR 高度</string>
+    <string name="ir_width">IR 宽度</string>
+    <string name="ir_center">IR 中心点</string>
+
 </resources>

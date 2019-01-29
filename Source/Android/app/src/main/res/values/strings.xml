@@ -352,9 +352,7 @@
     <string name="touch_screen_pointer_autohide">Auto hide IR pointer</string>
     <string name="touch_screen_pointer_recenter">IR always back to center</string>
     <string name="joystick_relative_center">Joystick use relative center</string>
-    <string name="interface_show_extended_fps">Show Extended FPS</string>
     <string name="use_builtin_title_database">Use Built-In Database of Game Names</string>
-    <string name="interface_show_extended_fps_description">Show extended fps information on screen.</string>
 
     <string name="sysconf_screensaver">Screensaver</string>
     <string name="sysconf_language">System Language</string>
@@ -377,11 +375,10 @@
     <string name="nnf_list_cancel">@android:string/cancel</string>
     <string name="nnf_new_folder_ok">@android:string/ok</string>
     <string name="nnf_new_folder_cancel">@android:string/cancel</string>
-    <string name="select_dir">Select This Directory</string>
 
     <!-- Misc -->
-    <string name="height">Height</string>
-    <string name="width">Width</string>
-    <string name="center">Center</string>
+    <string name="ir_height">IR Height</string>
+    <string name="ir_width">IR Width</string>
+    <string name="ir_center">IR Center</string>
 
 </resources>

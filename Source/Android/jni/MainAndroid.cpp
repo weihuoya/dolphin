@@ -29,6 +29,7 @@
 
 #include "Core/Boot/Boot.h"
 #include "Core/BootManager.h"
+#include "Common/Config/Enums.h"
 #include "Core/ConfigLoaders/GameConfigLoader.h"
 #include "Core/ConfigLoaders/BaseConfigLoader.h"
 #include "Common/Config/Config.h"
@@ -40,6 +41,9 @@
 #include "Core/Core.h"
 #include "Core/HW/DVD/DVDInterface.h"
 #include "Core/HW/Wiimote.h"
+#include "Core/HW/WiimoteEmu/WiimoteEmu.h"
+#include "InputCommon/ControllerEmu/ControlGroup/ControlGroup.h"
+#include "InputCommon/ControllerEmu/Setting/NumericSetting.h"
 #include "Core/Host.h"
 #include "Core/PowerPC/JitInterface.h"
 #include "Core/PowerPC/PowerPC.h"
@@ -490,7 +494,7 @@ JNIEXPORT jintArray JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_getRunn
   (JNIEnv * env, jobject obj)
 {
   int i = 0;
-  int settings[11];
+  int settings[14];
 
   // gfx
   settings[i++] = Config::Get(Config::GFX_SHOW_FPS);
@@ -507,6 +511,28 @@ JNIEXPORT jintArray JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_getRunn
   settings[i++] = static_cast<int>(SConfig::GetInstance().m_OCFactor * 100.0f);
   settings[i++] = SConfig::GetInstance().bJITFollowBranch;
 
+  // wii
+  if(SConfig::GetInstance().bWii)
+  {
+    ControllerEmu::ControlGroup* cg = Wiimote::GetWiimoteGroup(0, WiimoteEmu::WiimoteGroup::IR);
+    for(auto& s : cg->numeric_settings)
+    {
+      if(s->m_name == "Width")
+      {
+        settings[i] = s->m_value * 100.0;
+      }
+      else if(s->m_name == "Height")
+      {
+        settings[i + 1] = s->m_value * 100.0;
+      }
+      else if(s->m_name == "Center")
+      {
+        settings[i + 2] = s->m_value * 100.0;
+      }
+    }
+    i += 3;
+  }
+
   jintArray array = env->NewIntArray(i);
   env->SetIntArrayRegion(array, 0, i, settings);
   return array;
@@ -516,27 +542,68 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_setRunningSe
   (JNIEnv * env, jobject obj, jintArray array)
 {
   int i = 0;
+  IniFile ini;
   jint * settings = env->GetIntArrayElements(array, 0);
+  const std::string& gameId = SConfig::GetInstance().GetGameID();
+  std::string settingfile = File::GetUserPath(D_GAMESETTINGS_IDX) + DIR_SEP + gameId + ".ini";
 
   // gfx settings need refresh to take effect
   // and will save changes to ini file
-  Config::SetBaseOrCurrent(Config::GFX_SHOW_FPS, settings[i++]);
-  Config::SetBaseOrCurrent(Config::GFX_HACK_EFB_ACCESS_ENABLE, settings[i++] == 0);
-  Config::SetBaseOrCurrent(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM, settings[i++]);
-  Config::SetBaseOrCurrent(Config::GFX_HACK_EFB_EMULATE_FORMAT_CHANGES, settings[i++] == 0);
-  Config::SetBaseOrCurrent(Config::GFX_ENHANCE_ARBITRARY_MIPMAP_DETECTION, settings[i++]);
-  Config::SetBaseOrCurrent(Config::GFX_HACK_IMMEDIATE_XFB, settings[i++]);
-  Config::SetBaseOrCurrent(Config::GFX_DISPLAY_SCALE, settings[i++] / 100.0f + FLT_EPSILON);
+  Config::Set(Config::LayerType::LocalGame, Config::GFX_SHOW_FPS, settings[i++]);
+  Config::Set(Config::LayerType::LocalGame, Config::GFX_HACK_EFB_ACCESS_ENABLE, settings[i++] == 0);
+  Config::Set(Config::LayerType::LocalGame, Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM, settings[i++]);
+  Config::Set(Config::LayerType::LocalGame, Config::GFX_HACK_EFB_EMULATE_FORMAT_CHANGES, settings[i++] == 0);
+  Config::Set(Config::LayerType::LocalGame, Config::GFX_ENHANCE_ARBITRARY_MIPMAP_DETECTION, settings[i++]);
+  Config::Set(Config::LayerType::LocalGame, Config::GFX_HACK_IMMEDIATE_XFB, settings[i++]);
+  Config::Set(Config::LayerType::LocalGame, Config::GFX_DISPLAY_SCALE, settings[i++] / 100.0f + FLT_EPSILON);
   g_Config.Refresh();
   UpdateActiveConfig();
 
-  // core settings will save at end of game
-  // and don't save changes to ini file
-  SConfig::GetInstance().bSyncGPUOnSkipIdleHack = settings[i++];
-  SConfig::GetInstance().m_OCEnable = settings[i++];
-  SConfig::GetInstance().m_OCFactor = settings[i++] / 100.0f + FLT_EPSILON;
-  SConfig::GetInstance().bJITFollowBranch = settings[i++];
 
+  ini.Load(settingfile);
+
+  // core settings
+  {
+    SConfig::GetInstance().bSyncGPUOnSkipIdleHack = settings[i++];
+    SConfig::GetInstance().m_OCEnable = settings[i++];
+    SConfig::GetInstance().m_OCFactor = settings[i++] / 100.0f + FLT_EPSILON;
+    SConfig::GetInstance().bJITFollowBranch = settings[i++];
+
+    IniFile::Section* core = ini.GetOrCreateSection("Core");
+    core->Set("JITFollowBranch", SConfig::GetInstance().bJITFollowBranch);
+    core->Set("Overclock", SConfig::GetInstance().m_OCFactor);
+    core->Set("OverclockEnable", SConfig::GetInstance().m_OCEnable);
+    core->Set("SyncOnSkipIdle", SConfig::GetInstance().bSyncGPUOnSkipIdleHack);
+  }
+
+  // wii settings
+  if(SConfig::GetInstance().bWii)
+  {
+    ControllerEmu::ControlGroup* cg = Wiimote::GetWiimoteGroup(0, WiimoteEmu::WiimoteGroup::IR);
+    for(auto& s : cg->numeric_settings)
+    {
+      if(s->m_name == "Width")
+      {
+        s->m_value = settings[i + 0] / 100.0;
+      }
+      else if(s->m_name == "Height")
+      {
+        s->m_value = settings[i + 1] / 100.0;
+      }
+      else if(s->m_name == "Center")
+      {
+        s->m_value = settings[i + 2] / 100.0;
+      }
+    }
+
+    IniFile::Section* controls = ini.GetOrCreateSection("Controls");
+    controls->Set("IRWidth", settings[i + 0]);
+    controls->Set("IRHeight", settings[i + 1]);
+    controls->Set("IRCenter", settings[i + 2]);
+    i += 3;
+  }
+
+  ini.Save(settingfile);
   env->ReleaseIntArrayElements(array, settings, 0);
 }
 
