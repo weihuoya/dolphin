@@ -220,8 +220,6 @@
     <string name="xfb_copy_method_description">Stores XFB Copies exclusively on the GPU, bypassing system memory. Causes graphical defects in a small number of games that need to readback from memory. If unsure, leave this checked.</string>
     <string name="immediate_xfb">Immediately Present XFB</string>
     <string name="immediate_xfb_description">Displays the XFB copies as soon as they are created, without waiting for scanout. Causes graphical defects in some games but reduces latency. If unsure, leave this unchecked.</string>
-    <string name="disable_destination_alpha">Disable Destination Alpha</string>
-    <string name="disable_destination_alpha_description">Disables emulation of a hardware feature called destination alpha, which is used in many games for various effects.</string>
     <string name="fast_depth_calculation">Fast Depth Calculation</string>
     <string name="fast_depth_calculation_description">Uses a less accurate algorithm to calculate depth values.</string>
     <string name="aspect_ratio">Aspect Ratio</string>
@@ -348,8 +346,6 @@
     <string name="toast_save_code_ok">Code Saved!</string>
     <string name="toast_save_code_no">Save Failed!</string>
     <string name="touch_screen_pointer">Touch Screen emulate IR</string>
-    <string name="touch_screen_pointer_sensitive">IR Sensitivity</string>
-    <string name="touch_screen_pointer_autohide">Auto hide IR pointer</string>
     <string name="touch_screen_pointer_recenter">IR always back to center</string>
     <string name="joystick_relative_center">Joystick use relative center</string>
     <string name="use_builtin_title_database">Use Built-In Database of Game Names</string>

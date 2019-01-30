@@ -563,14 +563,11 @@ public final class NativeLibrary
     return activeNetwork != null && activeNetwork.isConnected();
   }
 
-  public static void updateTouchPointer()
+  public static void updateWindowSize(int width, int height)
   {
     final EmulationActivity emulationActivity = sEmulationActivity.get();
-    if (emulationActivity == null)
-    {
-      Log.warning("[NativeLibrary] EmulationActivity is null.");
-    }
-    else
+    Log.warning("[NativeLibrary] updateWindowSize width: " + width + ", height: " + height);
+    if (emulationActivity != null)
     {
       emulationActivity.runOnUiThread(emulationActivity::updateTouchPointer);
     }

@@ -43,22 +43,20 @@ public class RunningSettingDialog extends DialogFragment
     public static final int SETTING_IGNORE_FORMAT = 3;
     public static final int SETTING_ARBITRARY_MIPMAP_DETECTION = 4;
     public static final int SETTING_IMMEDIATE_XFB = 5;
+    public static final int SETTING_DISPLAY_SCALE = 6;
     // core
-    public static final int SETTING_SYNC_ON_SKIP_IDLE = 6;
-    public static final int SETTING_OVERCLOCK_ENABLE = 7;
-    public static final int SETTING_OVERCLOCK_PERCENT = 8;
-    public static final int SETTING_JIT_FOLLOW_BRANCH = 9;
-    //
+    public static final int SETTING_SYNC_ON_SKIP_IDLE = 7;
+    public static final int SETTING_OVERCLOCK_ENABLE = 8;
+    public static final int SETTING_OVERCLOCK_PERCENT = 9;
+    public static final int SETTING_JIT_FOLLOW_BRANCH = 10;
+    public static final int SETTING_IR_WIDTH = 11;
+    public static final int SETTING_IR_HEIGHT = 12;
+    public static final int SETTING_IR_CENTER = 13;
+    // pref
     public static final int SETTING_PHONE_RUMBLE = 100;
     public static final int SETTING_TOUCH_POINTER = 101;
-    public static final int SETTING_TOUCH_POINTER_SENSITIVE = 102;
-    public static final int SETTING_TOUCH_POINTER_RECENTER = 103;
-    public static final int SETTING_JOYSTICK_RELATIVE = 104;
-    public static final int SETTING_DISPLAY_SCALE = 105;
-    public static final int SETTING_IR_WIDTH = 106;
-    public static final int SETTING_IR_HEIGHT = 107;
-    public static final int SETTING_IR_CENTER = 108;
-
+    public static final int SETTING_TOUCH_POINTER_RECENTER = 102;
+    public static final int SETTING_JOYSTICK_RELATIVE = 103;
     // view type
     public static final int TYPE_CHECKBOX = 0;
     public static final int TYPE_RADIO_BUTTON = 1;
@@ -243,7 +241,6 @@ public class RunningSettingDialog extends DialogFragment
       switch (item.getSetting())
       {
         case SettingsItem.SETTING_OVERCLOCK_PERCENT:
-        case SettingsItem.SETTING_TOUCH_POINTER_SENSITIVE:
           mSeekBar.setMax(300);
           break;
         case SettingsItem.SETTING_DISPLAY_SCALE:
@@ -301,7 +298,6 @@ public class RunningSettingDialog extends DialogFragment
   {
     private int mRumble;
     private int mTouchPointer;
-    private int mIRSensitive;
     private int mIRRecenter;
     private int mJoystickRelative;
     private int[] mRunningSettings;
@@ -323,10 +319,6 @@ public class RunningSettingDialog extends DialogFragment
         mTouchPointer = prefs.getBoolean(InputOverlay.POINTER_PREF_KEY, false) ? 1 : 0;
         mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER,
           R.string.touch_screen_pointer, SettingsItem.TYPE_CHECKBOX, mTouchPointer));
-
-        mIRSensitive = prefs.getInt(InputOverlay.SENSITIVE_PREF_KEY, 200);
-        mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER_SENSITIVE,
-          R.string.touch_screen_pointer_sensitive, SettingsItem.TYPE_SEEK_BAR, mIRSensitive));
 
         mIRRecenter = prefs.getBoolean(InputOverlay.RECENTER_PREF_KEY, false) ? 1 : 0;
         mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER_RECENTER,
@@ -440,14 +432,6 @@ public class RunningSettingDialog extends DialogFragment
         {
           editor.putBoolean(InputOverlay.POINTER_PREF_KEY, pointer > 0);
           NativeLibrary.getEmulationActivity().setTouchPointerEnabled(pointer > 0);
-        }
-        mSettings.remove(0);
-
-        int sensitive = Math.max(mSettings.get(0).getValue(), 1);
-        if(mIRSensitive != sensitive)
-        {
-          editor.putInt(InputOverlay.SENSITIVE_PREF_KEY, sensitive);
-          InputOverlay.sIREmulateSensitive = sensitive;
         }
         mSettings.remove(0);
 

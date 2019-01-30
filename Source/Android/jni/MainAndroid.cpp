@@ -121,11 +121,21 @@ void Host_UpdateMainFrame()
 
 void Host_RequestRenderWindowSize(int width, int height)
 {
-  // Update touch pointer
-  JNIEnv* env;
-  IDCache::GetJavaVM()->AttachCurrentThread(&env, nullptr);
-  env->CallStaticVoidMethod(IDCache::GetNativeLibraryClass(), IDCache::GetUpdateTouchPointer());
-  IDCache::GetJavaVM()->DetachCurrentThread();
+  auto UpdateWindowSize = [&width, &height] {
+      JNIEnv* env;
+      IDCache::GetJavaVM()->AttachCurrentThread(&env, nullptr);
+      env->CallStaticVoidMethod(IDCache::GetNativeLibraryClass(), IDCache::GetUpdateWindowSize(), width, height);
+      IDCache::GetJavaVM()->DetachCurrentThread();
+  };
+
+  if(SConfig::GetInstance().bCPUThread)
+  {
+    UpdateWindowSize();
+  }
+  else
+  {
+    std::thread(UpdateWindowSize).join();
+  }
 }
 
 bool Host_UINeedsControllerState()

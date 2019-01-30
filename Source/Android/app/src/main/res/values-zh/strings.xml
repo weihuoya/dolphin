@@ -202,11 +202,11 @@
 
     <string name="hacks_submenu">黑科技</string>
     <string name="embedded_frame_buffer">内部帧缓存</string>
-    <string name="skip_efb_access">跳过CPU访问EFB</string>
+    <string name="skip_efb_access">跳过CPU访问</string>
     <string name="skip_efb_access_description">忽略来自CPU的任何读取/写入EFB的请求。</string>
     <string name="ignore_format_changes">忽略格式更改</string>
     <string name="ignore_format_changes_description">忽略EFB格式的任何更改。</string>
-    <string name="efb_copy_method">只将EFB复制到纹理</string>
+    <string name="efb_copy_method">只复制到纹理</string>
     <string name="efb_copy_method_description">只将EFB保存在GPU，在少数游戏中会造成显示问题。如果不确定，请选中此复选框。</string>
     <string name="defer_efb_copies">延时复制到内存</string>
     <string name="defer_efb_copies_description">等待同步GPU时将EFB副本写到内存。</string>
@@ -214,14 +214,12 @@
     <string name="texture_cache_accuracy">纹理缓存精度</string>
     <string name="texture_cache_accuracy_description">提高缓存精度，模拟器能及时从缓存中更新纹理。如果出现文字显示问题，请提高精度。</string>
     <string name="gpu_texture_decoding">GPU纹理解码</string>
-    <string name="gpu_texture_decoding_description">使用GPU着色器解码纹理，但需要硬件支持。</string>
+    <string name="gpu_texture_decoding_description">使用GPU着色器解码纹理。需要硬件支持，否则无法进入游戏。</string>
     <string name="external_frame_buffer">外部帧缓存</string>
-    <string name="xfb_copy_method">只将XFB复制到纹理</string>
+    <string name="xfb_copy_method">只复制到纹理</string>
     <string name="xfb_copy_method_description">只将XFB保存在GPU，在少数游戏中会造成显示问题。如果不确定，请不要勾选此选项。</string>
-    <string name="immediate_xfb">立即呈现XFB</string>
+    <string name="immediate_xfb">立即呈现</string>
     <string name="immediate_xfb_description">立即显示XFB而不等待扫描，在少数游戏中会造成显示问题，但减少了延迟。如果不确定，请不要勾选此选项。</string>
-    <string name="disable_destination_alpha">Disable Destination Alpha</string>
-    <string name="disable_destination_alpha_description">Disables emulation of a hardware feature called destination alpha, which is used in many games for various effects.</string>
     <string name="fast_depth_calculation">快速深度计算</string>
     <string name="fast_depth_calculation_description">使用不太准确的算法来计算深度值。</string>
     <string name="aspect_ratio">画面比例</string>
@@ -345,9 +343,7 @@
     <string name="toast_save_code_ok">Code Saved!</string>
     <string name="toast_save_code_no">Save Failed!</string>
     <string name="touch_screen_pointer">触摸屏模拟IR</string>
-    <string name="touch_screen_pointer_sensitive">IR灵敏度</string>
-    <string name="touch_screen_pointer_autohide">Auto hide IR pointer</string>
-    <string name="touch_screen_pointer_recenter">IR光标总是回到起始点</string>
+    <string name="touch_screen_pointer_recenter">IR光标总是回到中心点</string>
     <string name="joystick_relative_center">摇杆使用相对位置</string>
     <string name="use_builtin_title_database">使用游戏名称数据库</string>
 

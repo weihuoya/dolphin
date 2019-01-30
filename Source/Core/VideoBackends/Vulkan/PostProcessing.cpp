@@ -138,17 +138,14 @@ void VulkanPostProcessing::FillUniformBuffer(u8* buf, const TargetRectangle& src
 
 constexpr char DEFAULT_VERTEX_SHADER_SOURCE[] = R"(
   layout(location = 0) in vec4 ipos;
-  layout(location = 5) in vec4 icol0;
   layout(location = 8) in vec3 itex0;
 
   layout(location = 0) out vec3 uv0;
-  layout(location = 1) out vec4 col0;
 
   void main()
   {
     gl_Position = ipos;
     uv0 = itex0;
-    col0 = icol0;
   }
 )";
 
@@ -156,7 +153,6 @@ constexpr char DEFAULT_FRAGMENT_SHADER_SOURCE[] = R"(
   layout(set = 1, binding = 0) uniform sampler2DArray samp0;
 
   layout(location = 0) in float3 uv0;
-  layout(location = 1) in float4 col0;
   layout(location = 0) out float4 ocol0;
 
   void main()
@@ -178,7 +174,6 @@ constexpr char POSTPROCESSING_FRAGMENT_HEADER[] = R"(
   SAMPLER_BINDING(0) uniform sampler2DArray samp0;
 
   layout(location = 0) in float3 uv0;
-  layout(location = 1) in float4 col0;
   layout(location = 0) out float4 ocol0;
 
   // Interfacing functions
