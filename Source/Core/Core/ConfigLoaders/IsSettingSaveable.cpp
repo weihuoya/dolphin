@@ -32,6 +32,16 @@ bool IsSettingSaveable(const Config::ConfigLocation& config_location)
       Config::MAIN_MEMCARD_A_PATH.location,
       Config::MAIN_MEMCARD_B_PATH.location,
       Config::MAIN_AUTO_DISC_CHANGE.location,
+      Config::MAIN_SYNC_ON_SKIP_IDLE.location,
+      Config::MAIN_OVERCLOCK_ENABLE.location,
+      Config::MAIN_OVERCLOCK.location,
+      Config::MAIN_JIT_FOLLOW_BRANCH.location,
+
+      // Main.Controls
+
+      Config::MAIN_IR_WIDTH.location,
+      Config::MAIN_IR_HEIGHT.location,
+      Config::MAIN_IR_CENTER.location,
 
       // Graphics.Hardware
 

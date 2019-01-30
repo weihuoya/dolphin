@@ -96,4 +96,10 @@ extern const ConfigInfo<std::string> MAIN_DUMP_PATH;
 extern const ConfigInfo<std::string> MAIN_FS_PATH;
 extern const ConfigInfo<std::string> MAIN_SD_PATH;
 
+// Main.Controls
+
+extern const ConfigInfo<int> MAIN_IR_WIDTH;
+extern const ConfigInfo<int> MAIN_IR_HEIGHT;
+extern const ConfigInfo<int> MAIN_IR_CENTER;
+
 }  // namespace Config

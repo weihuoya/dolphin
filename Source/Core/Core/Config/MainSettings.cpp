@@ -123,4 +123,10 @@ const ConfigInfo<std::string> MAIN_DUMP_PATH{{System::Main, "General", "DumpPath
 const ConfigInfo<std::string> MAIN_FS_PATH{{System::Main, "General", "NANDRootPath"}, ""};
 const ConfigInfo<std::string> MAIN_SD_PATH{{System::Main, "General", "WiiSDCardPath"}, ""};
 
+// Main.Controls
+
+const ConfigInfo<int> MAIN_IR_WIDTH{{System::Main, "Controls", "IRWidth"}, 50};
+const ConfigInfo<int> MAIN_IR_HEIGHT{{System::Main, "Controls", "IRHeight"}, 50};
+const ConfigInfo<int> MAIN_IR_CENTER{{System::Main, "Controls", "IRCenter"}, 50};
+
 }  // namespace Config

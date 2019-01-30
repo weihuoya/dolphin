@@ -373,6 +373,7 @@ public final class SettingsFragmentPresenter
     Setting waitForShaders = gfxSection.getSetting(SettingsFile.KEY_WAIT_FOR_SHADERS);
     Setting aspectRatio = gfxSection.getSetting(SettingsFile.KEY_ASPECT_RATIO);
     Setting displayScale = gfxSection.getSetting(SettingsFile.KEY_DISPLAY_SCALE);
+    Setting backendMultithreading = gfxSection.getSetting(SettingsFile.KEY_BACKEND_MULTITHREADING);
 
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_VIDEO_BACKEND_INDEX, Settings.SECTION_INI_CORE,
       R.string.video_backend, 0, R.array.videoBackendEntries,
@@ -391,6 +392,10 @@ public final class SettingsFragmentPresenter
       R.array.aspectRatioValues, 0, aspectRatio));
     sl.add(new SliderSetting(SettingsFile.KEY_DISPLAY_SCALE, Settings.SECTION_GFX_SETTINGS,
       R.string.setting_display_scale, 0, 200, "%", 100, displayScale));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_BACKEND_MULTITHREADING,
+      Settings.SECTION_GFX_SETTINGS,
+      R.string.backend_multithreading, R.string.backend_multithreading_description, false,
+      backendMultithreading));
   }
 
   private void addEnhanceSettings(ArrayList<SettingsItem> sl)
@@ -412,7 +417,6 @@ public final class SettingsFragmentPresenter
             enhancementSection.getSetting(SettingsFile.KEY_ARBITRARY_MIPMAP_DETECTION);
     Setting wideScreenHack = gfxSection.getSetting(SettingsFile.KEY_WIDE_SCREEN_HACK);
     Setting force24BitColor = enhancementSection.getSetting(SettingsFile.KEY_FORCE_24_BIT_COLOR);
-    Setting backendMultithreading = gfxSection.getSetting(SettingsFile.KEY_BACKEND_MULTITHREADING);
 
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_INTERNAL_RES, Settings.SECTION_GFX_SETTINGS,
       R.string.internal_resolution, R.string.internal_resolution_description,
@@ -453,10 +457,6 @@ public final class SettingsFragmentPresenter
     sl.add(new CheckBoxSetting(SettingsFile.KEY_WIDE_SCREEN_HACK, Settings.SECTION_GFX_SETTINGS,
             R.string.wide_screen_hack, R.string.wide_screen_hack_description, false,
             wideScreenHack));
-    sl.add(new CheckBoxSetting(SettingsFile.KEY_BACKEND_MULTITHREADING,
-            Settings.SECTION_GFX_SETTINGS,
-            R.string.backend_multithreading, R.string.backend_multithreading_description, false,
-            backendMultithreading));
   }
 
   private String capitalize(String text)
