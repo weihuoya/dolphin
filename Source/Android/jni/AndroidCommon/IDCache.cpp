@@ -94,6 +94,7 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
   s_native_library_class = reinterpret_cast<jclass>(env->NewGlobalRef(native_library_class));
   s_display_alert_msg = env->GetStaticMethodID(s_native_library_class, "displayAlertMsg",
                                                "(Ljava/lang/String;Ljava/lang/String;Z)Z");
+
   s_rumble_output_method = env->GetStaticMethodID(s_native_library_class, "rumble", "(ID)V");
   s_update_window_size =
       env->GetStaticMethodID(s_native_library_class, "updateWindowSize", "(II)V");
