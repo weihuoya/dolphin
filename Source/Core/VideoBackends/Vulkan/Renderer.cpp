@@ -21,6 +21,7 @@
 #include "VideoBackends/Vulkan/FramebufferManager.h"
 #include "VideoBackends/Vulkan/ObjectCache.h"
 #include "VideoBackends/Vulkan/PostProcessing.h"
+#include "VideoBackends/Vulkan/RasterFont.h"
 #include "VideoBackends/Vulkan/Renderer.h"
 #include "VideoBackends/Vulkan/StateTracker.h"
 #include "VideoBackends/Vulkan/StreamBuffer.h"
@@ -99,6 +100,9 @@ bool Renderer::Initialize()
     return false;
   }
 
+  // Initialize raster font
+  m_raster_font = std::make_unique<RasterFont>();
+
   // Various initialization routines will have executed commands on the command buffer.
   // Execute what we have done before beginning the first frame.
   g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
@@ -111,6 +115,7 @@ bool Renderer::Initialize()
 void Renderer::Shutdown()
 {
   ::Renderer::Shutdown();
+  m_raster_font.reset();
 }
 
 std::unique_ptr<AbstractTexture> Renderer::CreateTexture(const TextureConfig& config)
@@ -152,6 +157,21 @@ Renderer::CreateFramebuffer(const AbstractTexture* color_attachment,
 void Renderer::SetPipeline(const AbstractPipeline* pipeline)
 {
   StateTracker::GetInstance()->SetPipeline(static_cast<const VKPipeline*>(pipeline));
+}
+
+void Renderer::RenderText(const std::string& text, int left, int top, u32 color)
+{
+  int screen_width = m_backbuffer_width;
+  int screen_height = m_backbuffer_height;
+  float x = (left * m_backbuffer_scale) * 2.0f / static_cast<float>(screen_width) - 1;
+  float y = 1 - (top * m_backbuffer_scale) * 2.0f / static_cast<float>(screen_height);
+#ifdef ANDROID
+  float scale = m_backbuffer_scale * 1.25f;
+#else
+  float scale = m_backbuffer_scale * 2.00f;
+#endif
+  m_raster_font->PrintMultiLineText(m_swap_chain->GetLoadRenderPass(), text, x, y,
+                                    screen_width, screen_height, color, scale);
 }
 
 u32 Renderer::AccessEFB(EFBAccessType type, u32 x, u32 y, u32 poke_data)
@@ -557,8 +577,9 @@ void Renderer::RenderXFBToScreen(const AbstractTexture* texture, const EFBRectan
   post_processor->BlitFromTexture(target_rc, rc,
                                   static_cast<const VKTexture*>(texture)->GetRawTexIdentifier(),
                                   0, m_swap_chain->GetLoadRenderPass());
-  // The post-processor uses the old-style Vulkan draws, which mess with the tracked state.
-  StateTracker::GetInstance()->SetPendingRebind();
+  // reset state for DrawDebugText
+  Util::SetViewportAndScissor(g_command_buffer_mgr->GetCurrentCommandBuffer(), 0, 0,
+                              m_backbuffer_width, m_backbuffer_height);
 }
 
 void Renderer::CheckForSurfaceChange()

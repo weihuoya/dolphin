@@ -16,6 +16,7 @@ struct XFBSourceBase;
 namespace OGL
 {
 class OGLPipeline;
+class RasterFont;
 void ClearEFBCache();
 
 enum GlslVersion
@@ -114,6 +115,7 @@ public:
                    float far_depth) override;
   void Draw(u32 base_vertex, u32 num_vertices) override;
   void DrawIndexed(u32 base_index, u32 num_indices, u32 base_vertex) override;
+  void RenderText(const std::string& text, int left, int top, u32 color) override;
   void BindBackbuffer(const ClearColor& clear_color = {}) override;
   void PresentBackbuffer() override;
 
@@ -157,6 +159,7 @@ private:
   void ApplyDepthState(const DepthState state, bool force = false);
 
   std::unique_ptr<GLContext> m_main_gl_context;
+  std::unique_ptr<RasterFont> m_raster_font;
   std::array<const AbstractTexture*, 8> m_bound_textures{};
   const OGLPipeline* m_graphics_pipeline = nullptr;
   RasterizationState m_current_rasterization_state;

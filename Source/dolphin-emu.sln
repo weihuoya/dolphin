@@ -89,8 +89,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "discord-rpc", "..\Externals
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "minizip", "..\Externals\minizip\minizip.vcxproj", "{23114507-079A-4418-9707-CFA81A03CA99}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "imgui", "..\Externals\imgui\imgui.vcxproj", "{4C3B2264-EA73-4A7B-9CFE-65B0FD635EBB}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -101,10 +99,6 @@ Global
 		{FA3FA62B-6F58-4B86-9453-4D149940A066}.Debug|x64.Build.0 = Debug|x64
 		{FA3FA62B-6F58-4B86-9453-4D149940A066}.Release|x64.ActiveCfg = Release|x64
 		{FA3FA62B-6F58-4B86-9453-4D149940A066}.Release|x64.Build.0 = Release|x64
-		{47411FDB-1BF2-48D0-AB4E-C7C41160F898}.Debug|x64.ActiveCfg = Debug|x64
-		{47411FDB-1BF2-48D0-AB4E-C7C41160F898}.Debug|x64.Build.0 = Debug|x64
-		{47411FDB-1BF2-48D0-AB4E-C7C41160F898}.Release|x64.ActiveCfg = Release|x64
-		{47411FDB-1BF2-48D0-AB4E-C7C41160F898}.Release|x64.Build.0 = Release|x64
 		{E54CF649-140E-4255-81A5-30A673C1FB36}.Debug|x64.ActiveCfg = Debug|x64
 		{E54CF649-140E-4255-81A5-30A673C1FB36}.Debug|x64.Build.0 = Debug|x64
 		{E54CF649-140E-4255-81A5-30A673C1FB36}.Release|x64.ActiveCfg = Release|x64
@@ -261,10 +255,6 @@ Global
 		{23114507-079A-4418-9707-CFA81A03CA99}.Debug|x64.Build.0 = Debug|x64
 		{23114507-079A-4418-9707-CFA81A03CA99}.Release|x64.ActiveCfg = Release|x64
 		{23114507-079A-4418-9707-CFA81A03CA99}.Release|x64.Build.0 = Release|x64
-		{4C3B2264-EA73-4A7B-9CFE-65B0FD635EBB}.Debug|x64.ActiveCfg = Debug|x64
-		{4C3B2264-EA73-4A7B-9CFE-65B0FD635EBB}.Debug|x64.Build.0 = Debug|x64
-		{4C3B2264-EA73-4A7B-9CFE-65B0FD635EBB}.Release|x64.ActiveCfg = Release|x64
-		{4C3B2264-EA73-4A7B-9CFE-65B0FD635EBB}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -305,6 +295,8 @@ Global
 		{8498F2FA-5CA6-4169-9971-DE5B1FE6132C} = {87ADDFF9-5768-4DA2-A33B-2477593D6677}
 		{4482FD2A-EC43-3FFB-AC20-2E5C54B05EAD} = {87ADDFF9-5768-4DA2-A33B-2477593D6677}
 		{23114507-079A-4418-9707-CFA81A03CA99} = {87ADDFF9-5768-4DA2-A33B-2477593D6677}
-		{4C3B2264-EA73-4A7B-9CFE-65B0FD635EBB} = {87ADDFF9-5768-4DA2-A33B-2477593D6677}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C1F571CF-76AB-4C17-8E5D-19815FA9EDA3}
 	EndGlobalSection
 EndGlobal

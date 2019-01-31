@@ -18,6 +18,7 @@ class BoundingBox;
 class FramebufferManager;
 class SwapChain;
 class Texture2D;
+class RasterFont;
 class VKFramebuffer;
 class VKPipeline;
 class VKTexture;
@@ -49,6 +50,7 @@ public:
   std::unique_ptr<AbstractPipeline> CreatePipeline(const AbstractPipelineConfig& config) override;
 
   BoundingBox* GetBoundingBox() const { return m_bounding_box.get(); }
+  void RenderText(const std::string& pstr, int left, int top, u32 color) override;
   u32 AccessEFB(EFBAccessType type, u32 x, u32 y, u32 poke_data) override;
   void PokeEFB(EFBAccessType type, const EfbPokeData* points, size_t num_points) override;
   u16 BBoxRead(int index) override;
@@ -97,6 +99,7 @@ private:
 
   std::unique_ptr<SwapChain> m_swap_chain;
   std::unique_ptr<BoundingBox> m_bounding_box;
+  std::unique_ptr<RasterFont> m_raster_font;
 
   // Keep a copy of sampler states to avoid cache lookups every draw
   std::array<SamplerState, NUM_PIXEL_SHADER_SAMPLERS> m_sampler_states = {};

@@ -827,7 +827,7 @@ void UpdateTitle()
   }
   else if(g_ActiveConfig.bShowFPS)
   {
-    SFPS = StringFromFormat("FPS:%.0f VPS:%.0f (%.0f%%)", FPS, VPS, Speed);
+    SFPS = StringFromFormat("FPS: %.0f - VPS:%.0f - %.0f%%", FPS, VPS, Speed);
   }
 
   // Update the audio timestretcher with the current speed
@@ -837,18 +837,7 @@ void UpdateTitle()
     pMixer->UpdateSpeed((float)Speed / 100);
   }
 
-#ifdef __ANDROID__
   g_renderer->UpdateDebugTitle(SFPS);
-#else
-  if (SConfig::GetInstance().m_show_active_title)
-  {
-    const std::string& title = SConfig::GetInstance().GetTitleDescription();
-    if (!title.empty())
-      SFPS += " | " + title;
-  }
-
-  Host_UpdateTitle(SFPS);
-#endif
 }
 
 void Shutdown()

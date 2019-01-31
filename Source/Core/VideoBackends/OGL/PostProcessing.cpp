@@ -201,7 +201,8 @@ void OpenGLPostProcessing::ApplyShader()
     }
     else
     {
-      Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
+      // don't set current
+      // Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
     }
 
     main_code = m_config.LoadVertexShader(g_ActiveConfig.sPostProcessingShader);

@@ -27,15 +27,14 @@
 #include "Common/Event.h"
 #include "Common/Flag.h"
 #include "Common/MathUtil.h"
-#include "VideoCommon/AbstractShader.h"
 #include "VideoCommon/AVIDump.h"
+#include "VideoCommon/AbstractShader.h"
 #include "VideoCommon/AsyncShaderCompiler.h"
 #include "VideoCommon/BPMemory.h"
-#include "VideoCommon/FPSCounter.h"
 #include "VideoCommon/RenderState.h"
 #include "VideoCommon/TextureConfig.h"
-#include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoBackendBase.h"
+#include "VideoCommon/VideoCommon.h"
 
 class AbstractFramebuffer;
 class AbstractPipeline;
@@ -155,9 +154,7 @@ public:
   void SaveScreenshot(const std::string& filename, bool wait_for_completion);
   void DrawDebugText();
   void UpdateDebugTitle(const std::string& title) { m_debug_title_text = std::move(title); }
-
-  // ImGui initialization depends on being able to create textures and pipelines, so do it last.
-  bool InitializeImGui();
+  virtual void RenderText(const std::string& text, int left, int top, u32 color) {}
 
   virtual void ClearScreen(const EFBRectangle& rc, bool colorEnable, bool alphaEnable, bool zEnable,
                            u32 color, u32 z) = 0;
@@ -195,16 +192,6 @@ public:
 
   virtual std::unique_ptr<VideoCommon::AsyncShaderCompiler> CreateAsyncShaderCompiler();
 
-  // Returns a lock for the ImGui mutex, enabling data structures to be modified from outside.
-  // Use with care, only non-drawing functions should be called from outside the video thread,
-  // as the drawing is tied to a "frame".
-  std::unique_lock<std::mutex> GetImGuiLock();
-
-  // Begins/presents a "UI frame". UI frames do not draw any of the console XFB, but this could
-  // change in the future.
-  void BeginUIFrame();
-  void EndUIFrame();
-
 protected:
   // Bitmask containing information about which configuration has changed for the backend.
   enum ConfigChangeBits : u32
@@ -226,17 +213,6 @@ protected:
 
   void CheckFifoRecording();
   void RecordVideoMemory();
-
-  // Sets up ImGui state for the next frame.
-  // This function itself acquires the ImGui lock, so it should not be held.
-  void BeginImGuiFrame();
-
-  // Destroys all ImGui GPU resources, must do before shutdown.
-  void ShutdownImGui();
-
-  // Renders ImGui windows to the currently-bound framebuffer.
-  // Should be called with the ImGui lock held.
-  void RenderImGui();
 
   // TODO: Remove the width/height parameters once we make the EFB an abstract framebuffer.
   const AbstractFramebuffer* m_current_framebuffer = nullptr;

@@ -13,7 +13,6 @@ add_library(videocommon
   Debugger.cpp
   DriverDetails.cpp
   Fifo.cpp
-  FPSCounter.cpp
   FramebufferManagerBase.cpp
   GeometryShaderGen.cpp
   GeometryShaderManager.cpp
@@ -62,7 +61,6 @@ PUBLIC
 PRIVATE
   png
   xxhash
-  imgui
 )
 
 if(_M_X86)

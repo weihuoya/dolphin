@@ -56,6 +56,9 @@
     <ClCompile Include="OGLPipeline.cpp">
       <Filter>Render</Filter>
     </ClCompile>
+    <ClCompile Include="RasterFont.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="VertexManager.h">
@@ -100,6 +103,9 @@
       <Filter>Render</Filter>
     </ClInclude>
     <ClInclude Include="OGLPipeline.h">
+      <Filter>Render</Filter>
+    </ClInclude>
+    <ClInclude Include="RasterFont.h">
       <Filter>Render</Filter>
     </ClInclude>
   </ItemGroup>
