@@ -149,6 +149,10 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       sShakeStates[i] = NativeLibrary.ButtonState.RELEASED;
     }
 
+    // init touch pointer
+    boolean touchPointer = mPreferences.getBoolean(POINTER_PREF_KEY, false);
+    setTouchPointerEnabled(touchPointer && !EmulationActivity.isGameCubeGame());
+
     // Load the controls.
     refreshControls();
 
@@ -741,32 +745,31 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
   public void refreshControls()
   {
-    boolean touchPointer = mPreferences.getBoolean(POINTER_PREF_KEY, false);
-    // Remove all the overlay buttons from the HashSet.
+    // Remove all the overlay buttons
     overlayButtons.clear();
     overlayDpads.clear();
     overlayJoysticks.clear();
 
-    // Add all the enabled overlay items back to the HashSet.
-    if (EmulationActivity.isGameCubeGame() || sControllerType == CONTROLLER_GAMECUBE)
+    if(mPreferences.getBoolean("showInputOverlay", false))
     {
-      touchPointer = false;
-      addGameCubeOverlayControls();
-    }
-    else if (sControllerType == COCONTROLLER_CLASSIC)
-    {
-      addClassicOverlayControls();
-    }
-    else
-    {
-      addWiimoteOverlayControls();
-      if (sControllerType == CONTROLLER_WIINUNCHUK)
+      if (EmulationActivity.isGameCubeGame() || sControllerType == CONTROLLER_GAMECUBE)
       {
-        addNunchukOverlayControls();
+        addGameCubeOverlayControls();
+      }
+      else if (sControllerType == COCONTROLLER_CLASSIC)
+      {
+        addClassicOverlayControls();
+      }
+      else
+      {
+        addWiimoteOverlayControls();
+        if (sControllerType == CONTROLLER_WIINUNCHUK)
+        {
+          addNunchukOverlayControls();
+        }
       }
     }
 
-    setTouchPointerEnabled(touchPointer);
     invalidate();
   }
 
