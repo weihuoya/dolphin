@@ -206,7 +206,7 @@
     <string name="skip_efb_access_description">忽略来自CPU的任何读取/写入EFB的请求。</string>
     <string name="ignore_format_changes">忽略格式更改</string>
     <string name="ignore_format_changes_description">忽略EFB格式的任何更改。</string>
-    <string name="efb_copy_method">只复制到纹理</string>
+    <string name="efb_copy_method">只将EFB复制到纹理</string>
     <string name="efb_copy_method_description">只将EFB保存在GPU，在少数游戏中会造成显示问题。如果不确定，请选中此复选框。</string>
     <string name="defer_efb_copies">延时复制到内存</string>
     <string name="defer_efb_copies_description">等待同步GPU时将EFB副本写到内存。</string>
@@ -216,7 +216,7 @@
     <string name="gpu_texture_decoding">GPU纹理解码</string>
     <string name="gpu_texture_decoding_description">使用GPU着色器解码纹理。需要硬件支持，否则无法进入游戏。</string>
     <string name="external_frame_buffer">外部帧缓存</string>
-    <string name="xfb_copy_method">只复制到纹理</string>
+    <string name="xfb_copy_method">只将XFB复制到纹理</string>
     <string name="xfb_copy_method_description">只将XFB保存在GPU，在少数游戏中会造成显示问题。如果不确定，请不要勾选此选项。</string>
     <string name="immediate_xfb">立即呈现</string>
     <string name="immediate_xfb_description">立即显示XFB而不等待扫描，在少数游戏中会造成显示问题，但减少了延迟。如果不确定，请不要勾选此选项。</string>
