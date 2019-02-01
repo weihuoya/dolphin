@@ -79,10 +79,10 @@ public class InputOverlaySensor
           }
           break;
         case InputOverlay.SENSOR_WII_IR:
-          mFactors[0] = 1;
-          mFactors[1] = 1;
-          mFactors[2] = 1;
-          mFactors[3] = 1;
+          mFactors[0] = -1;
+          mFactors[1] = -1;
+          mFactors[2] = -1;
+          mFactors[3] = -1;
 
           mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
           mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;

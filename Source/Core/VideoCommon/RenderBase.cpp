@@ -242,7 +242,7 @@ void Renderer::CheckForConfigChanges()
 // Create On-Screen-Messages
 void Renderer::DrawDebugText()
 {
-  RenderText(m_debug_title_text, 10, 14, 0xFF00FFFF);
+  RenderText(m_debug_title_text, 10, 18, 0xFF00FFFF);
 }
 
 float Renderer::CalculateDrawAspectRatio() const

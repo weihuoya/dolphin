@@ -387,15 +387,15 @@ public final class SettingsFragmentPresenter
     sl.add(new CheckBoxSetting(SettingsFile.KEY_WAIT_FOR_SHADERS, Settings.SECTION_GFX_SETTINGS,
       R.string.wait_for_shaders, R.string.wait_for_shaders_description, false,
       waitForShaders));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_BACKEND_MULTITHREADING,
+      Settings.SECTION_GFX_SETTINGS,
+      R.string.backend_multithreading, R.string.backend_multithreading_description, false,
+      backendMultithreading));
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_ASPECT_RATIO, Settings.SECTION_GFX_SETTINGS,
       R.string.aspect_ratio, 0, R.array.aspectRatioEntries,
       R.array.aspectRatioValues, 0, aspectRatio));
     sl.add(new SliderSetting(SettingsFile.KEY_DISPLAY_SCALE, Settings.SECTION_GFX_SETTINGS,
       R.string.setting_display_scale, 0, 200, "%", 100, displayScale));
-    sl.add(new CheckBoxSetting(SettingsFile.KEY_BACKEND_MULTITHREADING,
-      Settings.SECTION_GFX_SETTINGS,
-      R.string.backend_multithreading, R.string.backend_multithreading_description, false,
-      backendMultithreading));
   }
 
   private void addEnhanceSettings(ArrayList<SettingsItem> sl)

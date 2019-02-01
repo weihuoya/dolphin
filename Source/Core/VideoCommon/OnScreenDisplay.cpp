@@ -53,7 +53,7 @@ void DrawMessages()
 {
   if (SConfig::GetInstance().bOnScreenDisplayMessages)
   {
-    int left = 10, top = 28;
+    int left = 10, top = 32;
     u32 now = Common::Timer::GetTimeMs();
     std::lock_guard<std::mutex> lock(s_messages_mutex);
     auto it = s_messages.begin();
