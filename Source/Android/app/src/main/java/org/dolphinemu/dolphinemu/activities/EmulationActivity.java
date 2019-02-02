@@ -569,7 +569,7 @@ public final class EmulationActivity extends AppCompatActivity
     builder.setNeutralButton(getString(R.string.emulation_toggle_all), (dialogInterface, i) ->
     {
       editor.putBoolean("showInputOverlay",
-        !mPreferences.getBoolean("showInputOverlay", false));
+        !mPreferences.getBoolean("showInputOverlay", true));
       editor.apply();
       mEmulationFragment.refreshInputOverlay();
     });
