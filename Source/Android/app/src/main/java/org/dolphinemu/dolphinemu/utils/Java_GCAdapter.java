@@ -13,7 +13,7 @@ import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 import android.widget.Toast;
 
-import org.dolphinemu.dolphinemu.NativeLibrary;
+import org.dolphinemu.dolphinemu.activities.EmulationActivity;
 import org.dolphinemu.dolphinemu.services.USBPermService;
 
 import java.util.HashMap;
@@ -31,7 +31,7 @@ public class Java_GCAdapter
 
   private static void RequestPermission()
   {
-    Context context = NativeLibrary.getEmulationActivity();
+    Context context = EmulationActivity.get();
     if (context != null)
     {
       HashMap<String, UsbDevice> devices = manager.getDeviceList();
@@ -141,7 +141,7 @@ public class Java_GCAdapter
             }
           }
 
-          final Activity emulationActivity = NativeLibrary.getEmulationActivity();
+          final Activity emulationActivity = EmulationActivity.get();
           if (emulationActivity != null)
           {
             emulationActivity.runOnUiThread(() -> Toast.makeText(emulationActivity,

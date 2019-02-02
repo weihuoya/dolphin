@@ -16,25 +16,12 @@ import org.dolphinemu.dolphinemu.activities.EmulationActivity;
 import org.dolphinemu.dolphinemu.utils.Log;
 import org.dolphinemu.dolphinemu.utils.Rumble;
 
-import java.lang.ref.WeakReference;
-
 /**
  * Class which contains methods that interact
  * with the native side of the Dolphin code.
  */
 public final class NativeLibrary
 {
-  private static WeakReference<EmulationActivity> sEmulationActivity = new WeakReference<>(null);
-
-  /**
-   * Returns the current instance of EmulationActivity.
-   * There should only ever be one EmulationActivity instantiated.
-   */
-  public static EmulationActivity getEmulationActivity()
-  {
-    return sEmulationActivity.get();
-  }
-
   /**
    * Button type for use in onTouchEvent
    */
@@ -405,14 +392,9 @@ public final class NativeLibrary
   public static native void setSystemLanguage(String language);
 
   /**
-   * Begins emulation.
-   */
-  public static native void Run(String[] path);
-
-  /**
    * Begins emulation from the specified savestate.
    */
-  public static native void Run(String[] path, String savestatePath, boolean deleteSavestate);
+  public static native void Run(String[] path, String savestatePath, float scaledDensity);
 
   public static native void ChangeDisc(String path);
 
@@ -471,7 +453,7 @@ public final class NativeLibrary
     final boolean yesNo)
   {
     Log.error("[NativeLibrary] Alert: " + text);
-    final EmulationActivity emulationActivity = sEmulationActivity.get();
+    final EmulationActivity emulationActivity = EmulationActivity.get();
     boolean result = false;
     if (emulationActivity == null)
     {
@@ -546,16 +528,6 @@ public final class NativeLibrary
     return result;
   }
 
-  public static void setEmulationActivity(EmulationActivity emulationActivity)
-  {
-    sEmulationActivity = new WeakReference<>(emulationActivity);
-  }
-
-  public static void clearEmulationActivity()
-  {
-    sEmulationActivity.clear();
-  }
-
   public static boolean isNetworkConnected(Context context)
   {
     ConnectivityManager cm = (ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -565,7 +537,7 @@ public final class NativeLibrary
 
   public static void updateWindowSize(int width, int height)
   {
-    final EmulationActivity emulationActivity = sEmulationActivity.get();
+    final EmulationActivity emulationActivity = EmulationActivity.get();
     Log.warning("[NativeLibrary] updateWindowSize width: " + width + ", height: " + height);
     if (emulationActivity != null)
     {

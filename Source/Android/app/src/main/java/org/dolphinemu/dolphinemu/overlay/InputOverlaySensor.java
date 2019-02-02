@@ -19,7 +19,7 @@ public class InputOverlaySensor
 
   public void setAxisIDs()
   {
-    if(EmulationActivity.isGameCubeGame())
+    if(EmulationActivity.get().isGameCubeGame())
     {
       switch (InputOverlay.sSensorGCSetting)
       {
@@ -197,7 +197,7 @@ public class InputOverlaySensor
     axises[2] = x; // left
     axises[3] = x; // right
 
-    if(!EmulationActivity.isGameCubeGame() &&
+    if(!EmulationActivity.get().isGameCubeGame() &&
       (InputOverlay.SENSOR_WII_SHAKE == InputOverlay.sSensorWiiSetting ||
         InputOverlay.SENSOR_NUNCHUK_SHAKE == InputOverlay.sSensorWiiSetting))
     {

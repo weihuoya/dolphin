@@ -131,18 +131,6 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     if (!mPreferences.getBoolean(CONTROL_INIT_PREF_KEY, false))
       defaultOverlay();
 
-    sControllerScale = mPreferences.getInt(CONTROL_SCALE_PREF_KEY, 50);
-    sJoystickRelative = mPreferences.getBoolean(RELATIVE_PREF_KEY, true);
-    sControllerType = mPreferences.getInt(CONTROL_TYPE_PREF_KEY, CONTROLLER_WIINUNCHUK);
-    sJoyStickSetting = mPreferences.getInt(JOYSTICK_PREF_KEY, JOYSTICK_EMULATE_NONE);
-    sIRRecenter = mPreferences.getBoolean(RECENTER_PREF_KEY, false);
-
-    if(EmulationActivity.isGameCubeGame())
-      sJoyStickSetting = JOYSTICK_EMULATE_NONE;
-
-    sSensorGCSetting = SENSOR_GC_NONE;
-    sSensorWiiSetting = SENSOR_WII_NONE;
-
     // initialize shake states
     for(int i = 0; i < sShakeStates.length; ++i)
     {
@@ -150,8 +138,8 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     }
 
     // init touch pointer
-    boolean touchPointer = mPreferences.getBoolean(POINTER_PREF_KEY, false);
-    setTouchPointerEnabled(touchPointer && !EmulationActivity.isGameCubeGame());
+    boolean touchPointer = mPreferences.getBoolean(InputOverlay.POINTER_PREF_KEY, false);
+    setTouchPointerEnabled(touchPointer && !EmulationActivity.get().isGameCubeGame());
 
     // Load the controls.
     refreshControls();
@@ -752,7 +740,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     if(mPreferences.getBoolean("showInputOverlay", false))
     {
-      if (EmulationActivity.isGameCubeGame() || sControllerType == CONTROLLER_GAMECUBE)
+      if (EmulationActivity.get().isGameCubeGame() || sControllerType == CONTROLLER_GAMECUBE)
       {
         addGameCubeOverlayControls();
       }
@@ -812,7 +800,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
   private int getControllerType()
   {
-    return EmulationActivity.isGameCubeGame() ? CONTROLLER_GAMECUBE : sControllerType;
+    return EmulationActivity.get().isGameCubeGame() ? CONTROLLER_GAMECUBE : sControllerType;
   }
 
   /**
@@ -1099,47 +1087,46 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
   private void defaultOverlay()
   {
+    SharedPreferences.Editor sPrefsEditor = mPreferences.edit();
+    Resources res = getResources();
+
     // It's possible that a user has created their overlay before this was added
     // Only change the overlay if the 'A' button is not in the upper corner.
 
     // GameCube
     if (mPreferences.getFloat(CONTROLLER_GAMECUBE + "_" + ButtonType.BUTTON_A + "_X", 0f) == 0f)
     {
-      gcDefaultOverlay();
+      gcDefaultOverlay(sPrefsEditor, res);
     }
 
     // Wii Nunchuk
     if (mPreferences
       .getFloat(CONTROLLER_WIINUNCHUK + "_" + ButtonType.WIIMOTE_BUTTON_A + "_X", 0f) == 0f)
     {
-      wiiNunchukDefaultOverlay();
+      wiiNunchukDefaultOverlay(sPrefsEditor, res);
     }
 
     // Wii Remote
     if (mPreferences
       .getFloat(CONTROLLER_WIIREMOTE + "_" + ButtonType.WIIMOTE_BUTTON_A + "_X", 0f) == 0f)
     {
-      wiiRemoteDefaultOverlay();
+      wiiRemoteDefaultOverlay(sPrefsEditor, res);
     }
 
     // Wii Classic
     if (mPreferences
       .getFloat(COCONTROLLER_CLASSIC + "_" + ButtonType.CLASSIC_BUTTON_A + "_X", 0f) == 0f)
     {
-      wiiClassicDefaultOverlay();
+      wiiClassicDefaultOverlay(sPrefsEditor, res);
     }
 
-    SharedPreferences.Editor sPrefsEditor = mPreferences.edit();
     sPrefsEditor.putBoolean(CONTROL_INIT_PREF_KEY, true);
     sPrefsEditor.apply();
   }
 
-  private void gcDefaultOverlay()
+  private void gcDefaultOverlay(SharedPreferences.Editor sPrefsEditor, Resources res)
   {
     final int controller = CONTROLLER_GAMECUBE;
-    SharedPreferences.Editor sPrefsEditor = mPreferences.edit();
-    Resources res = getResources();
-
     // Each value is a percent from max X/Y stored as an int. Have to bring that value down
     // to a decimal before multiplying by MAX X/Y.
     sPrefsEditor.putFloat(controller + "_" + ButtonType.BUTTON_A + "_X",
@@ -1186,17 +1173,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       res.getInteger(R.integer.STICK_MAIN_X) / 100.0f);
     sPrefsEditor.putFloat(controller + "_" + ButtonType.STICK_MAIN + "_Y",
       res.getInteger(R.integer.STICK_MAIN_Y) / 100.0f);
-
-    // We want to commit right away, otherwise the overlay could load before this is saved.
-    sPrefsEditor.commit();
   }
 
-  private void wiiNunchukDefaultOverlay()
+  private void wiiNunchukDefaultOverlay(SharedPreferences.Editor sPrefsEditor, Resources res)
   {
     final int controller = CONTROLLER_WIINUNCHUK;
-    SharedPreferences.Editor sPrefsEditor = mPreferences.edit();
-    Resources res = getResources();
-
     // Each value is a percent from max X/Y stored as an int. Have to bring that value down
     // to a decimal before multiplying by MAX X/Y.
     sPrefsEditor.putFloat(controller + "_" + ButtonType.WIIMOTE_BUTTON_A + "_X",
@@ -1252,17 +1233,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       res.getInteger(R.integer.WIIMOTE_BUTTON_UPRIGHT_TOGGLE_X) / 100.0f);
     sPrefsEditor.putFloat(controller + "_" + ButtonType.HOTKEYS_UPRIGHT_TOGGLE + "_Y",
       res.getInteger(R.integer.WIIMOTE_BUTTON_UPRIGHT_TOGGLE_Y) / 100.0f);
-
-    // We want to commit right away, otherwise the overlay could load before this is saved.
-    sPrefsEditor.commit();
   }
 
-  private void wiiRemoteDefaultOverlay()
+  private void wiiRemoteDefaultOverlay(SharedPreferences.Editor sPrefsEditor, Resources res)
   {
     final int controller = CONTROLLER_WIIREMOTE;
-    SharedPreferences.Editor sPrefsEditor = mPreferences.edit();
-    Resources res = getResources();
-
     // Each value is a percent from max X/Y stored as an int. Have to bring that value down
     // to a decimal before multiplying by MAX X/Y.
     sPrefsEditor.putFloat(controller + "_" + ButtonType.WIIMOTE_BUTTON_A + "_X",
@@ -1301,17 +1276,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       res.getInteger(R.integer.WIIMOTE_BUTTON_UPRIGHT_TOGGLE_X) / 100.0f);
     sPrefsEditor.putFloat(controller + "_" + ButtonType.HOTKEYS_UPRIGHT_TOGGLE + "_Y",
       res.getInteger(R.integer.WIIMOTE_BUTTON_UPRIGHT_TOGGLE_Y) / 100.0f);
-
-    // We want to commit right away, otherwise the overlay could load before this is saved.
-    sPrefsEditor.commit();
   }
 
-  private void wiiClassicDefaultOverlay()
+  private void wiiClassicDefaultOverlay(SharedPreferences.Editor sPrefsEditor, Resources res)
   {
     final int controller = COCONTROLLER_CLASSIC;
-    SharedPreferences.Editor sPrefsEditor = mPreferences.edit();
-    Resources res = getResources();
-
     // Each value is a percent from max X/Y stored as an int. Have to bring that value down
     // to a decimal before multiplying by MAX X/Y.
     sPrefsEditor.putFloat(controller + "_" + ButtonType.CLASSIC_BUTTON_A + "_X",
@@ -1378,8 +1347,5 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       res.getInteger(R.integer.CLASSIC_TRIGGER_R_X) / 100.0f);
     sPrefsEditor.putFloat(controller + "_" + ButtonType.CLASSIC_TRIGGER_R + "_Y",
       res.getInteger(R.integer.CLASSIC_TRIGGER_R_Y) / 100.0f);
-
-    // We want to commit right away, otherwise the overlay could load before this is saved.
-    sPrefsEditor.commit();
   }
 }

@@ -314,7 +314,7 @@ public class RunningSettingDialog extends DialogFragment
       mSettings.add(new SettingsItem(SettingsItem.SETTING_PHONE_RUMBLE, R.string.emulation_control_rumble,
         SettingsItem.TYPE_CHECKBOX, mRumble));
 
-      if(!EmulationActivity.isGameCubeGame())
+      if(!EmulationActivity.get().isGameCubeGame())
       {
         mTouchPointer = prefs.getBoolean(InputOverlay.POINTER_PREF_KEY, false) ? 1 : 0;
         mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER,
@@ -355,7 +355,7 @@ public class RunningSettingDialog extends DialogFragment
       mSettings.add(new SettingsItem(SettingsItem.SETTING_JIT_FOLLOW_BRANCH,
         R.string.jit_follow_branch, SettingsItem.TYPE_CHECKBOX, mRunningSettings[i++]));
 
-      if(!EmulationActivity.isGameCubeGame())
+      if(!EmulationActivity.get().isGameCubeGame())
       {
         mSettings.add(new SettingsItem(SettingsItem.SETTING_IR_WIDTH,
           R.string.ir_width, SettingsItem.TYPE_SEEK_BAR, mRunningSettings[i++]));
@@ -425,13 +425,13 @@ public class RunningSettingDialog extends DialogFragment
       }
       mSettings.remove(0);
 
-      if(!EmulationActivity.isGameCubeGame())
+      if(!EmulationActivity.get().isGameCubeGame())
       {
         int pointer = mSettings.get(0).getValue();
         if(mTouchPointer != pointer)
         {
           editor.putBoolean(InputOverlay.POINTER_PREF_KEY, pointer > 0);
-          NativeLibrary.getEmulationActivity().setTouchPointerEnabled(pointer > 0);
+          EmulationActivity.get().setTouchPointerEnabled(pointer > 0);
         }
         mSettings.remove(0);
 

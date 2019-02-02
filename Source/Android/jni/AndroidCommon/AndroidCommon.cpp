@@ -11,13 +11,14 @@
 
 std::string GetJString(JNIEnv* env, jstring jstr)
 {
-  std::string result = "";
+  std::string result;
   if (!jstr)
     return result;
 
   const char* s = env->GetStringUTFChars(jstr, nullptr);
   result = s;
   env->ReleaseStringUTFChars(jstr, s);
+  env->DeleteLocalRef(jstr);
   return result;
 }
 
@@ -30,10 +31,9 @@ std::vector<std::string> JStringArrayToVector(JNIEnv* env, jobjectArray array)
 {
   const jsize size = env->GetArrayLength(array);
   std::vector<std::string> result;
-  result.reserve(size);
-
   for (jsize i = 0; i < size; ++i)
+  {
     result.push_back(GetJString(env, (jstring)env->GetObjectArrayElement(array, i)));
-
+  }
   return result;
 }
