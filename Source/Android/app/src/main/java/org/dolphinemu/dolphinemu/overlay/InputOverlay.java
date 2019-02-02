@@ -738,7 +738,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     overlayDpads.clear();
     overlayJoysticks.clear();
 
-    if(mPreferences.getBoolean("showInputOverlay", false))
+    if(mPreferences.getBoolean("showInputOverlay", true))
     {
       if (EmulationActivity.get().isGameCubeGame() || sControllerType == CONTROLLER_GAMECUBE)
       {
