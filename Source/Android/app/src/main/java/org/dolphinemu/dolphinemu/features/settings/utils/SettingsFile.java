@@ -692,7 +692,7 @@ public final class SettingsFile
     {
       Setting setting = settings.get(key);
       String valueAsString = setting.getValueAsString();
-      if(!TextUtils.isEmpty(valueAsString))
+      if (!TextUtils.isEmpty(valueAsString))
       {
         writer.println(setting.getKey() + " = " + valueAsString);
       }

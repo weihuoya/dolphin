@@ -15,7 +15,7 @@ import org.dolphinemu.dolphinemu.features.settings.utils.SettingsFile;
 
 public class Rumble
 {
-  private static long lastRumbleTime = 0;
+  private static long lastRumbleTime;
   private static Vibrator phoneVibrator;
   private static VibrationEffect vibrationEffect;
   private static SparseArray<Vibrator> emuVibrators;
@@ -26,7 +26,11 @@ public class Rumble
     settings.loadSettings(null);
     SettingSection section = settings.getSection(Settings.SECTION_BINDINGS);
 
+    lastRumbleTime = 0;
+    phoneVibrator = null;
+    vibrationEffect = null;
     emuVibrators = new SparseArray<>();
+
     for (int i = 0; i < 8; i++)
     {
       StringSetting deviceName =

@@ -49,7 +49,7 @@
 #include "Core/IOS/IOS.h"
 #include "Core/NetPlayClient.h"  //for NetPlayUI
 #include "DiscIO/Enums.h"
-#include "InputCommon/ControllerEmu/ControlGroup/Extension.h"
+#include "InputCommon/ControllerEmu/ControlGroup/Attachments.h"
 #include "InputCommon/GCPadStatus.h"
 #include "InputCommon/InputConfig.h"
 #include "UICommon/GameFile.h"
@@ -1215,13 +1215,13 @@ bool NetPlayServer::StartGame()
   spac << m_settings.m_SyncCodes;
   spac << m_settings.m_SyncAllWiiSaves;
 
-  for (int i = 0; i < m_settings.m_WiimoteExtension.size(); i++)
+  for (size_t i = 0; i < m_settings.m_WiimoteExtension.size(); i++)
   {
     const int extension =
-        static_cast<ControllerEmu::Extension*>(
-            static_cast<WiimoteEmu::Wiimote*>(Wiimote::GetConfig()->GetController(i))
-                ->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Extension))
-            ->switch_extension;
+        static_cast<ControllerEmu::Attachments*>(
+            static_cast<WiimoteEmu::Wiimote*>(Wiimote::GetConfig()->GetController(int(i)))
+                ->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Attachments))
+            ->GetSelectedAttachment();
     spac << extension;
   }
 

@@ -43,6 +43,7 @@
 #include "Core/HW/Sram.h"
 #include "Core/HW/WiiSave.h"
 #include "Core/HW/WiiSaveStructs.h"
+#include "Core/HW/WiimoteCommon/WiimoteReport.h"
 #include "Core/HW/WiimoteEmu/WiimoteEmu.h"
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
 #include "Core/IOS/FS/FileSystem.h"
@@ -52,7 +53,7 @@
 #include "Core/Movie.h"
 #include "Core/PowerPC/PowerPC.h"
 #include "Core/WiiRoot.h"
-#include "InputCommon/ControllerEmu/ControlGroup/Extension.h"
+#include "InputCommon/ControllerEmu/ControlGroup/Attachments.h"
 #include "InputCommon/GCAdapter.h"
 #include "InputCommon/InputConfig.h"
 #include "UICommon/GameFile.h"
@@ -61,6 +62,8 @@
 
 namespace NetPlay
 {
+using namespace WiimoteCommon;
+
 static std::mutex crit_netplay_client;
 static NetPlayClient* netplay_client = nullptr;
 static std::unique_ptr<IOS::HLE::FS::FileSystem> s_wii_sync_fs;
@@ -1566,21 +1569,21 @@ void NetPlayClient::UpdateDevices()
     {
       if (SerialInterface::SIDevice_IsGCController(SConfig::GetInstance().m_SIDevice[local_pad]))
       {
-        SerialInterface::AddDevice(SConfig::GetInstance().m_SIDevice[local_pad], pad);
+        SerialInterface::ChangeDevice(SConfig::GetInstance().m_SIDevice[local_pad], pad);
       }
       else
       {
-        SerialInterface::AddDevice(SerialInterface::SIDEVICE_GC_CONTROLLER, pad);
+        SerialInterface::ChangeDevice(SerialInterface::SIDEVICE_GC_CONTROLLER, pad);
       }
       local_pad++;
     }
     else if (player_id > 0)
     {
-      SerialInterface::AddDevice(SerialInterface::SIDEVICE_GC_CONTROLLER, pad);
+      SerialInterface::ChangeDevice(SerialInterface::SIDEVICE_GC_CONTROLLER, pad);
     }
     else
     {
-      SerialInterface::AddDevice(SerialInterface::SIDEVICE_NONE, pad);
+      SerialInterface::ChangeDevice(SerialInterface::SIDEVICE_NONE, pad);
     }
     pad++;
   }
@@ -2184,14 +2187,14 @@ void SetupWiimotes()
   ASSERT(IsNetPlayRunning());
   const NetSettings& netplay_settings = netplay_client->GetNetSettings();
   const PadMappingArray& wiimote_map = netplay_client->GetWiimoteMapping();
-  for (int i = 0; i < netplay_settings.m_WiimoteExtension.size(); i++)
+  for (size_t i = 0; i < netplay_settings.m_WiimoteExtension.size(); i++)
   {
     if (wiimote_map[i] > 0)
     {
-      static_cast<ControllerEmu::Extension*>(
-          static_cast<WiimoteEmu::Wiimote*>(Wiimote::GetConfig()->GetController(i))
-              ->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Extension))
-          ->switch_extension = netplay_settings.m_WiimoteExtension[i];
+      static_cast<ControllerEmu::Attachments*>(
+          static_cast<WiimoteEmu::Wiimote*>(Wiimote::GetConfig()->GetController(int(i)))
+              ->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Attachments))
+          ->SetSelectedAttachment(netplay_settings.m_WiimoteExtension[i]);
     }
   }
 }

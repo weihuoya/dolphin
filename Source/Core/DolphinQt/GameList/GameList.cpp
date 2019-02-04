@@ -42,6 +42,7 @@
 #include "DolphinQt/GameList/GameListModel.h"
 #include "DolphinQt/GameList/GridProxyModel.h"
 #include "DolphinQt/GameList/ListProxyModel.h"
+#include "DolphinQt/MenuBar.h"
 #include "DolphinQt/QtUtils/DoubleClickEventFilter.h"
 #include "DolphinQt/Resources.h"
 #include "DolphinQt/Settings.h"
@@ -120,6 +121,9 @@ void GameList::MakeListView()
 
   hor_header->restoreState(
       Settings::GetQSettings().value(QStringLiteral("tableheader/state")).toByteArray());
+
+  hor_header->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(hor_header, &QWidget::customContextMenuRequested, this, &GameList::ShowHeaderContextMenu);
 
   connect(hor_header, &QHeaderView::sortIndicatorChanged, this, &GameList::OnHeaderViewChanged);
   connect(hor_header, &QHeaderView::sectionCountChanged, this, &GameList::OnHeaderViewChanged);
@@ -221,6 +225,20 @@ void GameList::MakeGridView()
           [this](const QItemSelection&, const QItemSelection&) {
             emit SelectionChanged(GetSelectedGame());
           });
+}
+
+void GameList::ShowHeaderContextMenu(const QPoint& pos)
+{
+  const MenuBar* const menu_bar = MenuBar::GetMenuBar();
+  if (!menu_bar)
+    return;
+
+  QMenu* const list_columns_menu = menu_bar->GetListColumnsMenu();
+  if (!list_columns_menu)
+    return;
+
+  const QWidget* const widget = qobject_cast<QWidget*>(sender());
+  list_columns_menu->exec(widget ? widget->mapToGlobal(pos) : pos);
 }
 
 void GameList::ShowContextMenu(const QPoint&)
@@ -424,12 +442,19 @@ void GameList::ExportWiiSave()
     QString failed_str;
     for (const std::string& str : failed)
       failed_str.append(QStringLiteral("\n")).append(QString::fromStdString(str));
-    QMessageBox::critical(this, tr("Save Export"),
-                          tr("Failed to export the following save files:") + failed_str);
+    QMessageBox msg(QMessageBox::Critical, tr("Save Export"),
+                    tr("Failed to export the following save files:") + failed_str, QMessageBox::Ok,
+                    this);
+
+    msg.setWindowModality(Qt::WindowModal);
+    msg.exec();
   }
   else
   {
-    QMessageBox::information(this, tr("Save Export"), tr("Successfully exported save files"));
+    QMessageBox msg(QMessageBox::Information, tr("Save Export"),
+                    tr("Successfully exported save files"), QMessageBox::Ok, this);
+    msg.setWindowModality(Qt::WindowModal);
+    msg.exec();
   }
 }
 
@@ -470,6 +495,7 @@ void GameList::CompressISO(bool decompress)
     {
       QMessageBox wii_warning(this);
       wii_warning.setIcon(QMessageBox::Warning);
+      wii_warning.setWindowModality(Qt::WindowModal);
       wii_warning.setWindowTitle(tr("Confirm"));
       wii_warning.setText(tr("Are you sure?"));
       wii_warning.setInformativeText(tr(
@@ -530,6 +556,7 @@ void GameList::CompressISO(bool decompress)
       {
         QMessageBox confirm_replace(this);
         confirm_replace.setIcon(QMessageBox::Warning);
+        confirm_replace.setWindowModality(Qt::WindowModal);
         confirm_replace.setWindowTitle(tr("Confirm"));
         confirm_replace.setText(tr("The file %1 already exists.\n"
                                    "Do you wish to replace it?")
@@ -575,11 +602,13 @@ void GameList::CompressISO(bool decompress)
     }
   }
 
-  QMessageBox(QMessageBox::Information, tr("Success"),
-              decompress ? tr("Successfully decompressed %n image(s).", "", files.size()) :
-                           tr("Successfully compressed %n image(s).", "", files.size()),
-              QMessageBox::Ok, this)
-      .exec();
+  QMessageBox msg(QMessageBox::Information, tr("Success"),
+                  decompress ? tr("Successfully decompressed %n image(s).", "", files.size()) :
+                               tr("Successfully compressed %n image(s).", "", files.size()),
+                  QMessageBox::Ok, this);
+
+  msg.setWindowModality(Qt::WindowModal);
+  msg.exec();
 }
 
 void GameList::InstallWAD()
@@ -593,6 +622,7 @@ void GameList::InstallWAD()
   const bool success = WiiUtils::InstallWAD(game->GetFilePath());
 
   result_dialog.setIcon(success ? QMessageBox::Information : QMessageBox::Critical);
+  result_dialog.setWindowModality(Qt::WindowModal);
   result_dialog.setWindowTitle(success ? tr("Success") : tr("Failure"));
   result_dialog.setText(success ? tr("Successfully installed this title to the NAND.") :
                                   tr("Failed to install this title to the NAND."));
@@ -608,6 +638,7 @@ void GameList::UninstallWAD()
   QMessageBox warning_dialog(this);
 
   warning_dialog.setIcon(QMessageBox::Information);
+  warning_dialog.setWindowModality(Qt::WindowModal);
   warning_dialog.setWindowTitle(tr("Confirm"));
   warning_dialog.setText(tr("Uninstalling the WAD will remove the currently installed version of "
                             "this title from the NAND without deleting its save data. Continue?"));
@@ -621,6 +652,7 @@ void GameList::UninstallWAD()
   const bool success = WiiUtils::UninstallTitle(game->GetTitleID());
 
   result_dialog.setIcon(success ? QMessageBox::Information : QMessageBox::Critical);
+  result_dialog.setWindowModality(Qt::WindowModal);
   result_dialog.setWindowTitle(success ? tr("Success") : tr("Failure"));
   result_dialog.setText(success ? tr("Successfully removed this title from the NAND.") :
                                   tr("Failed to remove this title from the NAND."));
@@ -663,7 +695,9 @@ void GameList::DeleteFile()
   QMessageBox confirm_dialog(this);
 
   confirm_dialog.setIcon(QMessageBox::Warning);
+  confirm_dialog.setWindowModality(Qt::WindowModal);
   confirm_dialog.setWindowTitle(tr("Confirm"));
+  confirm_dialog.setWindowModality(Qt::WindowModal);
   confirm_dialog.setText(tr("Are you sure you want to delete this file?"));
   confirm_dialog.setInformativeText(tr("This cannot be undone!"));
   confirm_dialog.setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
@@ -687,6 +721,7 @@ void GameList::DeleteFile()
           QMessageBox error_dialog(this);
 
           error_dialog.setIcon(QMessageBox::Critical);
+          error_dialog.setWindowModality(Qt::WindowModal);
           error_dialog.setWindowTitle(tr("Failure"));
           error_dialog.setText(tr("Failed to delete the selected file."));
           error_dialog.setInformativeText(tr("Check whether you have the permissions required to "

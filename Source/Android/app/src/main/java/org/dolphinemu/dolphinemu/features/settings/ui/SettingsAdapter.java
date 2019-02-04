@@ -253,7 +253,7 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
       SingleChoiceSetting scSetting = (SingleChoiceSetting) mClickedItem;
 
       int value = getValueForSingleChoiceSelection(scSetting, which);
-      if(scSetting.getSelectedValue() != value)
+      if (scSetting.getSelectedValue() != value)
         mActivity.setSettingChanged();
 
       MenuTag menuTag = scSetting.getMenuTag();
@@ -307,7 +307,7 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
     {
       StringSingleChoiceSetting scSetting = (StringSingleChoiceSetting) mClickedItem;
       String value = scSetting.getValueAt(which);
-      if(!scSetting.getSelectedValue().equals(value))
+      if (!scSetting.getSelectedValue().equals(value))
         mActivity.setSettingChanged();
 
       StringSetting setting = scSetting.setSelectedValue(value);
@@ -321,7 +321,7 @@ public final class SettingsAdapter extends RecyclerView.Adapter<SettingViewHolde
     else if (mClickedItem instanceof SliderSetting)
     {
       SliderSetting sliderSetting = (SliderSetting) mClickedItem;
-      if(sliderSetting.getSelectedValue() != mSeekbarProgress)
+      if (sliderSetting.getSelectedValue() != mSeekbarProgress)
         mActivity.setSettingChanged();
 
       Setting setting = sliderSetting.setSelectedValue(mSeekbarProgress);
