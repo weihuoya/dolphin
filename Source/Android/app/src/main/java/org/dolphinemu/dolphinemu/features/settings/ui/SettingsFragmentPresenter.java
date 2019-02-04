@@ -389,7 +389,7 @@ public final class SettingsFragmentPresenter
       waitForShaders));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_BACKEND_MULTITHREADING,
       Settings.SECTION_GFX_SETTINGS,
-      R.string.backend_multithreading, R.string.backend_multithreading_description, false,
+      R.string.backend_multithreading, R.string.backend_multithreading_description, true,
       backendMultithreading));
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_ASPECT_RATIO, Settings.SECTION_GFX_SETTINGS,
       R.string.aspect_ratio, 0, R.array.aspectRatioEntries,
