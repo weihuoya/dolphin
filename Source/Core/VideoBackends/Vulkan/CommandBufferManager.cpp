@@ -424,19 +424,6 @@ void CommandBufferManager::ActivateCommandBuffer()
   resources.init_command_buffer_used = false;
 }
 
-void CommandBufferManager::ExecuteCommandBuffer(bool submit_off_thread, bool wait_for_completion)
-{
-  VkFence pending_fence = GetCurrentCommandBufferFence();
-
-  // If we're waiting for completion, don't bother waking the worker thread.
-  PrepareToSubmitCommandBuffer();
-  SubmitCommandBuffer((submit_off_thread && wait_for_completion));
-  ActivateCommandBuffer();
-
-  if (wait_for_completion)
-    WaitForFence(pending_fence);
-}
-
 void CommandBufferManager::DeferBufferDestruction(VkBuffer object)
 {
   FrameResources& resources = m_frame_resources[m_current_frame];

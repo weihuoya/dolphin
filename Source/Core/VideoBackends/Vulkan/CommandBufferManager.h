@@ -22,7 +22,6 @@
 #include "VideoCommon/VideoCommon.h"
 
 #include "VideoBackends/Vulkan/Constants.h"
-#include "VideoBackends/Vulkan/Util.h"
 
 namespace Vulkan
 {
@@ -76,8 +75,6 @@ public:
                            uint32_t present_image_index = 0xFFFFFFFF);
 
   void ActivateCommandBuffer();
-
-  void ExecuteCommandBuffer(bool submit_off_thread, bool wait_for_completion);
 
   // Was the last present submitted to the queue a failure? If so, we must recreate our swapchain.
   bool CheckLastPresentFail() { return m_present_failed_flag.TestAndClear(); }
