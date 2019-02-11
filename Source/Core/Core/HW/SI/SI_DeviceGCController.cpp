@@ -336,16 +336,9 @@ void CSIDevice_GCController::SendCommand(u32 command, u8 poll)
 // Savestate support
 void CSIDevice_GCController::DoState(PointerWrap& p)
 {
-  bool calibrated = false;
-  p.Do(calibrated); // PR 7728
-
   p.Do(m_origin);
   p.Do(m_mode);
   p.Do(m_timer_button_combo_start);
-
-  u64 timer_button_combo = 0;
-  p.Do(timer_button_combo); // PR 7761
-
   p.Do(m_last_button_combo);
 }
 

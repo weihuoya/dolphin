@@ -88,11 +88,6 @@ void GeometryShaderManager::DoState(PointerWrap& p)
 {
   p.Do(s_projection_changed);
   p.Do(s_viewport_changed);
-
-  // for save state compatibility
-  float4 __noused_stereoparams{};
-  p.Do(__noused_stereoparams);
-
   p.Do(constants);
 
   if (p.GetMode() == PointerWrap::MODE_READ)
