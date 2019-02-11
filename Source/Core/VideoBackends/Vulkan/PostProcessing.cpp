@@ -137,15 +137,20 @@ void VulkanPostProcessing::FillUniformBuffer(u8* buf, const TargetRectangle& src
 }
 
 constexpr char DEFAULT_VERTEX_SHADER_SOURCE[] = R"(
-  layout(location = 0) in vec4 ipos;
-  layout(location = 8) in vec3 itex0;
-
-  layout(location = 0) out vec3 uv0;
+  layout(location = 0) out float3 uv0;
 
   void main()
   {
-    gl_Position = ipos;
-    uv0 = itex0;
+      /*
+       * id   &1    &2   clamp(*2-1)
+       * 0    0,0   0,0  -1,-1      TL
+       * 1    1,0   1,0  1,-1       TR
+       * 2    0,2   0,1  -1,1       BL
+       * 3    1,2   1,1  1,1        BR
+       */
+      float2 rawpos = float2(gl_VertexID&1, gl_VertexID&2);
+      gl_Position = float4(rawpos * 2.0f - 1.0f, 0.0f, 1.0f);
+      uv0 = float3(rawpos, 0.0f);
   }
 )";
 
@@ -162,9 +167,9 @@ constexpr char DEFAULT_FRAGMENT_SHADER_SOURCE[] = R"(
 )";
 
 constexpr char POSTPROCESSING_VERTEX_HEADER[] = R"(
-  layout(location = 0) out vec3 uv0;
+  layout(location = 0) out float3 uv0;
 
-  #define VERTEX_SETUP vec2 rawpos = vec2(float(gl_VertexID & 1), clamp(float(gl_VertexID & 2), 0.0f, 1.0f)); gl_Position = vec4(rawpos * 2.0f - 1.0f, 0.0f, 1.0f); uv0 = vec3(rawpos, 0.0f);
+  #define VERTEX_SETUP float2 rawpos = float2(gl_VertexID&1, gl_VertexID&2); gl_Position = float4(rawpos * 2.0f - 1.0f, 0.0f, 1.0f); uv0 = float3(rawpos, 0.0f);
   #define GetResolution() (options.resolution.xy)
   #define GetInvResolution() (options.resolution.zw)
   #define GetCoordinates() (uv0.xy)
@@ -177,10 +182,9 @@ constexpr char POSTPROCESSING_FRAGMENT_HEADER[] = R"(
   layout(location = 0) out float4 ocol0;
 
   // Interfacing functions
-  // The EFB may have a zero alpha value, which we don't want to write to the frame dump, so set it to one here.
-  #define Sample() float4(texture(samp0, uv0).xyz, 1.0)
-  #define SampleLocation(location) float4(texture(samp0, float3(location, uv0.z)).xyz, 1.0)
-  #define SampleOffset(offset) float4(textureOffset(samp0, uv0, offset).xyz, 1.0)
+  #define Sample() texture(samp0, uv0)
+  #define SampleLocation(location) texture(samp0, float3(location, uv0.z))
+
   #define SetOutput(color) (ocol0 = color)
   #define GetResolution() (options.resolution.xy)
   #define GetInvResolution() (options.resolution.zw)

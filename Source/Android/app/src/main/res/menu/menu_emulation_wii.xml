@@ -51,4 +51,10 @@
         android:id="@+id/menu_emulation_sensor_settings"
         app:showAsAction="never"
         android:title="@string/emulation_sensor_settings"/>
+
+    <item
+        android:id="@+id/menu_change_disc"
+        app:showAsAction="never"
+        android:title="@string/emulation_change_disc"/>
+
 </menu>

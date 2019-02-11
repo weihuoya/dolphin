@@ -21,60 +21,51 @@
 namespace OGL
 {
 static const char s_default_vertex_shader[] = R"(
-out vec2 uv0;
-uniform vec4 src_rect;
+out float3 uv0;
+uniform float4 src_rect;
 void main()
 {
-  vec2 rawpos = vec2(gl_VertexID&1, gl_VertexID&2);
-  gl_Position = vec4(rawpos * 2.0-1.0, 0.0, 1.0);
-  uv0 = vec2(mix(src_rect.xy, src_rect.zw, rawpos));
+  float2 rawpos = float2(gl_VertexID&1, gl_VertexID&2);
+  gl_Position = float4(rawpos * 2.0-1.0, 0.0, 1.0);
+  uv0 = float3(mix(src_rect.xy, src_rect.zw, rawpos), 0.0);
 }
 )";
 
 static const char s_default_fragment_shader[] = R"(
 out float4 ocol0;
-in float2 uv0;
-uniform int layer;
-SAMPLER_BINDING(9) uniform sampler2DArray samp9;
+in float3 uv0;
+SAMPLER_BINDING(9) uniform sampler2DArray samp0;
 void main()
 {
-  ocol0 = texture(samp9, float3(uv0, layer));
+  ocol0 = texture(samp0, uv0);
 }
 )";
 
 static const char s_vertex_header[] = R"(
-  out vec2 uv0;
-  uniform vec4 src_rect;
-  // Resolution
-  uniform vec4 resolution;
-  #define VERTEX_SETUP vec2 rawpos = vec2(gl_VertexID&1, gl_VertexID&2); gl_Position = vec4(rawpos * 2.0-1.0, 0.0, 1.0); uv0 = vec2(mix(src_rect.xy, src_rect.zw, rawpos));
-  vec2 GetResolution() { return resolution.xy; }
-  vec2 GetInvResolution() { return resolution.zw; }
-  vec2 GetCoordinates() { return uv0; }
+  out float3 uv0;
+  uniform float4 src_rect;
+  uniform float4 resolution;
+  #define VERTEX_SETUP float2 rawpos = float2(gl_VertexID&1, gl_VertexID&2); gl_Position = float4(rawpos * 2.0-1.0, 0.0, 1.0); uv0 = float3(mix(src_rect.xy, src_rect.zw, rawpos), 0.0);
+  float2 GetResolution() { return resolution.xy; }
+  float2 GetInvResolution() { return resolution.zw; }
+  float2 GetCoordinates() { return uv0.xy; }
 )";
 
 static const char s_fragment_header[] = R"(
-  SAMPLER_BINDING(9) uniform sampler2DArray samp9;
+  SAMPLER_BINDING(9) uniform sampler2DArray samp0;
 
-  // Output variable
   out float4 ocol0;
-  // Input coordinates
-  in float2 uv0;
-  // Resolution
+  in float3 uv0;
   uniform float4 resolution;
-  // Time
   uniform uint time;
-  // Layer
-  uniform int layer;
 
   // Interfacing functions
-  float4 Sample() { return texture(samp9, float3(uv0, layer)); }
-  float4 SampleLocation(float2 location) { return texture(samp9, float3(location, layer)); }
-  #define SampleOffset(offset) textureOffset(samp9, float3(uv0, layer), offset)
+  float4 Sample() { return texture(samp0, uv0); }
+  float4 SampleLocation(float2 location) { return texture(samp0, float3(location, uv0.z)); }
 
   float2 GetResolution() { return resolution.xy; }
   float2 GetInvResolution() { return resolution.zw; }
-  float2 GetCoordinates() { return uv0; }
+  float2 GetCoordinates() { return uv0.xy; }
   uint GetTime() { return time; }
 
   void SetOutput(float4 color) { ocol0 = color; }

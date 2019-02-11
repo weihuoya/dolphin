@@ -708,7 +708,7 @@ bool ShaderCache::CompileSharedShaders()
          * 2    0,2   0,1  -1,1       BL
          * 3    1,2   1,1  1,1        BR
          */
-        vec2 rawpos = vec2(float(gl_VertexID & 1), clamp(float(gl_VertexID & 2), 0.0f, 1.0f));
+        vec2 rawpos = vec2(gl_VertexID&1, gl_VertexID&2);
         gl_Position = vec4(rawpos * 2.0f - 1.0f, 0.0f, 1.0f);
         uv0 = vec3(rawpos, 0.0f);
     }
