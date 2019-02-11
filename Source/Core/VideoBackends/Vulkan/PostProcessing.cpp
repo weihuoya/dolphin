@@ -155,14 +155,14 @@ constexpr char DEFAULT_VERTEX_SHADER_SOURCE[] = R"(
 )";
 
 constexpr char DEFAULT_FRAGMENT_SHADER_SOURCE[] = R"(
-  layout(set = 1, binding = 0) uniform sampler2DArray samp0;
+  layout(set = 1, binding = 0) uniform sampler2DArray samp9;
 
   layout(location = 0) in float3 uv0;
   layout(location = 0) out float4 ocol0;
 
   void main()
   {
-    ocol0 = float4(texture(samp0, uv0).xyz, 1.0);
+    ocol0 = float4(texture(samp9, uv0).xyz, 1.0);
   }
 )";
 
@@ -176,14 +176,14 @@ constexpr char POSTPROCESSING_VERTEX_HEADER[] = R"(
 )";
 
 constexpr char POSTPROCESSING_FRAGMENT_HEADER[] = R"(
-  SAMPLER_BINDING(0) uniform sampler2DArray samp0;
+  SAMPLER_BINDING(0) uniform sampler2DArray samp9;
 
   layout(location = 0) in float3 uv0;
   layout(location = 0) out float4 ocol0;
 
   // Interfacing functions
-  #define Sample() texture(samp0, uv0)
-  #define SampleLocation(location) texture(samp0, float3(location, uv0.z))
+  #define Sample() texture(samp9, uv0)
+  #define SampleLocation(location) texture(samp9, float3(location, uv0.z))
 
   #define SetOutput(color) (ocol0 = color)
   #define GetResolution() (options.resolution.xy)

@@ -34,10 +34,10 @@ void main()
 static const char s_default_fragment_shader[] = R"(
 out float4 ocol0;
 in float3 uv0;
-SAMPLER_BINDING(9) uniform sampler2DArray samp0;
+SAMPLER_BINDING(9) uniform sampler2DArray samp9;
 void main()
 {
-  ocol0 = texture(samp0, uv0);
+  ocol0 = texture(samp9, uv0);
 }
 )";
 
@@ -52,7 +52,7 @@ static const char s_vertex_header[] = R"(
 )";
 
 static const char s_fragment_header[] = R"(
-  SAMPLER_BINDING(9) uniform sampler2DArray samp0;
+  SAMPLER_BINDING(9) uniform sampler2DArray samp9;
 
   out float4 ocol0;
   in float3 uv0;
@@ -60,8 +60,8 @@ static const char s_fragment_header[] = R"(
   uniform uint time;
 
   // Interfacing functions
-  float4 Sample() { return texture(samp0, uv0); }
-  float4 SampleLocation(float2 location) { return texture(samp0, float3(location, uv0.z)); }
+  float4 Sample() { return texture(samp9, uv0); }
+  float4 SampleLocation(float2 location) { return texture(samp9, float3(location, uv0.z)); }
 
   float2 GetResolution() { return resolution.xy; }
   float2 GetInvResolution() { return resolution.zw; }
