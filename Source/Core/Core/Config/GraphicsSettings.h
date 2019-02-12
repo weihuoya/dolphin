@@ -93,7 +93,6 @@ extern const ConfigInfo<float> GFX_ENHANCE_ARBITRARY_MIPMAP_DETECTION_THRESHOLD;
 
 extern const ConfigInfo<bool> GFX_HACK_EFB_ACCESS_ENABLE;
 extern const ConfigInfo<bool> GFX_HACK_BBOX_ENABLE;
-extern const ConfigInfo<bool> GFX_HACK_BBOX_PREFER_STENCIL_IMPLEMENTATION;
 extern const ConfigInfo<bool> GFX_HACK_FORCE_PROGRESSIVE;
 extern const ConfigInfo<bool> GFX_HACK_SKIP_EFB_COPY_TO_RAM;
 extern const ConfigInfo<bool> GFX_HACK_SKIP_XFB_COPY_TO_RAM;

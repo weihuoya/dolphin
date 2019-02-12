@@ -169,8 +169,7 @@ PixelShaderUid GetPixelShaderUid()
   uid_data->genMode_numindstages = bpmem.genMode.numindstages;
   uid_data->genMode_numtevstages = bpmem.genMode.numtevstages;
   uid_data->genMode_numtexgens = bpmem.genMode.numtexgens;
-  uid_data->bounding_box = g_ActiveConfig.BBoxUseFragmentShaderImplementation() &&
-                           g_ActiveConfig.bBBoxEnable && BoundingBox::active;
+  uid_data->bounding_box = g_ActiveConfig.bBBoxEnable && BoundingBox::active;
   uid_data->rgba6_format =
       bpmem.zcontrol.pixel_format == PEControl::RGBA6_Z24 && !g_ActiveConfig.bForceTrueColor;
   uid_data->dither = bpmem.blendmode.dither && uid_data->rgba6_format;
@@ -452,10 +451,6 @@ void WritePixelShaderCommonHeader(ShaderCode& out, APIType ApiType, u32 num_texg
       out.Write("globallycoherent RWBuffer<int> bbox_data : register(u2);\n");
     }
   }
-
-  out.Write("struct VS_OUTPUT {\n");
-  GenerateVSOutputMembers(out, ApiType, num_texgens, host_config, "");
-  out.Write("};\n");
 }
 
 static void WriteStage(ShaderCode& out, const pixel_shader_uid_data* uid_data, int n,
@@ -768,6 +763,7 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
   // write zcoord
   bool need_write_zcoord = true;
 
+
   // depth texture can safely be ignored if the result won't be written to the depth buffer
   // (early_ztest) and isn't used for fog either
   const bool skip_ztexture = !uid_data->per_pixel_depth && !uid_data->fog_fsel;
@@ -780,7 +776,6 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
       WriteZCoord(out, ApiType, host_config, uid_data);
       need_write_zcoord = false;
     }
-
     if (!host_config.backend_reversed_depth_range)
       out.Write("\tdepth = 1.0 - float(zCoord) / 16777216.0;\n");
     else
@@ -813,7 +808,6 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
       WriteZCoord(out, ApiType, host_config, uid_data);
       need_write_zcoord = false;
     }
-
     if (!host_config.backend_reversed_depth_range)
       out.Write("\tdepth = 1.0 - float(zCoord) / 16777216.0;\n");
     else

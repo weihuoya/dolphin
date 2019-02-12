@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include "VideoCommon/SamplerCommon.h"
+#include "VideoCommon/TextureConfig.h"
 
 void RasterizationState::Generate(const BPMemory& bp, PrimitiveType primitive_type)
 {
@@ -24,6 +25,12 @@ void RasterizationState::Generate(const BPMemory& bp, PrimitiveType primitive_ty
 }
 
 RasterizationState& RasterizationState::operator=(const RasterizationState& rhs)
+{
+  hex = rhs.hex;
+  return *this;
+}
+
+FramebufferState& FramebufferState::operator=(const FramebufferState& rhs)
 {
   hex = rhs.hex;
   return *this;
@@ -211,10 +218,19 @@ RasterizationState GetInvalidRasterizationState()
   return state;
 }
 
-RasterizationState GetNoCullRasterizationState()
+RasterizationState GetNoCullRasterizationState(PrimitiveType primitive)
 {
   RasterizationState state = {};
   state.cullmode = GenMode::CULL_NONE;
+  state.primitive = primitive;
+  return state;
+}
+
+RasterizationState GetCullBackFaceRasterizationState(PrimitiveType primitive)
+{
+  RasterizationState state = {};
+  state.cullmode = GenMode::CULL_BACK;
+  state.primitive = primitive;
   return state;
 }
 
@@ -225,11 +241,20 @@ DepthState GetInvalidDepthState()
   return state;
 }
 
-DepthState GetNoDepthTestingDepthStencilState()
+DepthState GetNoDepthTestingDepthState()
 {
   DepthState state = {};
   state.testenable = false;
   state.updateenable = false;
+  state.func = ZMode::ALWAYS;
+  return state;
+}
+
+DepthState GetAlwaysWriteDepthState()
+{
+  DepthState state = {};
+  state.testenable = true;
+  state.updateenable = true;
   state.func = ZMode::ALWAYS;
   return state;
 }
@@ -254,6 +279,21 @@ BlendingState GetNoBlendingBlendState()
   state.logicopenable = false;
   state.colorupdate = true;
   state.alphaupdate = true;
+  return state;
+}
+
+BlendingState GetNoColorWriteBlendState()
+{
+  BlendingState state = {};
+  state.usedualsrc = false;
+  state.blendenable = false;
+  state.srcfactor = BlendMode::ONE;
+  state.srcfactoralpha = BlendMode::ONE;
+  state.dstfactor = BlendMode::ZERO;
+  state.dstfactoralpha = BlendMode::ZERO;
+  state.logicopenable = false;
+  state.colorupdate = false;
+  state.alphaupdate = false;
   return state;
 }
 
@@ -293,4 +333,20 @@ SamplerState GetLinearSamplerState()
   state.anisotropic_filtering = false;
   return state;
 }
+
+FramebufferState GetColorFramebufferState(AbstractTextureFormat format)
+{
+  FramebufferState state = {};
+  state.color_texture_format = format;
+  state.depth_texture_format = AbstractTextureFormat::Undefined;
+  state.per_sample_shading = false;
+  state.samples = 1;
+  return state;
 }
+
+FramebufferState GetRGBA8FramebufferState()
+{
+  return GetColorFramebufferState(AbstractTextureFormat::RGBA8);
+}
+
+}  // namespace RenderState

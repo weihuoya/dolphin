@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -21,8 +22,6 @@
 #include "VideoCommon/VideoCommon.h"
 
 #include "VideoBackends/Vulkan/Constants.h"
-#include "VideoBackends/Vulkan/Util.h"
-#include "VideoBackends/Vulkan/SwapChain.h"
 
 namespace Vulkan
 {
@@ -33,7 +32,6 @@ public:
   ~CommandBufferManager();
 
   bool Initialize();
-  void Shutdown();
 
   // These command buffers are allocated per-frame. They are valid until the command buffer
   // is submitted, after that you should call these functions again.
@@ -70,11 +68,13 @@ public:
   // Also invokes callbacks for completion.
   void WaitForFence(VkFence fence);
 
-  void SubmitCommandBuffer(bool submit_on_worker_thread, SwapChain * swap_chain = nullptr);
+  void SubmitCommandBuffer(bool submit_on_worker_thread,
+                           VkSemaphore wait_semaphore = VK_NULL_HANDLE,
+                           VkSemaphore signal_semaphore = VK_NULL_HANDLE,
+                           VkSwapchainKHR present_swap_chain = VK_NULL_HANDLE,
+                           uint32_t present_image_index = 0xFFFFFFFF);
 
   void ActivateCommandBuffer();
-
-  void ExecuteCommandBuffer(bool submit_off_thread, bool wait_for_completion);
 
   // Was the last present submitted to the queue a failure? If so, we must recreate our swapchain.
   bool CheckLastPresentFail() { return m_present_failed_flag.TestAndClear(); }
@@ -104,7 +104,8 @@ private:
 
   bool CreateSubmitThread();
 
-  void SubmitCommandBuffer(size_t index, SwapChain * swap_chain);
+  void SubmitCommandBuffer(size_t index, VkSemaphore wait_semaphore, VkSemaphore signal_semaphore,
+                           VkSwapchainKHR present_swap_chain, uint32_t present_image_index);
 
   void OnCommandBufferExecuted(size_t index);
 
@@ -136,7 +137,10 @@ private:
   struct PendingCommandBufferSubmit
   {
     size_t index;
-    SwapChain * swap_chain;
+    VkSemaphore wait_semaphore;
+    VkSemaphore signal_semaphore;
+    VkSwapchainKHR present_swap_chain;
+    uint32_t present_image_index;
   };
   std::deque<PendingCommandBufferSubmit> m_pending_submits;
   std::mutex m_pending_submit_lock;

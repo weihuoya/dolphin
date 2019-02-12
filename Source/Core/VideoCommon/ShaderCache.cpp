@@ -9,7 +9,8 @@
 #include "Common/MsgHandler.h"
 #include "Core/ConfigManager.h"
 
-#include "VideoCommon/FramebufferManagerBase.h"
+#include "VideoCommon/FramebufferManager.h"
+#include "VideoCommon/FramebufferShaderGen.h"
 #include "VideoCommon/RenderBase.h"
 #include "VideoCommon/Statistics.h"
 #include "VideoCommon/VertexLoaderManager.h"
@@ -26,11 +27,16 @@ bool ShaderCache::Initialize()
 {
   m_api_type = g_ActiveConfig.backend_info.api_type;
   m_host_config = ShaderHostConfig::GetCurrent();
-  m_efb_depth_format = FramebufferManagerBase::GetEFBDepthFormat();
-  m_efb_multisamples = g_ActiveConfig.iMultisamples;
 
-  // Create the async compiler, and start the worker threads.
+  if (!CompileSharedPipelines())
+    return false;
+
   m_async_shader_compiler = g_renderer->CreateAsyncShaderCompiler();
+  return true;
+}
+
+void ShaderCache::InitializeShaderCache()
+{
   m_async_shader_compiler->ResizeWorkerThreads(g_ActiveConfig.GetShaderPrecompilerThreads());
 
   // Load shader and UID caches.
@@ -47,17 +53,6 @@ bool ShaderCache::Initialize()
 
   // Switch to the runtime shader compiler thread configuration.
   m_async_shader_compiler->ResizeWorkerThreads(g_ActiveConfig.GetShaderCompilerThreads());
-  return true;
-}
-
-void ShaderCache::SetHostConfig(const ShaderHostConfig& host_config, u32 efb_multisamples)
-{
-  if (m_host_config.bits == host_config.bits && m_efb_multisamples == efb_multisamples)
-    return;
-
-  m_host_config = host_config;
-  m_efb_multisamples = efb_multisamples;
-  Reload();
 }
 
 void ShaderCache::Reload()
@@ -329,6 +324,11 @@ bool ShaderCache::NeedsGeometryShader(const GeometryShaderUid& uid) const
   return m_host_config.backend_geometry_shaders && !uid.GetUidData()->IsPassthrough();
 }
 
+bool ShaderCache::UseGeometryShaderForEFBCopies() const
+{
+  return false;
+}
+
 AbstractPipelineConfig ShaderCache::GetGXPipelineConfig(
     const NativeVertexFormat* vertex_format, const AbstractShader* vertex_shader,
     const AbstractShader* geometry_shader, const AbstractShader* pixel_shader,
@@ -344,10 +344,7 @@ AbstractPipelineConfig ShaderCache::GetGXPipelineConfig(
   config.rasterization_state = rasterization_state;
   config.depth_state = depth_state;
   config.blending_state = blending_state;
-  config.framebuffer_state.color_texture_format = AbstractTextureFormat::RGBA8;
-  config.framebuffer_state.depth_texture_format = m_efb_depth_format;
-  config.framebuffer_state.per_sample_shading = m_host_config.ssaa;
-  config.framebuffer_state.samples = m_efb_multisamples;
+  config.framebuffer_state = g_framebuffer_manager->GetEFBFramebufferState();
   return config;
 }
 
@@ -650,24 +647,172 @@ void ShaderCache::QueuePipelineCompile(const GXPipelineUid& uid, u32 priority)
   m_gx_pipeline_cache[uid].second = true;
 }
 
-std::string ShaderCache::GetUtilityShaderHeader() const
+const AbstractPipeline*
+ShaderCache::GetEFBCopyToVRAMPipeline(const TextureConversionShaderGen::TCShaderUid& uid)
 {
-  std::stringstream ss;
+  auto iter = m_efb_copy_to_vram_pipelines.find(uid);
+  if (iter != m_efb_copy_to_vram_pipelines.end())
+    return iter->second.get();
 
-  ss << "#define API_D3D " << (m_api_type == APIType::D3D ? 1 : 0) << "\n";
-  ss << "#define API_OPENGL " << (m_api_type == APIType::OpenGL ? 1 : 0) << "\n";
-  ss << "#define API_VULKAN " << (m_api_type == APIType::Vulkan ? 1 : 0) << "\n";
-
-  if (m_efb_multisamples > 1)
+  auto shader_code = TextureConversionShaderGen::GeneratePixelShader(m_api_type, uid.GetUidData());
+  auto shader = g_renderer->CreateShaderFromSource(ShaderStage::Pixel, shader_code.GetBuffer());
+  if (!shader)
   {
-    ss << "#define MSAA_ENABLED 1" << std::endl;
-    ss << "#define MSAA_SAMPLES " << m_efb_multisamples << std::endl;
-    if (m_host_config.ssaa)
-      ss << "#define SSAA_ENABLED 1" << std::endl;
+    m_efb_copy_to_vram_pipelines.emplace(uid, nullptr);
+    return nullptr;
   }
 
-  ss << "#define EFB_LAYERS 1" << std::endl;
-
-  return ss.str();
+  AbstractPipelineConfig config = {};
+  config.vertex_format = nullptr;
+  config.vertex_shader = m_efb_copy_vertex_shader.get();
+  config.geometry_shader =
+      UseGeometryShaderForEFBCopies() ? m_texcoord_geometry_shader.get() : nullptr;
+  config.pixel_shader = shader.get();
+  config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
+  config.depth_state = RenderState::GetNoDepthTestingDepthState();
+  config.blending_state = RenderState::GetNoBlendingBlendState();
+  config.framebuffer_state = RenderState::GetRGBA8FramebufferState();
+  config.usage = AbstractPipelineUsage::Utility;
+  auto iiter = m_efb_copy_to_vram_pipelines.emplace(uid, g_renderer->CreatePipeline(config));
+  return iiter.first->second.get();
 }
+
+const AbstractPipeline* ShaderCache::GetEFBCopyToRAMPipeline(const EFBCopyParams& uid)
+{
+  auto iter = m_efb_copy_to_ram_pipelines.find(uid);
+  if (iter != m_efb_copy_to_ram_pipelines.end())
+    return iter->second.get();
+
+  auto shader_code = TextureConversionShaderTiled::GenerateEncodingShader(uid, m_api_type);
+  auto shader =
+      g_renderer->CreateShaderFromSource(ShaderStage::Pixel, shader_code, std::strlen(shader_code));
+  if (!shader)
+  {
+    m_efb_copy_to_ram_pipelines.emplace(uid, nullptr);
+    return nullptr;
+  }
+
+  AbstractPipelineConfig config = {};
+  config.vertex_format = nullptr;
+  config.vertex_shader = m_screen_quad_vertex_shader.get();
+  config.geometry_shader =
+      UseGeometryShaderForEFBCopies() ? m_texcoord_geometry_shader.get() : nullptr;
+  config.pixel_shader = shader.get();
+  config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
+  config.depth_state = RenderState::GetNoDepthTestingDepthState();
+  config.blending_state = RenderState::GetNoBlendingBlendState();
+  config.framebuffer_state = RenderState::GetColorFramebufferState(AbstractTextureFormat::BGRA8);
+  config.usage = AbstractPipelineUsage::Utility;
+  auto iiter = m_efb_copy_to_ram_pipelines.emplace(uid, g_renderer->CreatePipeline(config));
+  return iiter.first->second.get();
+}
+
+bool ShaderCache::CompileSharedPipelines()
+{
+  m_screen_quad_vertex_shader = g_renderer->CreateShaderFromSource(
+      ShaderStage::Vertex, FramebufferShaderGen::GenerateScreenQuadVertexShader());
+  m_texture_copy_vertex_shader = g_renderer->CreateShaderFromSource(
+      ShaderStage::Vertex, FramebufferShaderGen::GenerateTextureCopyVertexShader());
+  m_efb_copy_vertex_shader = g_renderer->CreateShaderFromSource(
+      ShaderStage::Vertex,
+      TextureConversionShaderGen::GenerateVertexShader(m_api_type).GetBuffer());
+  if (!m_screen_quad_vertex_shader || !m_texture_copy_vertex_shader || !m_efb_copy_vertex_shader)
+    return false;
+
+  if (UseGeometryShaderForEFBCopies())
+  {
+    m_texcoord_geometry_shader = g_renderer->CreateShaderFromSource(
+        ShaderStage::Geometry, FramebufferShaderGen::GeneratePassthroughGeometryShader(1, 0));
+    m_color_geometry_shader = g_renderer->CreateShaderFromSource(
+        ShaderStage::Geometry, FramebufferShaderGen::GeneratePassthroughGeometryShader(0, 1));
+    if (!m_texcoord_geometry_shader || !m_color_geometry_shader)
+      return false;
+  }
+
+  m_texture_copy_pixel_shader = g_renderer->CreateShaderFromSource(
+      ShaderStage::Pixel, FramebufferShaderGen::GenerateTextureCopyPixelShader());
+  m_color_pixel_shader = g_renderer->CreateShaderFromSource(
+      ShaderStage::Pixel, FramebufferShaderGen::GenerateColorPixelShader());
+  if (!m_texture_copy_pixel_shader || !m_color_pixel_shader)
+    return false;
+
+  AbstractPipelineConfig config;
+  config.vertex_format = nullptr;
+  config.vertex_shader = m_texture_copy_vertex_shader.get();
+  config.geometry_shader = nullptr;
+  config.pixel_shader = m_texture_copy_pixel_shader.get();
+  config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
+  config.depth_state = RenderState::GetNoDepthTestingDepthState();
+  config.blending_state = RenderState::GetNoBlendingBlendState();
+  config.framebuffer_state = RenderState::GetRGBA8FramebufferState();
+  config.usage = AbstractPipelineUsage::Utility;
+  m_copy_rgba8_pipeline = g_renderer->CreatePipeline(config);
+  if (!m_copy_rgba8_pipeline)
+    return false;
+
+  if (UseGeometryShaderForEFBCopies())
+  {
+    config.geometry_shader = m_texcoord_geometry_shader.get();
+    m_rgba8_stereo_copy_pipeline = g_renderer->CreatePipeline(config);
+    if (!m_rgba8_stereo_copy_pipeline)
+      return false;
+  }
+
+  if (m_host_config.backend_palette_conversion)
+  {
+    config.vertex_shader = m_screen_quad_vertex_shader.get();
+    config.geometry_shader = nullptr;
+
+    for (size_t i = 0; i < NUM_PALETTE_CONVERSION_SHADERS; i++)
+    {
+      auto shader = g_renderer->CreateShaderFromSource(
+          ShaderStage::Pixel, TextureConversionShaderTiled::GeneratePaletteConversionShader(
+                                  static_cast<TLUTFormat>(i), m_api_type));
+      if (!shader)
+        return false;
+
+      config.pixel_shader = shader.get();
+      m_palette_conversion_pipelines[i] = g_renderer->CreatePipeline(config);
+      if (!m_palette_conversion_pipelines[i])
+        return false;
+    }
+  }
+
+  return true;
+}
+
+const AbstractPipeline* ShaderCache::GetPaletteConversionPipeline(TLUTFormat format)
+{
+  ASSERT(static_cast<size_t>(format) < NUM_PALETTE_CONVERSION_SHADERS);
+  return m_palette_conversion_pipelines[static_cast<size_t>(format)].get();
+}
+
+const AbstractShader* ShaderCache::GetTextureDecodingShader(TextureFormat format,
+                                                            TLUTFormat palette_format)
+{
+  const auto key = std::make_pair(static_cast<u32>(format), static_cast<u32>(palette_format));
+  auto iter = m_texture_decoding_shaders.find(key);
+  if (iter != m_texture_decoding_shaders.end())
+    return iter->second.get();
+
+  std::string shader_source =
+      TextureConversionShaderTiled::GenerateDecodingShader(format, palette_format, APIType::OpenGL);
+  if (shader_source.empty())
+  {
+    m_texture_decoding_shaders.emplace(key, nullptr);
+    return nullptr;
+  }
+
+  std::unique_ptr<AbstractShader> shader =
+      g_renderer->CreateShaderFromSource(ShaderStage::Compute, shader_source);
+  if (!shader)
+  {
+    m_texture_decoding_shaders.emplace(key, nullptr);
+    return nullptr;
+  }
+
+  auto iiter = m_texture_decoding_shaders.emplace(key, std::move(shader));
+  return iiter.first->second.get();
+}
+
 }  // namespace VideoCommon

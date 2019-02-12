@@ -122,8 +122,7 @@ void EnhancementsWidget::ConnectWidgets()
 
 void EnhancementsWidget::LoadPPShaders()
 {
-  std::vector<std::string> shaders = 
-	  PostProcessingShaderImplementation::GetShaderList(g_Config.backend_info.api_type);
+  std::vector<std::string> shaders = VideoCommon::PostProcessing::GetShaderList();
 
   m_pp_effect->clear();
   m_pp_effect->addItem(tr("(off)"));
@@ -147,7 +146,7 @@ void EnhancementsWidget::LoadPPShaders()
                               tr("%1 doesn't support this feature.")
                                   .arg(tr(g_video_backend->GetDisplayName().c_str())));
 
-  PostProcessingShaderConfiguration pp_shader;
+  VideoCommon::PostProcessingConfiguration pp_shader;
   if (selected_shader != "(off)" && supports_postprocessing)
   {
     pp_shader.LoadShader(selected_shader);
@@ -207,7 +206,7 @@ void EnhancementsWidget::SaveSettings()
   Config::SetBaseOrCurrent(Config::GFX_ENHANCE_POST_SHADER,
     m_pp_effect->currentIndex() == 0 ? "(off)" : m_pp_effect->currentText().toStdString());
 
-  PostProcessingShaderConfiguration pp_shader;
+  VideoCommon::PostProcessingConfiguration pp_shader;
   if (Config::Get(Config::GFX_ENHANCE_POST_SHADER) != "(off)")
   {
     pp_shader.LoadShader(Config::Get(Config::GFX_ENHANCE_POST_SHADER));
