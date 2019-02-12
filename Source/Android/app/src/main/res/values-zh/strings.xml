@@ -346,6 +346,8 @@
     <string name="touch_screen_pointer_recenter">IR光标总是回到中心点</string>
     <string name="joystick_relative_center">摇杆使用相对位置</string>
     <string name="use_builtin_title_database">使用游戏名称数据库</string>
+    <string name="touch_ir_click">点击</string>
+    <string name="touch_ir_stick">摇杆</string>
 
     <string name="sysconf_screensaver">屏幕保护程序</string>
     <string name="sysconf_language">系统语言</string>

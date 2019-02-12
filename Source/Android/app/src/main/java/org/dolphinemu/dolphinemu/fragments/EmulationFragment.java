@@ -198,9 +198,9 @@ public final class EmulationFragment extends Fragment implements SurfaceHolder.C
     mInputOverlay.onAccuracyChanged(accuracy);
   }
 
-  public void setTouchPointerEnabled(boolean enabled)
+  public void setTouchPointer(int type)
   {
-    mInputOverlay.setTouchPointerEnabled(enabled);
+    mInputOverlay.setTouchPointer(type);
   }
 
   public void updateTouchPointer()

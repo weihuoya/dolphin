@@ -138,8 +138,10 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     }
 
     // init touch pointer
-    boolean touchPointer = mPreferences.getBoolean(InputOverlay.POINTER_PREF_KEY, false);
-    setTouchPointerEnabled(touchPointer && !EmulationActivity.get().isGameCubeGame());
+    int touchPointer = 0;
+    if(!EmulationActivity.get().isGameCubeGame())
+      touchPointer = mPreferences.getInt(InputOverlay.POINTER_PREF_KEY, 0);
+    setTouchPointer(touchPointer);
 
     // Load the controls.
     refreshControls();
@@ -761,15 +763,16 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     invalidate();
   }
 
-  public void setTouchPointerEnabled(boolean enabled)
+  public void setTouchPointer(int type)
   {
-    if(enabled)
+    if(type > 0)
     {
       if(mOverlayPointer == null)
       {
         final DisplayMetrics dm = getContext().getResources().getDisplayMetrics();
-        mOverlayPointer = new InputOverlayPointer(dm.widthPixels, dm.heightPixels);
+        mOverlayPointer = new InputOverlayPointer(dm.widthPixels, dm.heightPixels,  dm.scaledDensity);
       }
+      mOverlayPointer.setType(type);
     }
     else
     {

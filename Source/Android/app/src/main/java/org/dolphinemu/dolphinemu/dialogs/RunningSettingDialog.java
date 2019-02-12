@@ -17,6 +17,7 @@ import android.view.ViewGroup;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
@@ -59,7 +60,7 @@ public class RunningSettingDialog extends DialogFragment
     public static final int SETTING_JOYSTICK_RELATIVE = 103;
     // view type
     public static final int TYPE_CHECKBOX = 0;
-    public static final int TYPE_RADIO_BUTTON = 1;
+    public static final int TYPE_RADIO_GROUP = 1;
     public static final int TYPE_SEEK_BAR = 2;
 
     private int mSetting;
@@ -170,11 +171,11 @@ public class RunningSettingDialog extends DialogFragment
   }
 
   public final class RadioButtonSettingViewHolder extends SettingViewHolder
-    implements CompoundButton.OnCheckedChangeListener
+    implements RadioGroup.OnCheckedChangeListener
   {
     SettingsItem mItem;
     private TextView mTextSettingName;
-    private RadioButton mRadioButton;
+    private RadioGroup mRadioGroup;
 
     public RadioButtonSettingViewHolder(View itemView)
     {
@@ -185,30 +186,59 @@ public class RunningSettingDialog extends DialogFragment
     protected void findViews(View root)
     {
       mTextSettingName = root.findViewById(R.id.text_setting_name);
-      mRadioButton = root.findViewById(R.id.radiobutton);
-      mRadioButton.setOnClickListener(this);
-      mRadioButton.setOnCheckedChangeListener(this);
+      mRadioGroup = root.findViewById(R.id.radio_group);
+      mRadioGroup.setOnCheckedChangeListener(this);
     }
 
     @Override
     public void bind(SettingsItem item)
     {
+      int checkIds[] = {R.id.radio0, R.id.radio1, R.id.radio2};
+      int index = item.getValue();
+      if(index < 0 || index >= checkIds.length)
+        index = 0;
+
       mItem = item;
       mTextSettingName.setText(item.getName());
-      mRadioButton.setChecked(mItem.getValue() > 0);
+      mRadioGroup.check(checkIds[index]);
+
+      if(item.getSetting() == SettingsItem.SETTING_TOUCH_POINTER)
+      {
+        RadioButton radio0 = mRadioGroup.findViewById(R.id.radio0);
+        radio0.setText(R.string.off);
+
+        RadioButton radio1 = mRadioGroup.findViewById(R.id.radio1);
+        radio1.setText(R.string.touch_ir_click);
+
+        RadioButton radio2 = mRadioGroup.findViewById(R.id.radio2);
+        radio2.setText(R.string.touch_ir_stick);
+      }
     }
 
     @Override
     public void onClick(View clicked)
     {
-      mRadioButton.toggle();
-      mItem.setValue(mRadioButton.isChecked() ? 1 : 0);
+
     }
 
     @Override
-    public void onCheckedChanged(CompoundButton view, boolean isChecked)
+    public void onCheckedChanged(RadioGroup group, int checkedId)
     {
-      mItem.setValue(isChecked ? 1 : 0);
+      switch (checkedId)
+      {
+        case R.id.radio0:
+          mItem.setValue(0);
+          break;
+        case R.id.radio1:
+          mItem.setValue(1);
+          break;
+        case R.id.radio2:
+          mItem.setValue(2);
+          break;
+        default:
+          mItem.setValue(0);
+          break;
+      }
     }
   }
 
@@ -316,9 +346,9 @@ public class RunningSettingDialog extends DialogFragment
 
       if(!EmulationActivity.get().isGameCubeGame())
       {
-        mTouchPointer = prefs.getBoolean(InputOverlay.POINTER_PREF_KEY, false) ? 1 : 0;
+        mTouchPointer = prefs.getInt(InputOverlay.POINTER_PREF_KEY, 0);
         mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER,
-          R.string.touch_screen_pointer, SettingsItem.TYPE_CHECKBOX, mTouchPointer));
+          R.string.touch_screen_pointer, SettingsItem.TYPE_RADIO_GROUP, mTouchPointer));
 
         mIRRecenter = prefs.getBoolean(InputOverlay.RECENTER_PREF_KEY, false) ? 1 : 0;
         mSettings.add(new SettingsItem(SettingsItem.SETTING_TOUCH_POINTER_RECENTER,
@@ -384,8 +414,8 @@ public class RunningSettingDialog extends DialogFragment
         case SettingsItem.TYPE_CHECKBOX:
           itemView = inflater.inflate(R.layout.list_item_running_checkbox, parent, false);
           return new CheckBoxSettingViewHolder(itemView);
-        case SettingsItem.TYPE_RADIO_BUTTON:
-          itemView = inflater.inflate(R.layout.list_item_running_radiobutton, parent, false);
+        case SettingsItem.TYPE_RADIO_GROUP:
+          itemView = inflater.inflate(R.layout.list_item_running_radio3, parent, false);
           return new RadioButtonSettingViewHolder(itemView);
         case SettingsItem.TYPE_SEEK_BAR:
           itemView = inflater.inflate(R.layout.list_item_running_seekbar, parent, false);
@@ -430,8 +460,8 @@ public class RunningSettingDialog extends DialogFragment
         int pointer = mSettings.get(0).getValue();
         if(mTouchPointer != pointer)
         {
-          editor.putBoolean(InputOverlay.POINTER_PREF_KEY, pointer > 0);
-          EmulationActivity.get().setTouchPointerEnabled(pointer > 0);
+          editor.putInt(InputOverlay.POINTER_PREF_KEY, pointer);
+          EmulationActivity.get().setTouchPointer(pointer);
         }
         mSettings.remove(0);
 
