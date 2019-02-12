@@ -494,12 +494,13 @@ public final class SettingsFragmentPresenter
   private String[] getShadersValues()
   {
     List<String> values = new ArrayList<>();
+    values.add("");
+
     String shadersPath = DirectoryInitialization.getDolphinInternalDirectory() + "/Shaders";
     File file = new File(shadersPath);
     File[] shaderFiles = file.listFiles();
     if (shaderFiles != null)
     {
-      values.add("");
       for (int i = 0; i < shaderFiles.length; ++i)
       {
         String name = shaderFiles[i].getName();
@@ -510,6 +511,23 @@ public final class SettingsFragmentPresenter
         }
       }
     }
+
+    shadersPath = DirectoryInitialization.getDolphinDirectory() + "/Shaders";
+    file = new File(shadersPath);
+    shaderFiles = file.listFiles();
+    if (shaderFiles != null)
+    {
+      for (int i = 0; i < shaderFiles.length; ++i)
+      {
+        String name = shaderFiles[i].getName();
+        int extensionIndex = name.indexOf(".glsl");
+        if (extensionIndex > 0)
+        {
+          values.add(name.substring(0, extensionIndex));
+        }
+      }
+    }
+
     return values.toArray(new String[0]);
   }
 
