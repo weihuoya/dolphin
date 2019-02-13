@@ -4,7 +4,6 @@
 
 #include <sstream>
 #include <string>
-#include <android/log.h>
 
 #include "Common/Assert.h"
 #include "Common/CommonPaths.h"
@@ -386,8 +385,6 @@ bool PostProcessing::Initialize(AbstractTextureFormat format)
   m_framebuffer_format = format;
   if (!CompileVertexShader() || !CompilePixelShader() || !CompilePipeline())
     return false;
-
-  __android_log_print(ANDROID_LOG_INFO, "zhangwei", "PostProcessing Initialize");
   return true;
 }
 

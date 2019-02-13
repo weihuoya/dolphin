@@ -361,34 +361,6 @@ void Renderer::BBoxWrite(int index, u16 _value)
   BBox::Set(index, value);
 }
 
-void Renderer::RenderXFBToScreen(const AbstractTexture* texture, const EFBRectangle& rc)
-{
-  if (g_ActiveConfig.stereo_mode != StereoMode::Nvidia3DVision)
-    return ::Renderer::RenderXFBToScreen(texture, rc);
-
-  if (!m_3d_vision_texture)
-    Create3DVisionTexture(m_backbuffer_width, m_backbuffer_height);
-
-  // Render to staging texture which is double the width of the backbuffer
-  SetAndClearFramebuffer(m_3d_vision_framebuffer.get());
-
-  const auto target_rc = GetTargetRectangle();
-  m_post_processor->BlitFromTexture(target_rc, rc, texture, 0);
-  m_post_processor->BlitFromTexture(
-      MathUtil::Rectangle<int>(target_rc.left + m_backbuffer_width, target_rc.top,
-                               target_rc.right + m_backbuffer_width, target_rc.bottom),
-      rc, texture, 1);
-
-  // Copy the left eye to the backbuffer, if Nvidia 3D Vision is enabled it should
-  // recognize the signature and automatically include the right eye frame.
-  const CD3D11_BOX box(0, 0, 0, m_backbuffer_width, m_backbuffer_height, 1);
-  D3D::context->CopySubresourceRegion(D3D::GetSwapChainTexture()->GetD3DTexture(), 0, 0, 0, 0,
-                                      m_3d_vision_texture->GetD3DTexture(), 0, &box);
-
-  // Restore render target to backbuffer
-  SetFramebuffer(D3D::GetSwapChainFramebuffer());
-}
-
 void Renderer::SetFullscreen(bool enable_fullscreen)
 {
   D3D::SetFullscreenState(enable_fullscreen);

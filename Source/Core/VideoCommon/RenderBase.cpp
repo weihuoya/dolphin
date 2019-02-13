@@ -20,7 +20,6 @@
 #include <mutex>
 #include <string>
 #include <tuple>
-#include <android/log.h>
 
 #include "Common/Assert.h"
 #include "Common/CommonTypes.h"
@@ -92,7 +91,6 @@ Renderer::~Renderer() = default;
 
 bool Renderer::Initialize()
 {
-  __android_log_print(ANDROID_LOG_INFO, "zhangwei", "render base Initialize");
   m_post_processor = std::make_unique<VideoCommon::PostProcessing>();
   return m_post_processor->Initialize(m_backbuffer_format);
 }
@@ -405,7 +403,6 @@ void Renderer::CheckForConfigChanges()
 // Create On-Screen-Messages
 void Renderer::DrawDebugText()
 {
-  __android_log_print(ANDROID_LOG_INFO, "zhangwei", "render base DrawDebugText");
   RenderText(m_debug_title_text, 10, 18, 0xFF00FFFF);
 }
 
@@ -740,7 +737,6 @@ void Renderer::RecordVideoMemory()
 void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const EFBRectangle& rc,
                     u64 ticks)
 {
-  __android_log_print(ANDROID_LOG_INFO, "zhangwei", "render base Swap");
   const AspectMode suggested = g_ActiveConfig.suggested_aspect_mode;
   if (suggested == AspectMode::Analog || suggested == AspectMode::AnalogWide)
   {
@@ -881,7 +877,6 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
 
 void Renderer::RenderXFBToScreen(const AbstractTexture* texture, const EFBRectangle& rc)
 {
-  __android_log_print(ANDROID_LOG_INFO, "zhangwei", "render base RenderXFBToScreen");
   const auto target_rc = GetTargetRectangle();
   m_post_processor->BlitFromTexture(target_rc, rc, texture, 0);
 }

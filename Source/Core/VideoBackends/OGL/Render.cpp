@@ -12,7 +12,6 @@
 #include <string>
 #include <tuple>
 #include <vector>
-#include <android/log.h>
 
 #include "Common/Assert.h"
 #include "Common/Atomic.h"
@@ -515,11 +514,11 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
     // GLES does not support logic op.
     g_Config.backend_info.bSupportsLogicOp = false;
 
-    if (GLExtensions::Supports("GL_EXT_shader_framebuffer_fetch"))
+    if (GLExtensions::Supports("GL_EXT_shader_framebuffer_fetch") && false)
     {
       g_ogl_config.SupportedFramebufferFetch = EsFbFetchType::FbFetchExt;
     }
-    else if (GLExtensions::Supports("GL_ARM_shader_framebuffer_fetch"))
+    else if (GLExtensions::Supports("GL_ARM_shader_framebuffer_fetch") && false)
     {
       g_ogl_config.SupportedFramebufferFetch = EsFbFetchType::FbFetchArm;
     }
@@ -756,8 +755,6 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
   glGenFramebuffers(1, &m_shared_draw_framebuffer);
 
   UpdateActiveConfig();
-
-  __android_log_print(ANDROID_LOG_INFO, "zhangwei", "opengl render constructor");
 }
 
 Renderer::~Renderer() = default;
@@ -981,14 +978,14 @@ void Renderer::SetAndClearFramebuffer(AbstractFramebuffer* framebuffer,
   GLbitfield clear_mask = 0;
   if (framebuffer->HasColorBuffer())
   {
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glClearColor(color_value[0], color_value[1], color_value[2], color_value[3]);
+    //glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    //glClearColor(color_value[0], color_value[1], color_value[2], color_value[3]);
     clear_mask |= GL_COLOR_BUFFER_BIT;
   }
   if (framebuffer->HasDepthBuffer())
   {
-    glDepthMask(GL_TRUE);
-    glClearDepth(depth_value);
+    //glDepthMask(GL_TRUE);
+    //glClearDepth(depth_value);
     clear_mask |= GL_DEPTH_BUFFER_BIT;
   }
   glClear(clear_mask);
@@ -1145,7 +1142,7 @@ void Renderer::ApplyBlendingState(const BlendingState state)
       state.usedualsrc && g_ActiveConfig.backend_info.bSupportsDualSourceBlend &&
       (!DriverDetails::HasBug(DriverDetails::BUG_BROKEN_DUAL_SOURCE_BLENDING) || state.dstalpha);
   // Only use shader blend if we need to and we don't support dual-source blending directly
-  bool useShaderBlend = !useDualSource && state.usedualsrc && state.dstalpha &&
+  bool useShaderBlend = !useDualSource && state.IsDualSourceBlend() &&
                         g_ActiveConfig.backend_info.bSupportsFramebufferFetch;
 
   if (useShaderBlend)

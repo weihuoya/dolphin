@@ -400,6 +400,17 @@ void VertexManagerBase::Flush()
       DrawCurrentBatch(base_index, num_indices, base_vertex);
       INCSTAT(stats.thisFrame.numDrawCalls);
 
+      if (!g_ActiveConfig.backend_info.bSupportsDualSourceBlend)
+      {
+        const AbstractPipeline* pipeline = GetPipelineForAlphaPass();
+        if (pipeline)
+        {
+          // Execute the draw, again
+          g_renderer->SetPipeline(pipeline);
+          DrawCurrentBatch(base_index, num_indices, base_vertex);
+        }
+      }
+
       if (PerfQueryBase::ShouldEmulate())
         g_perf_query->DisableQuery(bpmem.zcontrol.early_ztest ? PQG_ZCOMP_ZCOMPLOC : PQG_ZCOMP);
 
@@ -594,7 +605,7 @@ void VertexManagerBase::UpdatePipelineObject()
 const AbstractPipeline* VertexManagerBase::GetPipelineForAlphaPass()
 {
   const AbstractPipeline* pipeline_object = nullptr;
-  if(m_current_pipeline_config.blending_state.IsDualSourceBlend())
+  if (m_current_pipeline_config.blending_state.IsDualSourceBlend())
   {
     VideoCommon::GXPipelineUid pipeline_config(m_current_pipeline_config);
     // Skip depth writes for this pass. The results will be the same, so no
@@ -606,7 +617,7 @@ const AbstractPipeline* VertexManagerBase::GetPipelineForAlphaPass()
     // diable fog
     pixel_shader_uid_data* uid_data = pipeline_config.ps_uid.GetUidData<pixel_shader_uid_data>();
     uid_data->fog_fsel = 0;
-    uid_data->fog_proj  = 0;
+    uid_data->fog_proj = 0;
     uid_data->fog_RangeBaseEnabled = 0;
     // alpha pass
     uid_data->doAlphaPass = true;

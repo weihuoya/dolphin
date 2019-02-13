@@ -50,7 +50,6 @@
     <ClCompile Include="CPMemory.cpp" />
     <ClCompile Include="DriverDetails.cpp" />
     <ClCompile Include="Fifo.cpp" />
-    <ClCompile Include="FPSCounter.cpp" />
     <ClCompile Include="FramebufferManager.cpp" />
     <ClCompile Include="FramebufferShaderGen.cpp" />
     <ClCompile Include="HiresTextures.cpp" />
@@ -113,7 +112,6 @@
     <ClInclude Include="DataReader.h" />
     <ClInclude Include="DriverDetails.h" />
     <ClInclude Include="Fifo.h" />
-    <ClInclude Include="FPSCounter.h" />
     <ClInclude Include="FramebufferManager.h" />
     <ClInclude Include="FramebufferShaderGen.h" />
     <ClInclude Include="GXPipelineTypes.h" />

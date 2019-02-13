@@ -278,13 +278,6 @@ protected:
   Common::Flag m_surface_resized;
   std::mutex m_swap_mutex;
 
-  // ImGui resources.
-  std::unique_ptr<NativeVertexFormat> m_imgui_vertex_format;
-  std::vector<std::unique_ptr<AbstractTexture>> m_imgui_textures;
-  std::unique_ptr<AbstractPipeline> m_imgui_pipeline;
-  std::mutex m_imgui_mutex;
-  u64 m_imgui_last_frame_time;
-
 private:
   void RunFrameDumps();
   std::tuple<int, int> CalculateOutputDimensions(int width, int height);
