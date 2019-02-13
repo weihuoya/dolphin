@@ -377,19 +377,11 @@ void Renderer::PresentBackbuffer()
   // End drawing to backbuffer
   StateTracker::GetInstance()->EndRenderPass();
 
-  // Transition the backbuffer to PRESENT_SRC to ensure all commands drawing
-  // to it have finished before present.
-  m_swap_chain->GetCurrentTexture()->TransitionToLayout(
-      g_command_buffer_mgr->GetCurrentCommandBuffer(), VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
   // Submit the current command buffer, signaling rendering finished semaphore when it's done
   // Because this final command buffer is rendering to the swap chain, we need to wait for
   // the available semaphore to be signaled before executing the buffer. This final submission
   // can happen off-thread in the background while we're preparing the next frame.
-  g_command_buffer_mgr->SubmitCommandBuffer(true, m_swap_chain->GetImageAvailableSemaphore(),
-                                            m_swap_chain->GetRenderingFinishedSemaphore(),
-                                            m_swap_chain->GetSwapChain(),
-                                            m_swap_chain->GetCurrentImageIndex());
+  g_command_buffer_mgr->SubmitCommandBuffer(true, m_swap_chain.get());
   BeginFrame();
 }
 

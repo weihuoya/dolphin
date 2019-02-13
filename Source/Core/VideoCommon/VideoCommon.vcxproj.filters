@@ -185,6 +185,7 @@
     <ClCompile Include="FramebufferManager.cpp">
       <Filter>Base</Filter>
     </ClCompile>
+    <ClCompile Include="RasterFont.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CommandProcessor.h" />
@@ -362,6 +363,7 @@
     <ClInclude Include="TextureConverterShaderGen.h">
       <Filter>Shader Generators</Filter>
     </ClInclude>
+    <ClInclude Include="RasterFont.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="CMakeLists.txt" />

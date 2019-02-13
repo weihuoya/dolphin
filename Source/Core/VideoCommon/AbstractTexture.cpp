@@ -114,6 +114,7 @@ u32 AbstractTexture::CalculateStrideForFormat(AbstractTextureFormat format, u32 
   case AbstractTextureFormat::DXT3:
   case AbstractTextureFormat::DXT5:
   case AbstractTextureFormat::BPTC:
+  case AbstractTextureFormat::RGBA32F:
     return static_cast<size_t>(std::max(1u, row_length / 4)) * 16;
   case AbstractTextureFormat::R16:
   case AbstractTextureFormat::D16:
@@ -141,6 +142,7 @@ u32 AbstractTexture::GetTexelSizeForFormat(AbstractTextureFormat format)
   case AbstractTextureFormat::DXT3:
   case AbstractTextureFormat::DXT5:
   case AbstractTextureFormat::BPTC:
+  case AbstractTextureFormat::RGBA32F:
     return 16;
   case AbstractTextureFormat::R16:
   case AbstractTextureFormat::D16:

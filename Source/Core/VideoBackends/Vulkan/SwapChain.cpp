@@ -417,7 +417,7 @@ bool SwapChain::SetupSwapChainImages()
   const TextureConfig texture_config(TextureConfig(
       m_width, m_height, 1, m_layers, 1, m_texture_format, AbstractTextureFlag_RenderTarget));
   const VkRenderPass load_render_pass = g_object_cache->GetRenderPass(
-      m_surface_format.format, VK_FORMAT_UNDEFINED, 1, VK_ATTACHMENT_LOAD_OP_LOAD);
+      m_surface_format.format, VK_FORMAT_UNDEFINED, 1, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
   const VkRenderPass clear_render_pass = g_object_cache->GetRenderPass(
       m_surface_format.format, VK_FORMAT_UNDEFINED, 1, VK_ATTACHMENT_LOAD_OP_CLEAR);
   if (load_render_pass == VK_NULL_HANDLE || clear_render_pass == VK_NULL_HANDLE)

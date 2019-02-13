@@ -11,6 +11,8 @@
 
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
+#include "VideoBackends/Vulkan/SwapChain.h"
+#include "VideoBackends/Vulkan/VKTexture.h"
 
 namespace Vulkan
 {
@@ -183,8 +185,7 @@ bool CommandBufferManager::CreateSubmitThread()
         m_pending_submits.pop_front();
       }
 
-      SubmitCommandBuffer(submit.index, submit.wait_semaphore, submit.signal_semaphore,
-                          submit.present_swap_chain, submit.present_image_index);
+      SubmitCommandBuffer(submit.index, submit.swap_chain);
     });
   });
 
@@ -239,11 +240,7 @@ void CommandBufferManager::WaitForFence(VkFence fence)
   OnCommandBufferExecuted(command_buffer_index);
 }
 
-void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
-                                               VkSemaphore wait_semaphore,
-                                               VkSemaphore signal_semaphore,
-                                               VkSwapchainKHR present_swap_chain,
-                                               uint32_t present_image_index)
+void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread, SwapChain* swap_chain)
 {
   FrameResources& resources = m_frame_resources[m_current_frame];
 
@@ -251,6 +248,49 @@ void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
   // We invoke these before submitting so that any last-minute commands can be added.
   for (const auto& iter : m_fence_point_callbacks)
     iter.second.first(resources.command_buffers[1], resources.fence);
+
+  // This command buffer now has commands, so can't be re-used without waiting.
+  resources.needs_fence_wait = true;
+
+  // Submitting off-thread?
+  if (m_use_threaded_submission && submit_on_worker_thread)
+  {
+    // Push to the pending submit queue.
+    {
+      std::lock_guard<std::mutex> guard(m_pending_submit_lock);
+      m_pending_submits.push_back({m_current_frame, swap_chain});
+    }
+
+    // Wake up the worker thread for a single iteration.
+    m_submit_loop->Wakeup();
+  }
+  else
+  {
+    // Pass through to normal submission path.
+    SubmitCommandBuffer(m_current_frame, swap_chain);
+  }
+}
+
+void CommandBufferManager::SubmitCommandBuffer(size_t index, SwapChain* swap_chain)
+{
+  FrameResources& resources = m_frame_resources[index];
+  VkSemaphore wait_semaphore = VK_NULL_HANDLE;
+  VkSemaphore signal_semaphore = VK_NULL_HANDLE;
+  VkSwapchainKHR present_swap_chain = VK_NULL_HANDLE;
+  uint32_t present_image_index = 0xFFFFFFFF;
+
+  if (swap_chain)
+  {
+    wait_semaphore = swap_chain->GetImageAvailableSemaphore();
+    signal_semaphore = swap_chain->GetRenderingFinishedSemaphore();
+    present_swap_chain = swap_chain->GetSwapChain();
+    present_image_index = swap_chain->GetCurrentImageIndex();
+
+    // Transition the backbuffer to PRESENT_SRC to ensure all commands drawing
+    // to it have finished before present.
+    swap_chain->GetCurrentTexture()->TransitionToLayout(resources.command_buffers[1],
+                                                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+  }
 
   // End the current command buffer.
   for (VkCommandBuffer command_buffer : resources.command_buffers)
@@ -262,37 +302,6 @@ void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
       PanicAlert("Failed to end command buffer");
     }
   }
-
-  // This command buffer now has commands, so can't be re-used without waiting.
-  resources.needs_fence_wait = true;
-
-  // Submitting off-thread?
-  if (m_use_threaded_submission && submit_on_worker_thread)
-  {
-    // Push to the pending submit queue.
-    {
-      std::lock_guard<std::mutex> guard(m_pending_submit_lock);
-      m_pending_submits.push_back({m_current_frame, wait_semaphore, signal_semaphore,
-                                   present_swap_chain, present_image_index});
-    }
-
-    // Wake up the worker thread for a single iteration.
-    m_submit_loop->Wakeup();
-  }
-  else
-  {
-    // Pass through to normal submission path.
-    SubmitCommandBuffer(m_current_frame, wait_semaphore, signal_semaphore, present_swap_chain,
-                        present_image_index);
-  }
-}
-
-void CommandBufferManager::SubmitCommandBuffer(size_t index, VkSemaphore wait_semaphore,
-                                               VkSemaphore signal_semaphore,
-                                               VkSwapchainKHR present_swap_chain,
-                                               uint32_t present_image_index)
-{
-  FrameResources& resources = m_frame_resources[index];
 
   // This may be executed on the worker thread, so don't modify any state of the manager class.
   uint32_t wait_bits = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;

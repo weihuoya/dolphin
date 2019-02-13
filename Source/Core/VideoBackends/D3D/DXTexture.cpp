@@ -32,6 +32,8 @@ DXGI_FORMAT GetDXGIFormatForHostFormat(AbstractTextureFormat format, bool typele
     return typeless ? DXGI_FORMAT_R8G8B8A8_TYPELESS : DXGI_FORMAT_R8G8B8A8_UNORM;
   case AbstractTextureFormat::BGRA8:
     return typeless ? DXGI_FORMAT_B8G8R8A8_TYPELESS : DXGI_FORMAT_B8G8R8A8_UNORM;
+  case AbstractTextureFormat::RGBA32F:
+    return typeless ? DXGI_FORMAT_R32G32B32A32_TYPELESS : DXGI_FORMAT_R32G32B32A32_FLOAT;
   case AbstractTextureFormat::R16:
     return typeless ? DXGI_FORMAT_R16_TYPELESS : DXGI_FORMAT_R16_UNORM;
   case AbstractTextureFormat::R32F:
@@ -65,6 +67,8 @@ DXGI_FORMAT GetSRVFormatForHostFormat(AbstractTextureFormat format)
     return DXGI_FORMAT_R8G8B8A8_UNORM;
   case AbstractTextureFormat::BGRA8:
     return DXGI_FORMAT_B8G8R8A8_UNORM;
+  case AbstractTextureFormat::RGBA32F:
+    return DXGI_FORMAT_R32G32B32A32_FLOAT;
   case AbstractTextureFormat::R16:
     return DXGI_FORMAT_R16_UNORM;
   case AbstractTextureFormat::R32F:
@@ -90,6 +94,8 @@ DXGI_FORMAT GetRTVFormatForHostFormat(AbstractTextureFormat format, bool integer
     return integer ? DXGI_FORMAT_R8G8B8A8_UINT : DXGI_FORMAT_R8G8B8A8_UNORM;
   case AbstractTextureFormat::BGRA8:
     return DXGI_FORMAT_B8G8R8A8_UNORM;
+  case AbstractTextureFormat::RGBA32F:
+    return DXGI_FORMAT_R32G32B32A32_FLOAT;
   case AbstractTextureFormat::R16:
     return integer ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R16_UNORM;
   case AbstractTextureFormat::R32F:

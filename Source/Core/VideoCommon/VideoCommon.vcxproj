@@ -63,6 +63,7 @@
     <ClCompile Include="PixelShaderGen.cpp" />
     <ClCompile Include="PixelShaderManager.cpp" />
     <ClCompile Include="PostProcessing.cpp" />
+    <ClCompile Include="RasterFont.cpp" />
     <ClCompile Include="RenderBase.cpp" />
     <ClCompile Include="RenderState.cpp" />
     <ClCompile Include="LightingShaderGen.cpp" />
@@ -115,6 +116,7 @@
     <ClInclude Include="FramebufferManager.h" />
     <ClInclude Include="FramebufferShaderGen.h" />
     <ClInclude Include="GXPipelineTypes.h" />
+    <ClInclude Include="RasterFont.h" />
     <ClInclude Include="ShaderCache.h" />
     <ClInclude Include="HiresTextures.h" />
     <ClInclude Include="ImageWrite.h" />
