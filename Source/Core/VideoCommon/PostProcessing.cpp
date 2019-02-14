@@ -383,9 +383,7 @@ std::vector<std::string> PostProcessing::GetShaderList()
 bool PostProcessing::Initialize(AbstractTextureFormat format)
 {
   m_framebuffer_format = format;
-  if (!CompileVertexShader() || !CompilePixelShader() || !CompilePipeline())
-    return false;
-  return true;
+  return CompileVertexShader() && CompilePixelShader() && CompilePipeline();
 }
 
 void PostProcessing::Shutdown()
@@ -417,6 +415,7 @@ void PostProcessing::BlitFromTexture(const MathUtil::Rectangle<int>& dst,
 {
   if (g_renderer->GetCurrentFramebuffer()->GetColorFormat() != m_framebuffer_format)
   {
+    WARN_LOG(VIDEO, "PostProcessing BlitFromTexture color format mismatch.");
     m_framebuffer_format = g_renderer->GetCurrentFramebuffer()->GetColorFormat();
     RecompilePipeline();
   }

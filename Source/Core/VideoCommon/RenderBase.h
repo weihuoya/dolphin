@@ -52,6 +52,7 @@ enum class StagingTextureType;
 
 namespace VideoCommon
 {
+class RasterFont;
 class PostProcessing;
 }
 
@@ -187,7 +188,7 @@ public:
   void SaveScreenshot(const std::string& filename, bool wait_for_completion);
   void DrawDebugText();
   void UpdateDebugTitle(const std::string& title) { m_debug_title_text = std::move(title); }
-  virtual void RenderText(const std::string& text, int left, int top, u32 color) {}
+  void RenderText(const std::string& text, int left, int top, u32 color);
 
   virtual void ClearScreen(const EFBRectangle& rc, bool colorEnable, bool alphaEnable, bool zEnable,
                            u32 color, u32 z);
@@ -323,6 +324,7 @@ private:
   u32 m_last_xfb_height = MAX_XFB_HEIGHT;
 
   // fps text
+  std::unique_ptr<VideoCommon::RasterFont> m_raster_font;
   std::string m_debug_title_text;
 
   // NOTE: The methods below are called on the framedumping thread.

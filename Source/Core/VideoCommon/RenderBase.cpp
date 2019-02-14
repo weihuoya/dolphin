@@ -67,6 +67,7 @@
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
+#include "VideoCommon/RasterFont.h"
 
 std::unique_ptr<Renderer> g_renderer;
 
@@ -91,6 +92,10 @@ Renderer::~Renderer() = default;
 
 bool Renderer::Initialize()
 {
+  m_raster_font = std::make_unique<VideoCommon::RasterFont>();
+  if (!m_raster_font->Initialize(m_backbuffer_format))
+    return false;
+
   m_post_processor = std::make_unique<VideoCommon::PostProcessing>();
   return m_post_processor->Initialize(m_backbuffer_format);
 }
@@ -102,6 +107,8 @@ void Renderer::Shutdown()
   ShutdownFrameDumping();
   m_post_processor->Shutdown();
   m_post_processor.reset();
+  m_raster_font->Shutdown();
+  m_raster_font.reset();
 }
 
 void Renderer::BeginUtilityDrawing()
@@ -404,6 +411,11 @@ void Renderer::CheckForConfigChanges()
 void Renderer::DrawDebugText()
 {
   RenderText(m_debug_title_text, 10, 18, 0xFF00FFFF);
+}
+
+void Renderer::RenderText(const std::string& text, int left, int top, u32 color)
+{
+  m_raster_font->Draw(text, left, top, color);
 }
 
 float Renderer::CalculateDrawAspectRatio() const
@@ -801,11 +813,6 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
       // with the loader, and it has not been unmapped yet. Force a pipeline flush to avoid this.
       g_vertex_manager->Flush();
 
-      // Hold the imgui lock while we're presenting.
-      // It's only to prevent races on inputs anyway, at this point.
-      DrawDebugText();
-      OSD::DrawMessages();
-
       // Render the XFB to the screen.
       BeginUtilityDrawing();
       if (!IsHeadless())
@@ -813,6 +820,11 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
         BindBackbuffer({{0.0f, 0.0f, 0.0f, 1.0f}});
         UpdateDrawRectangle();
         RenderXFBToScreen(xfb_entry->texture.get(), xfb_rect);
+
+        // HUD
+        m_raster_font->Prepare();
+        DrawDebugText();
+        OSD::DrawMessages();
 
         // Present to the window system.
         {
