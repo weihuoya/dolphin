@@ -550,15 +550,26 @@ void Renderer::SetTexture(u32 index, const AbstractTexture* texture)
   // Texture should always be in SHADER_READ_ONLY layout prior to use.
   // This is so we don't need to transition during render passes.
   const VKTexture* tex = static_cast<const VKTexture*>(texture);
-  if (tex && tex->GetLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  if (tex)
   {
-    WARN_LOG(VIDEO, "Transitioning image inside render pass.");
-    StateTracker::GetInstance()->EndRenderPass();
-    tex->TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(),
-                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-  }
+    if (tex->GetLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    {
+      if (StateTracker::GetInstance()->InRenderPass())
+      {
+        WARN_LOG(VIDEO, "Transitioning image in render pass in Renderer::SetTexture()");
+        StateTracker::GetInstance()->EndRenderPass();
+      }
 
-  StateTracker::GetInstance()->SetTexture(index, tex ? tex->GetView() : VK_NULL_HANDLE);
+      tex->TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(),
+                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
+
+    StateTracker::GetInstance()->SetTexture(index, tex->GetView());
+  }
+  else
+  {
+    StateTracker::GetInstance()->SetTexture(0, VK_NULL_HANDLE);
+  }
 }
 
 void Renderer::SetSamplerState(u32 index, const SamplerState& state)

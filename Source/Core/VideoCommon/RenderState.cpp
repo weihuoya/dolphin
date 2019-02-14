@@ -285,7 +285,6 @@ BlendingState GetNoBlendingBlendState()
 BlendingState GetNoColorWriteBlendState()
 {
   BlendingState state = {};
-  state.usedualsrc = false;
   state.blendenable = false;
   state.srcfactor = BlendMode::ONE;
   state.srcfactoralpha = BlendMode::ONE;

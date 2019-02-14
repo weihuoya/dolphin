@@ -22,7 +22,6 @@
 #include "VideoCommon/Statistics.h"
 #include "VideoCommon/VertexLoaderManager.h"
 #include "VideoCommon/VideoConfig.h"
-#include "Common/GL/GLUtil.h"
 
 namespace OGL
 {

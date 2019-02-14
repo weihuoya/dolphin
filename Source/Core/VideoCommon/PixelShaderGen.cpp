@@ -763,7 +763,6 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
   // write zcoord
   bool need_write_zcoord = true;
 
-
   // depth texture can safely be ignored if the result won't be written to the depth buffer
   // (early_ztest) and isn't used for fog either
   const bool skip_ztexture = !uid_data->per_pixel_depth && !uid_data->fog_fsel;

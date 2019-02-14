@@ -1187,6 +1187,7 @@ TextureCacheBase::GetTexture(u32 address, u32 width, u32 height, const TextureFo
 
   entry = DoPartialTextureUpdates(iter->second, &texMem[tlutaddr], tlutfmt);
 
+  // This should only be needed if the texture was updated, or used GPU decoding.
   entry->texture->FinishedRendering();
   return entry;
 }

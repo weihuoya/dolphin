@@ -837,7 +837,6 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
         SetWindowSize(texture_config.width, texture_config.height);
       }
 
-
       if (IsFrameDumping())
         DumpCurrentFrame();
 

@@ -70,7 +70,7 @@ std::vector<GeckoCode> DownloadCodes(std::string gameid, bool* succeeded)
     if (line.empty())
     {
       // add the code
-      if (gcode.codes.size())
+      if (!gcode.codes.empty())
         gcodes.push_back(gcode);
       gcode = GeckoCode();
       read_state = 0;
@@ -127,7 +127,7 @@ std::vector<GeckoCode> DownloadCodes(std::string gameid, bool* succeeded)
   }
 
   // add the last code
-  if (gcode.codes.size())
+  if (!gcode.codes.empty())
     gcodes.push_back(gcode);
 
   return gcodes;
@@ -158,7 +158,7 @@ std::vector<GeckoCode> LoadCodes(const IniFile& globalIni, const IniFile& localI
       case '+':
         ss.seekg(1);
       case '$':
-        if (gcode.name.size())
+        if (!gcode.name.empty())
           gcodes.push_back(gcode);
         gcode = GeckoCode();
         gcode.enabled = (1 == ss.tellg());  // silly
@@ -190,7 +190,7 @@ std::vector<GeckoCode> LoadCodes(const IniFile& globalIni, const IniFile& localI
     }
 
     // add the last code
-    if (gcode.name.size())
+    if (!gcode.name.empty())
     {
       gcodes.push_back(gcode);
     }

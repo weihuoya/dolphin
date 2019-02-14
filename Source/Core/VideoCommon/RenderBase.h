@@ -28,12 +28,10 @@
 #include "Common/Flag.h"
 #include "Common/MathUtil.h"
 #include "VideoCommon/AVIDump.h"
-#include "VideoCommon/AbstractShader.h"
 #include "VideoCommon/AsyncShaderCompiler.h"
 #include "VideoCommon/BPMemory.h"
 #include "VideoCommon/RenderState.h"
 #include "VideoCommon/TextureConfig.h"
-#include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoCommon.h"
 
 class AbstractFramebuffer;
@@ -249,7 +247,6 @@ protected:
 
   void CheckFifoRecording();
   void RecordVideoMemory();
-
 
   AbstractFramebuffer* m_current_framebuffer = nullptr;
   const AbstractPipeline* m_current_pipeline = nullptr;

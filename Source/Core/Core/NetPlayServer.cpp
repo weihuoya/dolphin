@@ -347,7 +347,7 @@ unsigned int NetPlayServer::OnConnect(ENetPeer* socket, sf::Packet& rpac)
   Send(player.socket, spac);
 
   // send new client the selected game
-  if (m_selected_game != "")
+  if (!m_selected_game.empty())
   {
     spac.clear();
     spac << static_cast<MessageId>(NP_MSG_CHANGE_GAME);
@@ -1115,7 +1115,7 @@ bool NetPlayServer::RequestStartGame()
     m_start_pending = true;
     if (!SyncCodes())
     {
-      PanicAlertT("Error synchronizing save gecko codes!");
+      PanicAlertT("Error synchronizing cheat codes!");
       m_start_pending = false;
       return false;
     }

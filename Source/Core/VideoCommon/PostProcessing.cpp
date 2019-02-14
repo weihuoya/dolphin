@@ -34,30 +34,6 @@ PostProcessingConfiguration::PostProcessingConfiguration() = default;
 
 PostProcessingConfiguration::~PostProcessingConfiguration() = default;
 
-std::string PostProcessingConfiguration::LoadVertexShader(const std::string& shader)
-{
-  std::string code;
-  if (shader.empty())
-  {
-    return code;
-  }
-
-  std::string path = File::GetUserPath(D_SHADERS_IDX) + shader + ".vglsl";
-  if (!File::Exists(path))
-  {
-    // Fallback to shared user dir
-    path = File::GetSysDirectory() + SHADERS_DIR DIR_SEP + shader + ".vglsl";
-  }
-
-  if (!File::ReadFileToString(path, code))
-  {
-    ERROR_LOG(VIDEO, "Post-processing shader not found: %s", path.c_str());
-    code.clear();
-  }
-
-  return code;
-}
-
 void PostProcessingConfiguration::LoadShader(const std::string& shader)
 {
   // Load the shader from the configuration if there isn't one sent to us.
@@ -141,7 +117,7 @@ void PostProcessingConfiguration::LoadOptions(const std::string& code)
       }
 #endif
 
-      if (line.size() > 0)
+      if (!line.empty())
       {
         if (line[0] == '[')
         {
@@ -162,7 +138,7 @@ void PostProcessingConfiguration::LoadOptions(const std::string& code)
             std::string key, value;
             IniFile::ParseLine(line, &key, &value);
 
-            if (!(key == "" && value == ""))
+            if (!(key.empty() && value.empty()))
               current_strings->m_options.emplace_back(key, value);
           }
         }
@@ -263,7 +239,7 @@ void PostProcessingConfiguration::LoadOptionsConfiguration()
     {
       std::string value;
       ini.GetOrCreateSection(section)->Get(it.second.m_option_name, &value);
-      if (value != "")
+      if (!value.empty())
         TryParseVector(value, &it.second.m_integer_values);
     }
     break;
@@ -271,7 +247,7 @@ void PostProcessingConfiguration::LoadOptionsConfiguration()
     {
       std::string value;
       ini.GetOrCreateSection(section)->Get(it.second.m_option_name, &value);
-      if (value != "")
+      if (!value.empty())
         TryParseVector(value, &it.second.m_float_values);
     }
     break;

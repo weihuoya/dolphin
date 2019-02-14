@@ -399,14 +399,24 @@ void VKTexture::Load(u32 level, u32 width, u32 height, u32 row_length, const u8*
   };
   vkCmdCopyBufferToImage(g_command_buffer_mgr->GetCurrentInitCommandBuffer(), upload_buffer,
                          m_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &image_copy);
+
+  // Preemptively transition to shader read only after uploading the last mip level, as we're
+  // likely finished with writes to this texture for now. We can't do this in common with a
+  // FinishedRendering() call because the upload happens in the init command buffer, and we
+  // don't want to interrupt the render pass with calls which were executed ages before.
+  if (level == (m_config.levels - 1))
+  {
+    TransitionToLayout(g_command_buffer_mgr->GetCurrentInitCommandBuffer(),
+                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  }
 }
 
 void VKTexture::FinishedRendering()
 {
-  const VKFramebuffer* vkfb = static_cast<VKFramebuffer*>(g_renderer->GetCurrentFramebuffer());
-  if (vkfb->GetColorAttachment() == this || vkfb->GetDepthAttachment() == this)
-    StateTracker::GetInstance()->EndRenderPass();
+  if (m_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    return;
 
+  StateTracker::GetInstance()->EndRenderPass();
   TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }

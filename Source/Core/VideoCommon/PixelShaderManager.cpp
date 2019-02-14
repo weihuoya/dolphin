@@ -464,7 +464,7 @@ void PixelShaderManager::SetBlendModeChanged()
 
 void PixelShaderManager::SetBoundingBoxActive(bool active)
 {
-
+  
 }
 
 void PixelShaderManager::DoState(PointerWrap& p)

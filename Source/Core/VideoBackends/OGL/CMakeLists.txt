@@ -7,7 +7,6 @@ add_library(videoogl
   OGLTexture.cpp
   PerfQuery.cpp
   ProgramShaderCache.cpp
-  RasterFont.cpp
   Render.cpp
   SamplerCache.cpp
   StreamBuffer.cpp
