@@ -198,7 +198,7 @@ bool RasterFont::CreatePipeline()
   ss << "  frag_uv = float3(rawtex0 * char_size, 0.0);\n"
      << "  out_pos = float4(rawpos + offset, 0.0, 1.0);\n";
   // Clip-space is flipped in Vulkan
-  if (api_type == APIType::Vulkan)
+  if (api_type != APIType::Vulkan)
     ss << "  out_pos.y = -out_pos.y;\n";
   ss << "}\n";
 
@@ -273,15 +273,12 @@ bool RasterFont::CreatePipeline()
       RenderState::GetCullBackFaceRasterizationState(PrimitiveType::Triangles);
   pconfig.depth_state = RenderState::GetNoDepthTestingDepthState();
   pconfig.blending_state = RenderState::GetNoBlendingBlendState();
-  pconfig.blending_state.blendenable = true;
+  pconfig.blending_state.blendenable = false;
   pconfig.blending_state.srcfactor = BlendMode::SRCALPHA;
   pconfig.blending_state.dstfactor = BlendMode::INVSRCALPHA;
   pconfig.blending_state.srcfactoralpha = BlendMode::ZERO;
   pconfig.blending_state.dstfactoralpha = BlendMode::ONE;
-  pconfig.framebuffer_state.color_texture_format = m_framebuffer_format;
-  pconfig.framebuffer_state.depth_texture_format = AbstractTextureFormat::Undefined;
-  pconfig.framebuffer_state.samples = 1;
-  pconfig.framebuffer_state.per_sample_shading = false;
+  pconfig.framebuffer_state = RenderState::GetColorFramebufferState(m_framebuffer_format);
   pconfig.usage = AbstractPipelineUsage::Utility;
   m_pipeline = g_renderer->CreatePipeline(pconfig);
   if (!m_pipeline)
@@ -302,8 +299,7 @@ void RasterFont::Prepare()
   // Set up common state for drawing.
   int bbWidth = g_renderer->GetBackbufferWidth();
   int bbHeight = g_renderer->GetBackbufferHeight();
-  g_renderer->SetViewportAndScissor(MathUtil::Rectangle<int>(0, 0, bbWidth, bbHeight), 0.0f, 1.0f);
-  //g_renderer->SetViewport(0, 0, bbWidth, bbHeight, 0.0f, 1.0f);
+  g_renderer->SetViewport(0, 0, bbWidth, bbHeight, 0.0f, 1.0f);
   g_renderer->SetPipeline(m_pipeline.get());
   g_renderer->SetTexture(0, m_texture.get());
   g_renderer->SetSamplerState(0, RenderState::GetPointSamplerState());
@@ -313,7 +309,7 @@ void RasterFont::Draw(const std::string& text, float start_x, float start_y, u32
 {
   float screen_width = g_renderer->GetBackbufferWidth();
   float screen_height = g_renderer->GetBackbufferHeight();
-  float scale = g_renderer->GetBackbufferScale();
+  float scale = g_renderer->GetBackbufferScale() * 2;
 
   std::vector<float> vertices(text.length() * 6 * 4);
   u32 usage = 0;
@@ -321,8 +317,8 @@ void RasterFont::Draw(const std::string& text, float start_x, float start_y, u32
   float delta_y = scale * CHARACTER_HEIGHT / screen_height;
   float border_x = scale * 2.0f / screen_width;
   float border_y = scale * 4.0f / screen_height;
-  float x = scale * start_x / screen_width;
-  float y = scale * start_y / screen_height;
+  float x = scale * start_x * 2.0f / screen_width - 1.0f;
+  float y = 1.0f - scale * start_y * 2.0f / screen_height;
 
   for (const char& c : text)
   {
