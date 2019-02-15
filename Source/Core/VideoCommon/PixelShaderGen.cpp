@@ -1437,14 +1437,14 @@ static void WriteBlend(ShaderCode& out, const pixel_shader_uid_data* uid_data)
   if (uid_data->blend_enable)
   {
     static const std::array<const char*, 8> blendSrcFactor{{
-        "float3(0.0, 0.0, 0.0);",                      // ZERO
-        "float3(1.0, 1.0, 1.0);",                      // ONE
-        "initial_ocol0.rgb;",                  // DSTCLR
-        "float3(1.0, 1.0 ,1.0) - initial_ocol0.rgb;",  // INVDSTCLR
-        "ocol1.aaa;",                          // SRCALPHA
-        "float3(1.0, 1.0, 1.0) - ocol1.aaa;",          // INVSRCALPHA
-        "initial_ocol0.aaa;",                  // DSTALPHA
-        "float3(1.0, 1.0 , 1.0) - initial_ocol0.aaa;",  // INVDSTALPHA
+        "float3(0.0);",                      // ZERO
+        "float3(1.0);",                      // ONE
+        "initial_ocol0.rgb;",                // DSTCLR
+        "float3(1.0) - initial_ocol0.rgb;",  // INVDSTCLR
+        "ocol1.aaa;",                        // SRCALPHA
+        "float3(1.0) - ocol1.aaa;",          // INVSRCALPHA
+        "initial_ocol0.aaa;",                // DSTALPHA
+        "float3(1.0) - initial_ocol0.aaa;",  // INVDSTALPHA
     }};
     static const std::array<const char*, 8> blendSrcFactorAlpha{{
         "0.0;",                    // ZERO
@@ -1457,14 +1457,14 @@ static void WriteBlend(ShaderCode& out, const pixel_shader_uid_data* uid_data)
         "1.0 - initial_ocol0.a;",  // INVDSTALPHA
     }};
     static const std::array<const char*, 8> blendDstFactor{{
-        "float3(0.0, 0.0, 0.0);",                      // ZERO
-        "float3(1.0, 1.0, 1.0);",                      // ONE
-        "ocol0.rgb;",                          // SRCCLR
-        "float3(1.0, 1.0, 1.0) - ocol0.rgb;",          // INVSRCCLR
-        "ocol1.aaa;",                          // SRCALHA
-        "float3(1.0, 1.0, 1.0) - ocol1.aaa;",          // INVSRCALPHA
-        "initial_ocol0.aaa;",                  // DSTALPHA
-        "float3(1.0, 1.0, 1.0) - initial_ocol0.aaa;",  // INVDSTALPHA
+        "float3(0.0);",                      // ZERO
+        "float3(1.0);",                      // ONE
+        "ocol0.rgb;",                        // SRCCLR
+        "float3(1.0) - ocol0.rgb;",          // INVSRCCLR
+        "ocol1.aaa;",                        // SRCALHA
+        "float3(1.0) - ocol1.aaa;",          // INVSRCALPHA
+        "initial_ocol0.aaa;",                // DSTALPHA
+        "float3(1.0) - initial_ocol0.aaa;",  // INVDSTALPHA
     }};
     static const std::array<const char*, 8> blendDstFactorAlpha{{
         "0.0;",                    // ZERO

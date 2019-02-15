@@ -183,27 +183,23 @@ bool RasterFont::CreatePipeline()
   {
     ss << "void main(in float2 rawpos : POSITION,\n"
        << "          in float2 rawtex0 : TEXCOORD,\n"
-       << "          out float2 frag_uv : TEXCOORD,\n"
-       << "          out float4 out_pos : SV_Position)\n";
+       << "          out float3 frag_uv : TEXCOORD,\n"
+       << "          out float4 out_pos : SV_Position) {\n";
   }
   else
   {
     ss << "ATTRIBUTE_LOCATION(" << SHADER_POSITION_ATTRIB << ") in float2 rawpos;\n"
        << "ATTRIBUTE_LOCATION(" << SHADER_TEXTURE0_ATTRIB << ") in float2 rawtex0;\n"
-       << "VARYING_LOCATION(0) out float2 frag_uv;\n"
-       << "void main()\n";
+       << "VARYING_LOCATION(0) out float3 frag_uv;\n"
+       << "#define out_pos gl_Position\n"
+       << "void main() {\n";
   }
 
-  ss << "{\n"
-     << "  frag_uv = rawtex0 * char_size;\n";
-
-  ss << "  " << (api_type == APIType::D3D ? "out_pos" : "gl_Position")
-     << "= float4(rawpos + offset, 0.0, 1.0);\n";
-
+  ss << "  frag_uv = float3(rawtex0 * char_size, 0.0);\n"
+     << "  out_pos = float4(rawpos + offset, 0.0, 1.0);\n";
   // Clip-space is flipped in Vulkan
   if (api_type == APIType::Vulkan)
-    ss << "  gl_Position.y = -gl_Position.y;\n";
-
+    ss << "  out_pos.y = -out_pos.y;\n";
   ss << "}\n";
 
   std::unique_ptr<AbstractShader> vertex_shader =
@@ -232,22 +228,21 @@ bool RasterFont::CreatePipeline()
   {
     ss << "Texture2DArray tex0 : register(t0);\n"
        << "SamplerState samp0 : register(s0);\n"
-       << "void main(in float2 frag_uv : TEXCOORD,\n"
-       << "          out float4 ocol0 : SV_Target)\n";
+       << "void main(in float3 frag_uv : TEXCOORD,\n"
+       << "          out float4 ocol0 : SV_Target) {\n";
   }
   else
   {
     ss << "SAMPLER_BINDING(0) uniform sampler2DArray samp0;\n"
-       << "VARYING_LOCATION(0) in float2 frag_uv; \n"
+       << "VARYING_LOCATION(0) in float3 frag_uv; \n"
        << "FRAGMENT_OUTPUT_LOCATION(0) out float4 ocol0;\n"
-       << "void main()\n";
+       << "void main() {\n";
   }
 
-  ss << "{\n";
   if (api_type == APIType::D3D)
-    ss << "  ocol0 = tex0.Sample(samp0, float3(frag_uv, 0.0)) * color;\n";
+    ss << "  ocol0 = tex0.Sample(samp0, frag_uv) * color;\n";
   else
-    ss << "  ocol0 = texture(samp0, float3(frag_uv, 0.0)) * color;\n";
+    ss << "  ocol0 = texture(samp0, frag_uv) * color;\n";
   ss << "}\n";
 
   std::unique_ptr<AbstractShader> pixel_shader =
@@ -261,7 +256,7 @@ bool RasterFont::CreatePipeline()
 
   PortableVertexDeclaration vdecl = {};
   vdecl.position = {VAR_FLOAT, 2, 0, true, false};
-  vdecl.texcoords[0] = {VAR_FLOAT, 2, 8, true, false};
+  vdecl.texcoords[0] = {VAR_FLOAT, 2, sizeof(float) * 2, true, false};
   vdecl.stride = sizeof(float) * 4;
   m_vertex_format = g_renderer->CreateNativeVertexFormat(vdecl);
   if (!m_vertex_format)
@@ -316,18 +311,18 @@ void RasterFont::Prepare()
 
 void RasterFont::Draw(const std::string& text, float start_x, float start_y, u32 color)
 {
-  int bbWidth = g_renderer->GetBackbufferWidth();
-  int bbHeight = g_renderer->GetBackbufferHeight();
-  float scale = g_renderer->GetBackbufferScale() * 2;
+  float screen_width = g_renderer->GetBackbufferWidth();
+  float screen_height = g_renderer->GetBackbufferHeight();
+  float scale = g_renderer->GetBackbufferScale();
 
   std::vector<float> vertices(text.length() * 6 * 4);
   u32 usage = 0;
-  float delta_x = scale * CHARACTER_WIDTH / float(bbWidth);
-  float delta_y = scale * CHARACTER_HEIGHT / float(bbHeight);
-  float border_x = 2.0f / float(bbWidth);
-  float border_y = 4.0f / float(bbHeight);
-  float x = start_x;
-  float y = start_y;
+  float delta_x = scale * CHARACTER_WIDTH / screen_width;
+  float delta_y = scale * CHARACTER_HEIGHT / screen_height;
+  float border_x = scale * 2.0f / screen_width;
+  float border_y = scale * 4.0f / screen_height;
+  float x = scale * start_x / screen_width;
+  float y = scale * start_y / screen_height;
 
   for (const char& c : text)
   {
@@ -401,8 +396,8 @@ void RasterFont::Draw(const std::string& text, float start_x, float start_y, u32
   pc_block.char_size[1] = 1.0f;
 
   // shadows
-  pc_block.offset[0] = 2.0f / bbWidth;
-  pc_block.offset[1] = -2.0f / bbHeight;
+  pc_block.offset[0] = scale * 2.0f / screen_width;
+  pc_block.offset[1] = scale * -2.0f / screen_height;
   pc_block.color[3] = (color >> 24) / 255.0f;
   g_vertex_manager->UploadUtilityUniforms(&pc_block, sizeof(pc_block));
   g_renderer->Draw(out_base_vertex, num_vertices);

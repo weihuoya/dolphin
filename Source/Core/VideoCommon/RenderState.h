@@ -84,6 +84,7 @@ union BlendingState
   BitField<4, 1, u32> alphaupdate;
   BitField<5, 1, u32> subtract;
   BitField<6, 1, u32> subtractAlpha;
+  BitField<7, 1, u32> usedualsrc; // useless
   BitField<8, 3, BlendMode::BlendFactor> dstfactor;
   BitField<11, 3, BlendMode::BlendFactor> srcfactor;
   BitField<14, 3, BlendMode::BlendFactor> dstfactoralpha;

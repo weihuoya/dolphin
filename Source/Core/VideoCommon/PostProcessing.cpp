@@ -574,13 +574,12 @@ bool PostProcessing::CompileVertexShader()
     ss << "#define opos gl_Position\n";
     ss << "void main() {\n";
   }
-  ss << "  v_tex0 = float3(float((id << 1) & 2), float(id & 2), 0.0f);\n";
-  ss << "  opos = float4(v_tex0.xy * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);\n";
-  ss << "  v_tex0 = float3(src_rect.xy + (src_rect.zw * v_tex0.xy), 0.0f);\n";
 
-  if (g_ActiveConfig.backend_info.api_type == APIType::Vulkan)
+  ss << "  float2 rawpos = float2((id << 1) & 2, id & 2);\n";
+  ss << "  opos = float4(rawpos * 2.0f - 1.0f, 0.0f, 1.0f);\n";
+  if (g_ActiveConfig.backend_info.api_type != APIType::Vulkan)
     ss << "  opos.y = -opos.y;\n";
-
+  ss << "  v_tex0 = float3(rawpos, 0.0f);\n";
   ss << "}\n";
 
   m_vertex_shader = g_renderer->CreateShaderFromSource(ShaderStage::Vertex, ss.str());

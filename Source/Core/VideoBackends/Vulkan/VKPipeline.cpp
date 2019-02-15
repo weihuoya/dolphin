@@ -169,10 +169,6 @@ static VkPipelineColorBlendAttachmentState GetVulkanAttachmentBlendState(const B
     vk_state.colorWriteMask =
         VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
   }
-  else
-  {
-    vk_state.colorWriteMask = 0;
-  }
 
   if (state.alphaupdate)
     vk_state.colorWriteMask |= VK_COLOR_COMPONENT_A_BIT;

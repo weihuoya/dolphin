@@ -270,8 +270,6 @@ BlendingState GetNoBlendingBlendState()
 {
   BlendingState state = {};
   state.blendenable = false;
-  state.dstalpha = false;
-  state.alphaupdate = false;
   state.srcfactor = BlendMode::ONE;
   state.srcfactoralpha = BlendMode::ONE;
   state.dstfactor = BlendMode::ZERO;
