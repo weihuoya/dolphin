@@ -8,16 +8,16 @@
 #include <cstdint>
 #include <functional>
 
+#include "Common/Align.h"
 #include "Common/Assert.h"
 #include "Common/MsgHandler.h"
 
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
-#include "VideoBackends/Vulkan/Util.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
 
 namespace Vulkan
 {
-StreamBuffer::StreamBuffer(VkBufferUsageFlags usage, size_t max_size)
+StreamBuffer::StreamBuffer(VkBufferUsageFlags usage, u32 max_size)
     : m_usage(usage), m_maximum_size(max_size)
 {
   // Add a callback that fires on fence point creation and signal
@@ -41,8 +41,8 @@ StreamBuffer::~StreamBuffer()
     g_command_buffer_mgr->DeferDeviceMemoryDestruction(m_memory);
 }
 
-std::unique_ptr<StreamBuffer> StreamBuffer::Create(VkBufferUsageFlags usage, size_t initial_size,
-                                                   size_t max_size)
+std::unique_ptr<StreamBuffer> StreamBuffer::Create(VkBufferUsageFlags usage, u32 initial_size,
+                                                   u32 max_size)
 {
   std::unique_ptr<StreamBuffer> buffer = std::make_unique<StreamBuffer>(usage, max_size);
   if (!buffer->ResizeBuffer(initial_size))
@@ -51,7 +51,7 @@ std::unique_ptr<StreamBuffer> StreamBuffer::Create(VkBufferUsageFlags usage, siz
   return buffer;
 }
 
-bool StreamBuffer::ResizeBuffer(size_t size)
+bool StreamBuffer::ResizeBuffer(u32 size)
 {
   // Create the buffer descriptor
   VkBufferCreateInfo buffer_create_info = {
@@ -140,11 +140,11 @@ bool StreamBuffer::ResizeBuffer(size_t size)
   return true;
 }
 
-bool StreamBuffer::ReserveMemory(size_t num_bytes, size_t alignment, bool allow_reuse /* = true */,
+bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment, bool allow_reuse /* = true */,
                                  bool allow_growth /* = true */,
                                  bool reallocate_if_full /* = false */)
 {
-  size_t required_bytes = num_bytes + alignment;
+  const u32 required_bytes = num_bytes + alignment;
 
   // Check for sane allocations
   if (required_bytes > m_maximum_size)
@@ -158,11 +158,11 @@ bool StreamBuffer::ReserveMemory(size_t num_bytes, size_t alignment, bool allow_
   // Is the GPU behind or up to date with our current offset?
   if (m_current_offset >= m_current_gpu_position)
   {
-    size_t remaining_bytes = m_current_size - m_current_offset;
+    const u32 remaining_bytes = m_current_size - m_current_offset;
     if (required_bytes <= remaining_bytes)
     {
       // Place at the current position, after the GPU position.
-      m_current_offset = Util::AlignBufferOffset(m_current_offset, alignment);
+      m_current_offset = Common::AlignUp(m_current_offset, alignment);
       m_last_allocation_size = num_bytes;
       return true;
     }
@@ -184,11 +184,11 @@ bool StreamBuffer::ReserveMemory(size_t num_bytes, size_t alignment, bool allow_
   if (m_current_offset < m_current_gpu_position)
   {
     // We have from m_current_offset..m_current_gpu_position space to use.
-    size_t remaining_bytes = m_current_gpu_position - m_current_offset;
+    const u32 remaining_bytes = m_current_gpu_position - m_current_offset;
     if (required_bytes < remaining_bytes)
     {
       // Place at the current position, since this is still behind the GPU.
-      m_current_offset = Util::AlignBufferOffset(m_current_offset, alignment);
+      m_current_offset = Common::AlignUp(m_current_offset, alignment);
       m_last_allocation_size = num_bytes;
       return true;
     }
@@ -198,7 +198,7 @@ bool StreamBuffer::ReserveMemory(size_t num_bytes, size_t alignment, bool allow_
   // Double each time until the maximum size is reached.
   if (allow_growth && m_current_size < m_maximum_size)
   {
-    size_t new_size = std::min(std::max(num_bytes, m_current_size * 2), m_maximum_size);
+    const u32 new_size = std::min(std::max(num_bytes, m_current_size * 2), m_maximum_size);
     if (ResizeBuffer(new_size))
     {
       // Allocating from the start of the buffer.
@@ -212,7 +212,7 @@ bool StreamBuffer::ReserveMemory(size_t num_bytes, size_t alignment, bool allow_
   {
     ASSERT(m_current_offset == m_current_gpu_position ||
            (m_current_offset + required_bytes) < m_current_gpu_position);
-    m_current_offset = Util::AlignBufferOffset(m_current_offset, alignment);
+    m_current_offset = Common::AlignUp(m_current_offset, alignment);
     m_last_allocation_size = num_bytes;
     return true;
   }
@@ -231,7 +231,7 @@ bool StreamBuffer::ReserveMemory(size_t num_bytes, size_t alignment, bool allow_
   return false;
 }
 
-void StreamBuffer::CommitMemory(size_t final_num_bytes)
+void StreamBuffer::CommitMemory(u32 final_num_bytes)
 {
   ASSERT((m_current_offset + final_num_bytes) <= m_current_size);
   ASSERT(final_num_bytes <= m_last_allocation_size);
@@ -279,10 +279,10 @@ void StreamBuffer::OnCommandBufferExecuted(VkFence fence)
   }
 }
 
-bool StreamBuffer::WaitForClearSpace(size_t num_bytes)
+bool StreamBuffer::WaitForClearSpace(u32 num_bytes)
 {
-  size_t new_offset = 0;
-  size_t new_gpu_position = 0;
+  u32 new_offset = 0;
+  u32 new_gpu_position = 0;
   auto iter = m_tracked_fences.begin();
   for (; iter != m_tracked_fences.end(); iter++)
   {
@@ -290,7 +290,7 @@ bool StreamBuffer::WaitForClearSpace(size_t num_bytes)
     // This is the "last resort" case, where a command buffer execution has been forced
     // after no additional data has been written to it, so we can assume that after the
     // fence has been signaled the entire buffer is now consumed.
-    size_t gpu_position = iter->second;
+    u32 gpu_position = iter->second;
     if (m_current_offset == gpu_position)
     {
       // Start at the start of the buffer again.
@@ -317,7 +317,7 @@ bool StreamBuffer::WaitForClearSpace(size_t num_bytes)
       // We're currently allocating behind the GPU. This would give us between the current
       // offset and the GPU position worth of space to work with. Again, > because we can't
       // align the GPU position with the buffer offset.
-      size_t available_space_inbetween = gpu_position - m_current_offset;
+      u32 available_space_inbetween = gpu_position - m_current_offset;
       if (available_space_inbetween > num_bytes)
       {
         // Leave the offset as-is, but update the GPU position.
