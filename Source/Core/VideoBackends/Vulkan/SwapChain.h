@@ -9,13 +9,14 @@
 
 #include "Common/CommonTypes.h"
 #include "VideoBackends/Vulkan/Constants.h"
-#include "VideoBackends/Vulkan/Texture2D.h"
 #include "VideoCommon/TextureConfig.h"
 
 namespace Vulkan
 {
 class CommandBufferManager;
 class ObjectCache;
+class VKTexture;
+class VKFramebuffer;
 
 class SwapChain
 {
@@ -45,16 +46,14 @@ public:
   {
     return m_swap_chain_images[m_current_swap_chain_image_index].image;
   }
-  Texture2D* GetCurrentTexture() const
+  VKTexture* GetCurrentTexture() const
   {
     return m_swap_chain_images[m_current_swap_chain_image_index].texture.get();
   }
-  VkFramebuffer GetCurrentFramebuffer() const
+  VKFramebuffer* GetCurrentFramebuffer() const
   {
-    return m_swap_chain_images[m_current_swap_chain_image_index].framebuffer;
+    return m_swap_chain_images[m_current_swap_chain_image_index].framebuffer.get();
   }
-  VkRenderPass GetLoadRenderPass() const { return m_render_pass; }
-  VkRenderPass GetClearRenderPass() const { return m_clear_render_pass; }
   VkSemaphore GetImageAvailableSemaphore() const { return m_image_available_semaphore; }
   VkSemaphore GetRenderingFinishedSemaphore() const { return m_rendering_finished_semaphore; }
 
@@ -85,8 +84,8 @@ private:
   struct SwapChainImage
   {
     VkImage image;
-    std::unique_ptr<Texture2D> texture;
-    VkFramebuffer framebuffer;
+    std::unique_ptr<VKTexture> texture;
+    std::unique_ptr<VKFramebuffer> framebuffer;
   };
 
   void* m_display_handle;
@@ -103,9 +102,6 @@ private:
 
   VkSemaphore m_image_available_semaphore = VK_NULL_HANDLE;
   VkSemaphore m_rendering_finished_semaphore = VK_NULL_HANDLE;
-
-  VkRenderPass m_render_pass = VK_NULL_HANDLE;
-  VkRenderPass m_clear_render_pass = VK_NULL_HANDLE;
 
   u32 m_width = 0;
   u32 m_height = 0;

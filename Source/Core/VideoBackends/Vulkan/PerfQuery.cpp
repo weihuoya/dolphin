@@ -13,9 +13,9 @@
 #include "Common/MsgHandler.h"
 
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
+#include "VideoBackends/Vulkan/Renderer.h"
 #include "VideoBackends/Vulkan/StagingBuffer.h"
 #include "VideoBackends/Vulkan/StateTracker.h"
-#include "VideoBackends/Vulkan/Util.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
 
 namespace Vulkan
@@ -92,9 +92,6 @@ void PerfQuery::EnableQuery(PerfQueryGroup type)
     // TODO: Is this needed?
     StateTracker::GetInstance()->BeginRenderPass();
     vkCmdBeginQuery(g_command_buffer_mgr->GetCurrentCommandBuffer(), m_query_pool, index, flags);
-
-    // Prevent background command buffer submission while the query is active.
-    StateTracker::GetInstance()->SetBackgroundCommandBufferExecution(false);
   }
 }
 
@@ -105,8 +102,6 @@ void PerfQuery::DisableQuery(PerfQueryGroup type)
     // DisableQuery should be called for each EnableQuery, so subtract one to get the previous one.
     u32 index = (m_query_read_pos + m_query_count - 1) % PERF_QUERY_BUFFER_SIZE;
     vkCmdEndQuery(g_command_buffer_mgr->GetCurrentCommandBuffer(), m_query_pool, index);
-    StateTracker::GetInstance()->SetBackgroundCommandBufferExecution(true);
-    DEBUG_LOG(VIDEO, "end query %u", index);
   }
 }
 
@@ -350,7 +345,7 @@ void PerfQuery::NonBlockingPartialFlush()
   // Submit a command buffer in the background if the front query is not bound to one.
   // Ideally this will complete before the buffer fills.
   if (m_query_buffer[m_query_read_pos].pending_fence == VK_NULL_HANDLE)
-    Util::ExecuteCurrentCommandsAndRestoreState(true, false);
+    Renderer::GetInstance()->ExecuteCommandBuffer(true, false);
 }
 
 void PerfQuery::BlockingPartialFlush()
@@ -364,7 +359,7 @@ void PerfQuery::BlockingPartialFlush()
   {
     // This will callback OnCommandBufferQueued which will set the fence on the entry.
     // We wait for completion, which will also call OnCommandBufferExecuted, and clear the fence.
-    Util::ExecuteCurrentCommandsAndRestoreState(false, true);
+    Renderer::GetInstance()->ExecuteCommandBuffer(false, true);
   }
   else
   {
@@ -373,4 +368,4 @@ void PerfQuery::BlockingPartialFlush()
     g_command_buffer_mgr->WaitForFence(entry.pending_fence);
   }
 }
-}
+}  // namespace Vulkan
