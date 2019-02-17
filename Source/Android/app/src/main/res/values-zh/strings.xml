@@ -325,6 +325,8 @@
     <string name="save">保存</string>
     <string name="load">载入</string>
     <string name="setting_display_scale">显示缩放</string>
+    <string name="setting_framebuffer_format">帧缓存格式</string>
+    <string name="setting_framebuffer_format_description">设置EFB和XFB使用的显示格式。</string>
     <string name="emulation_joystick_settings">摇杆模拟</string>
     <string name="emulation_sensor_settings">重力感应</string>
     <string name="game_platform_wii">[Wii] %1$s %2$s</string>

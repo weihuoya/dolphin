@@ -298,9 +298,6 @@
     <string name="emulation_controller_changed">You may have to reload the game after changing extensions.</string>
     <string name="emulation_touch_button_help">Swipe down from the top of the screen to access the menu.</string>
     <string name="emulation_touch_overlay_reset">Reset Overlay</string>
-    <string name="emulation_ir_group">Touch IR Pointer</string>
-    <string name="emulation_ir_sensitivity">IR Sensitivity</string>
-    <string name="emulation_choose_doubletap">Double tap button</string>
 
     <!-- GC Adapter Menu-->
     <string name="gc_adapter_rumble">Enable Vibration</string>
@@ -328,6 +325,8 @@
     <string name="save">Save</string>
     <string name="load">Load</string>
     <string name="setting_display_scale">Display Scale</string>
+    <string name="setting_framebuffer_format">Framebuffer Format</string>
+    <string name="setting_framebuffer_format_description">Set color format used in EFB and XFB.</string>
     <string name="emulation_joystick_settings">Joystick Emulation</string>
     <string name="emulation_sensor_settings">Sensor Emulation</string>
     <string name="game_platform_wii">[Wii] %1$s %2$s</string>

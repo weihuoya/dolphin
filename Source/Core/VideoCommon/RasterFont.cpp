@@ -309,7 +309,10 @@ void RasterFont::Draw(const std::string& text, float start_x, float start_y, u32
 {
   float screen_width = g_renderer->GetBackbufferWidth();
   float screen_height = g_renderer->GetBackbufferHeight();
-  float scale = g_renderer->GetBackbufferScale() * 2;
+  float scale = g_renderer->GetBackbufferScale();
+#ifndef ANDROID
+  scale *= 2.0f;
+#endif
 
   std::vector<float> vertices(text.length() * 6 * 4);
   u32 usage = 0;
@@ -324,7 +327,7 @@ void RasterFont::Draw(const std::string& text, float start_x, float start_y, u32
   {
     if (c == '\n')
     {
-      x = float(start_x);
+      x = start_x;
       y -= delta_y + border_y;
       continue;
     }
