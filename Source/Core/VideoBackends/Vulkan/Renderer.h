@@ -87,8 +87,6 @@ public:
   void ExecuteCommandBuffer(bool execute_off_thread, bool wait_for_completion = false);
 
 private:
-  void BeginFrame();
-
   void CheckForSurfaceChange();
   void CheckForSurfaceResize();
 

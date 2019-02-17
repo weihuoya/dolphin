@@ -253,55 +253,55 @@ void RegisterMMIO(MMIO::Mapping* mmio, u32 base)
   // Some MMIOs have different handlers for single core vs. dual core mode.
   mmio->Register(base | FIFO_RW_DISTANCE_LO,
                  IsOnThread() ?
-                 MMIO::ComplexRead<u16>([](u32) {
-                     if (fifo.CPWritePointer >= fifo.SafeCPReadPointer)
-                       return ReadLow(fifo.CPWritePointer - fifo.SafeCPReadPointer);
-                     else
-                       return ReadLow(fifo.CPEnd - fifo.SafeCPReadPointer + fifo.CPWritePointer -
-                                      fifo.CPBase + 32);
-                 }) :
-                 MMIO::DirectRead<u16>(MMIO::Utils::LowPart(&fifo.CPReadWriteDistance)),
+                     MMIO::ComplexRead<u16>([](u32) {
+                       if (fifo.CPWritePointer >= fifo.SafeCPReadPointer)
+                         return ReadLow(fifo.CPWritePointer - fifo.SafeCPReadPointer);
+                       else
+                         return ReadLow(fifo.CPEnd - fifo.SafeCPReadPointer + fifo.CPWritePointer -
+                                        fifo.CPBase + 32);
+                     }) :
+                     MMIO::DirectRead<u16>(MMIO::Utils::LowPart(&fifo.CPReadWriteDistance)),
                  MMIO::DirectWrite<u16>(MMIO::Utils::LowPart(&fifo.CPReadWriteDistance),
                                         WMASK_LO_ALIGN_32BIT));
   mmio->Register(base | FIFO_RW_DISTANCE_HI,
                  IsOnThread() ?
-                 MMIO::ComplexRead<u16>([](u32) {
-                     if (fifo.CPWritePointer >= fifo.SafeCPReadPointer)
-                       return ReadHigh(fifo.CPWritePointer - fifo.SafeCPReadPointer);
-                     else
-                       return ReadHigh(fifo.CPEnd - fifo.SafeCPReadPointer + fifo.CPWritePointer -
-                                       fifo.CPBase + 32);
-                 }) :
-                 MMIO::DirectRead<u16>(MMIO::Utils::HighPart(&fifo.CPReadWriteDistance)),
+                     MMIO::ComplexRead<u16>([](u32) {
+                       if (fifo.CPWritePointer >= fifo.SafeCPReadPointer)
+                         return ReadHigh(fifo.CPWritePointer - fifo.SafeCPReadPointer);
+                       else
+                         return ReadHigh(fifo.CPEnd - fifo.SafeCPReadPointer + fifo.CPWritePointer -
+                                         fifo.CPBase + 32);
+                     }) :
+                     MMIO::DirectRead<u16>(MMIO::Utils::HighPart(&fifo.CPReadWriteDistance)),
                  MMIO::ComplexWrite<u16>([WMASK_HI_RESTRICT](u32, u16 val) {
-                     WriteHigh(fifo.CPReadWriteDistance, val & WMASK_HI_RESTRICT);
-                     Fifo::SyncGPU(Fifo::SyncGPUReason::Other);
-                     if (fifo.CPReadWriteDistance == 0)
-                     {
-                       GPFifo::ResetGatherPipe();
-                       Fifo::ResetVideoBuffer();
-                     }
-                     else
-                     {
-                       Fifo::ResetVideoBuffer();
-                     }
-                     Fifo::RunGpu();
+                   WriteHigh(fifo.CPReadWriteDistance, val & WMASK_HI_RESTRICT);
+                   Fifo::SyncGPU(Fifo::SyncGPUReason::Other);
+                   if (fifo.CPReadWriteDistance == 0)
+                   {
+                     GPFifo::ResetGatherPipe();
+                     Fifo::ResetVideoBuffer();
+                   }
+                   else
+                   {
+                     Fifo::ResetVideoBuffer();
+                   }
+                   Fifo::RunGpu();
                  }));
   mmio->Register(
-    base | FIFO_READ_POINTER_LO,
-    IsOnThread() ? MMIO::DirectRead<u16>(MMIO::Utils::LowPart(&fifo.SafeCPReadPointer)) :
-    MMIO::DirectRead<u16>(MMIO::Utils::LowPart(&fifo.CPReadPointer)),
-    MMIO::DirectWrite<u16>(MMIO::Utils::LowPart(&fifo.CPReadPointer), WMASK_LO_ALIGN_32BIT));
+      base | FIFO_READ_POINTER_LO,
+      IsOnThread() ? MMIO::DirectRead<u16>(MMIO::Utils::LowPart(&fifo.SafeCPReadPointer)) :
+                     MMIO::DirectRead<u16>(MMIO::Utils::LowPart(&fifo.CPReadPointer)),
+      MMIO::DirectWrite<u16>(MMIO::Utils::LowPart(&fifo.CPReadPointer), WMASK_LO_ALIGN_32BIT));
   mmio->Register(
-    base | FIFO_READ_POINTER_HI,
-    IsOnThread() ? MMIO::DirectRead<u16>(MMIO::Utils::HighPart(&fifo.SafeCPReadPointer)) :
-    MMIO::DirectRead<u16>(MMIO::Utils::HighPart(&fifo.CPReadPointer)),
-    IsOnThread() ?
-    MMIO::ComplexWrite<u16>([WMASK_HI_RESTRICT](u32, u16 val) {
-        WriteHigh(fifo.CPReadPointer, val & WMASK_HI_RESTRICT);
-        fifo.SafeCPReadPointer = fifo.CPReadPointer;
-    }) :
-    MMIO::DirectWrite<u16>(MMIO::Utils::HighPart(&fifo.CPReadPointer), WMASK_HI_RESTRICT));
+      base | FIFO_READ_POINTER_HI,
+      IsOnThread() ? MMIO::DirectRead<u16>(MMIO::Utils::HighPart(&fifo.SafeCPReadPointer)) :
+                     MMIO::DirectRead<u16>(MMIO::Utils::HighPart(&fifo.CPReadPointer)),
+      IsOnThread() ?
+          MMIO::ComplexWrite<u16>([WMASK_HI_RESTRICT](u32, u16 val) {
+            WriteHigh(fifo.CPReadPointer, val & WMASK_HI_RESTRICT);
+            fifo.SafeCPReadPointer = fifo.CPReadPointer;
+          }) :
+          MMIO::DirectWrite<u16>(MMIO::Utils::HighPart(&fifo.CPReadPointer), WMASK_HI_RESTRICT));
 }
 
 void GatherPipeBursted()

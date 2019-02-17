@@ -30,7 +30,15 @@ std::unique_ptr<ObjectCache> g_object_cache;
 
 ObjectCache::ObjectCache() = default;
 
-ObjectCache::~ObjectCache() = default;
+ObjectCache::~ObjectCache()
+{
+  DestroyPipelineCache();
+  DestroySamplers();
+  DestroyPipelineLayouts();
+  DestroyDescriptorSetLayouts();
+  DestroyRenderPassCache();
+  m_dummy_texture.reset();
+}
 
 bool ObjectCache::Initialize()
 {
@@ -70,13 +78,6 @@ void ObjectCache::Shutdown()
 {
   if (g_ActiveConfig.bShaderCache && m_pipeline_cache != VK_NULL_HANDLE)
     SavePipelineCache();
-
-  DestroyPipelineCache();
-  DestroySamplers();
-  DestroyPipelineLayouts();
-  DestroyDescriptorSetLayouts();
-  DestroyRenderPassCache();
-  m_dummy_texture.reset();
 }
 
 void ObjectCache::ClearSamplerCache()

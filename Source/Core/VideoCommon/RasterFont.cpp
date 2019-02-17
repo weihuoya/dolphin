@@ -198,7 +198,7 @@ bool RasterFont::CreatePipeline()
   ss << "  frag_uv = float3(rawtex0 * char_size, 0.0);\n"
      << "  out_pos = float4(rawpos + offset, 0.0, 1.0);\n";
   // Clip-space is flipped in Vulkan
-  if (api_type != APIType::Vulkan)
+  if (api_type == APIType::Vulkan)
     ss << "  out_pos.y = -out_pos.y;\n";
   ss << "}\n";
 
@@ -299,7 +299,7 @@ void RasterFont::Prepare()
   // Set up common state for drawing.
   int bbWidth = g_renderer->GetBackbufferWidth();
   int bbHeight = g_renderer->GetBackbufferHeight();
-  g_renderer->SetViewport(0, 0, bbWidth, bbHeight, 0.0f, 1.0f);
+  g_renderer->SetViewportAndScissor(MathUtil::Rectangle<int>(0, 0, bbWidth, bbHeight), 0.0f, 1.0f);
   g_renderer->SetPipeline(m_pipeline.get());
   g_renderer->SetTexture(0, m_texture.get());
   g_renderer->SetSamplerState(0, RenderState::GetPointSamplerState());
@@ -345,28 +345,28 @@ void RasterFont::Draw(const std::string& text, float start_x, float start_y, u32
     vertices[usage++] = 0.0f;
 
     vertices[usage++] = x + delta_x;
-    vertices[usage++] = y;
-    vertices[usage++] = float(c - CHARACTER_OFFSET + 1);
-    vertices[usage++] = 0.0f;
-
-    vertices[usage++] = x + delta_x;
     vertices[usage++] = y + delta_y;
     vertices[usage++] = float(c - CHARACTER_OFFSET + 1);
     vertices[usage++] = 1.0f;
+
+    vertices[usage++] = x + delta_x;
+    vertices[usage++] = y;
+    vertices[usage++] = float(c - CHARACTER_OFFSET + 1);
+    vertices[usage++] = 0.0f;
 
     vertices[usage++] = x;
     vertices[usage++] = y;
     vertices[usage++] = float(c - CHARACTER_OFFSET);
     vertices[usage++] = 0.0f;
 
-    vertices[usage++] = x + delta_x;
-    vertices[usage++] = y + delta_y;
-    vertices[usage++] = float(c - CHARACTER_OFFSET + 1);
-    vertices[usage++] = 1.0f;
-
     vertices[usage++] = x;
     vertices[usage++] = y + delta_y;
     vertices[usage++] = float(c - CHARACTER_OFFSET);
+    vertices[usage++] = 1.0f;
+
+    vertices[usage++] = x + delta_x;
+    vertices[usage++] = y + delta_y;
+    vertices[usage++] = float(c - CHARACTER_OFFSET + 1);
     vertices[usage++] = 1.0f;
 
     x += delta_x + border_x;

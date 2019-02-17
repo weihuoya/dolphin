@@ -21,7 +21,11 @@ std::unique_ptr<VideoCommon::ShaderCache> g_shader_cache;
 namespace VideoCommon
 {
 ShaderCache::ShaderCache() = default;
-ShaderCache::~ShaderCache() = default;
+ShaderCache::~ShaderCache()
+{
+  ClearShaderCaches();
+  ClearPipelineCaches();
+}
 
 bool ShaderCache::Initialize()
 {
@@ -88,8 +92,6 @@ void ShaderCache::Shutdown()
   // until everything has finished compiling.
   m_async_shader_compiler->StopWorkerThreads();
   ClosePipelineUIDCache();
-  ClearShaderCaches();
-  ClearPipelineCaches();
 }
 
 const AbstractPipeline* ShaderCache::GetPipelineForUid(const GXPipelineUid& uid)

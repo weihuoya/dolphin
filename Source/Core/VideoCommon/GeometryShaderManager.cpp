@@ -88,6 +88,7 @@ void GeometryShaderManager::DoState(PointerWrap& p)
 {
   p.Do(s_projection_changed);
   p.Do(s_viewport_changed);
+
   p.Do(constants);
 
   if (p.GetMode() == PointerWrap::MODE_READ)

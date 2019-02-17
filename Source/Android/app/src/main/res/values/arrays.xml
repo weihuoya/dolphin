@@ -229,6 +229,7 @@
     <string-array name="gcpadTypeEntries">
         <item>Disabled</item>
         <item>Emulated</item>
+        <item>GameCube Adapter</item>
     </string-array>
     <integer-array name="gcpadTypeValues">
         <item>0</item>
@@ -239,6 +240,7 @@
     <string-array name="wiimoteTypeEntries">
         <item>Disabled</item>
         <item>Emulated</item>
+        <item>Real Wii Remote (DolphinBar required)</item>
     </string-array>
     <integer-array name="wiimoteTypeValues">
         <item>0</item>

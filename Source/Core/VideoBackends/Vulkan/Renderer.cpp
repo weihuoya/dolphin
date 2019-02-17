@@ -72,10 +72,7 @@ bool Renderer::Initialize()
 
   // Various initialization routines will have executed commands on the command buffer.
   // Execute what we have done before beginning the first frame.
-  g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
-  g_command_buffer_mgr->SubmitCommandBuffer(false);
-  BeginFrame();
-
+  ExecuteCommandBuffer(true, false);
   return true;
 }
 
@@ -182,17 +179,6 @@ void Renderer::BBoxFlush()
 {
   m_bounding_box->Flush();
   m_bounding_box->Invalidate();
-}
-
-void Renderer::BeginFrame()
-{
-  // Activate a new command list, and restore state ready for the next draw
-  g_command_buffer_mgr->ActivateCommandBuffer();
-
-  // Ensure that the state tracker rebinds everything, and allocates a new set
-  // of descriptors out of the next pool.
-  StateTracker::GetInstance()->InvalidateCachedState();
-  VertexManagerBase::InvalidateConstants();
 }
 
 void Renderer::ClearScreen(const EFBRectangle& rc, bool color_enable, bool alpha_enable,
@@ -328,35 +314,13 @@ void Renderer::BindBackbuffer(const ClearColor& clear_color)
   CheckForSurfaceChange();
   CheckForSurfaceResize();
 
-  // Ensure the worker thread is not still submitting a previous command buffer.
-  // In other words, the last frame has been submitted (otherwise the next call would
-  // be a race, as the image may not have been consumed yet).
-  g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
-
-  VkResult res;
-  if (!g_command_buffer_mgr->CheckLastPresentFail())
-  {
-    // Grab the next image from the swap chain in preparation for drawing the window.
-    res = m_swap_chain->AcquireNextImage();
-  }
-  else
-  {
-    // If the last present failed, we need to recreate the swap chain.
-    res = VK_ERROR_OUT_OF_DATE_KHR;
-  }
-
+  VkResult res = g_command_buffer_mgr->CheckLastPresentFail() ? VK_ERROR_OUT_OF_DATE_KHR :
+                                                                m_swap_chain->AcquireNextImage();
   if (res == VK_SUBOPTIMAL_KHR || res == VK_ERROR_OUT_OF_DATE_KHR)
   {
-    // There's an issue here. We can't resize the swap chain while the GPU is still busy with it,
-    // but calling WaitForGPUIdle would create a deadlock as PrepareToSubmitCommandBuffer has been
-    // called by SwapImpl. WaitForGPUIdle waits on the semaphore, which PrepareToSubmitCommandBuffer
-    // has already done, so it blocks indefinitely. To work around this, we submit the current
-    // command buffer, resize the swap chain (which calls WaitForGPUIdle), and then finally call
-    // PrepareToSubmitCommandBuffer to return to the state that the caller expects.
-    g_command_buffer_mgr->SubmitCommandBuffer(false);
+    // Execute cmdbuffer before resizing, as the last frame could still be presenting.
+    ExecuteCommandBuffer(false, true);
     m_swap_chain->ResizeSwapChain();
-    BeginFrame();
-    g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
     res = m_swap_chain->AcquireNextImage();
   }
   if (res != VK_SUCCESS)
@@ -377,12 +341,21 @@ void Renderer::PresentBackbuffer()
   // End drawing to backbuffer
   StateTracker::GetInstance()->EndRenderPass();
 
+  // Transition the backbuffer to PRESENT_SRC to ensure all commands drawing
+  // to it have finished before present.
+  m_swap_chain->GetCurrentTexture()->TransitionToLayout(
+      g_command_buffer_mgr->GetCurrentCommandBuffer(), VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
   // Submit the current command buffer, signaling rendering finished semaphore when it's done
   // Because this final command buffer is rendering to the swap chain, we need to wait for
   // the available semaphore to be signaled before executing the buffer. This final submission
   // can happen off-thread in the background while we're preparing the next frame.
-  g_command_buffer_mgr->SubmitCommandBuffer(true, m_swap_chain.get());
-  BeginFrame();
+  g_command_buffer_mgr->SubmitCommandBuffer(true, m_swap_chain->GetSwapChain(),
+                                            m_swap_chain->GetCurrentImageIndex());
+
+  // New cmdbuffer, so invalidate state.
+  StateTracker::GetInstance()->InvalidateCachedState();
+  VertexManagerBase::InvalidateConstants();
 }
 
 void Renderer::ExecuteCommandBuffer(bool submit_off_thread, bool wait_for_completion)
@@ -391,9 +364,7 @@ void Renderer::ExecuteCommandBuffer(bool submit_off_thread, bool wait_for_comple
 
   // If we're waiting for completion, don't bother waking the worker thread.
   const VkFence pending_fence = g_command_buffer_mgr->GetCurrentCommandBufferFence();
-  g_command_buffer_mgr->PrepareToSubmitCommandBuffer();
   g_command_buffer_mgr->SubmitCommandBuffer(submit_off_thread && wait_for_completion);
-  g_command_buffer_mgr->ActivateCommandBuffer();
   if (wait_for_completion)
     g_command_buffer_mgr->WaitForFence(pending_fence);
 

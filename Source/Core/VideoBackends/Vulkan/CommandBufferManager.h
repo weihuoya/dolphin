@@ -25,8 +25,6 @@
 
 namespace Vulkan
 {
-class SwapChain;
-
 class CommandBufferManager
 {
 public:
@@ -56,8 +54,14 @@ public:
   // Gets the fence that will be signaled when the currently executing command buffer is
   // queued and executed. Do not wait for this fence before the buffer is executed.
   VkFence GetCurrentCommandBufferFence() const { return m_frame_resources[m_current_frame].fence; }
-  // Ensure the worker thread has submitted the previous frame's command buffer.
-  void PrepareToSubmitCommandBuffer();
+
+  // Returns the semaphore for the current command buffer, which can be used to ensure the
+  // swap chain image is ready before the command buffer executes.
+  VkSemaphore GetCurrentCommandBufferSemaphore()
+  {
+    m_frame_resources[m_current_frame].semaphore_used = true;
+    return m_frame_resources[m_current_frame].semaphore;
+  }
 
   // Ensure that the worker thread has submitted any previous command buffers and is idle.
   void WaitForWorkerThreadIdle();
@@ -70,12 +74,13 @@ public:
   // Also invokes callbacks for completion.
   void WaitForFence(VkFence fence);
 
-  void SubmitCommandBuffer(bool submit_on_worker_thread, SwapChain* swap_chain = nullptr);
-
-  void ActivateCommandBuffer();
+  void SubmitCommandBuffer(bool submit_on_worker_thread,
+                           VkSwapchainKHR present_swap_chain = VK_NULL_HANDLE,
+                           uint32_t present_image_index = 0xFFFFFFFF);
 
   // Was the last present submitted to the queue a failure? If so, we must recreate our swapchain.
   bool CheckLastPresentFail() { return m_present_failed_flag.TestAndClear(); }
+
   // Schedule a vulkan resource for destruction later on. This will occur when the command buffer
   // is next re-used, and the GPU has finished working with the specified resource.
   void DeferBufferDestruction(VkBuffer object);
@@ -102,29 +107,33 @@ private:
 
   bool CreateSubmitThread();
 
-  void SubmitCommandBuffer(size_t index, SwapChain* swap_chain);
+  void SubmitCommandBuffer(u32 command_buffer_index, VkSwapchainKHR present_swap_chain,
+                           u32 present_image_index);
+  void BeginCommandBuffer();
 
-  void OnCommandBufferExecuted(size_t index);
+  void OnCommandBufferExecuted(u32 index);
 
   struct FrameResources
   {
     // [0] - Init (upload) command buffer, [1] - draw command buffer
-    VkCommandPool command_pool;
-    std::array<VkCommandBuffer, 2> command_buffers;
-    VkDescriptorPool descriptor_pool;
-    VkFence fence;
-    bool init_command_buffer_used;
-    bool needs_fence_wait;
+    VkCommandPool command_pool = VK_NULL_HANDLE;
+    std::array<VkCommandBuffer, 2> command_buffers = {};
+    VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+    VkFence fence = VK_NULL_HANDLE;
+    VkSemaphore semaphore = VK_NULL_HANDLE;
+    bool init_command_buffer_used = false;
+    bool semaphore_used = false;
+    bool needs_fence_wait = false;
 
     std::vector<std::function<void()>> cleanup_resources;
   };
 
-  std::array<FrameResources, NUM_COMMAND_BUFFERS> m_frame_resources = {};
-  size_t m_current_frame;
+  std::array<FrameResources, NUM_COMMAND_BUFFERS> m_frame_resources;
+  u32 m_current_frame;
 
   // callbacks when a fence point is set
   std::map<const void*, std::pair<CommandBufferQueuedCallback, CommandBufferExecutedCallback>>
-    m_fence_point_callbacks;
+      m_fence_point_callbacks;
 
   // Threaded command buffer execution
   // Semaphore determines when a command buffer can be queued
@@ -133,9 +142,11 @@ private:
   std::unique_ptr<Common::BlockingLoop> m_submit_loop;
   struct PendingCommandBufferSubmit
   {
-    size_t index;
-    SwapChain* swap_chain;
+    VkSwapchainKHR present_swap_chain;
+    u32 present_image_index;
+    u32 command_buffer_index;
   };
+  VkSemaphore m_present_semaphore = VK_NULL_HANDLE;
   std::deque<PendingCommandBufferSubmit> m_pending_submits;
   std::mutex m_pending_submit_lock;
   Common::Flag m_present_failed_flag;
