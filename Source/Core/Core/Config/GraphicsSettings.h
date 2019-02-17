@@ -11,6 +11,7 @@
 enum class AspectMode : int;
 enum class ShaderCompilationMode : int;
 enum class StereoMode : int;
+enum class AbstractTextureFormat : u32;
 
 namespace Config
 {
@@ -26,6 +27,7 @@ extern const ConfigInfo<int> GFX_ADAPTER;
 extern const ConfigInfo<bool> GFX_WIDESCREEN_HACK;
 extern const ConfigInfo<AspectMode> GFX_ASPECT_RATIO;
 extern const ConfigInfo<AspectMode> GFX_SUGGESTED_ASPECT_RATIO;
+extern const ConfigInfo<AbstractTextureFormat> GFX_FRAMEBUFFER_FORMAT;
 extern const ConfigInfo<float> GFX_DISPLAY_SCALE;
 extern const ConfigInfo<bool> GFX_CROP;
 extern const ConfigInfo<int> GFX_SAFE_TEXTURE_CACHE_COLOR_SAMPLES;

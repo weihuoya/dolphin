@@ -112,7 +112,7 @@ AbstractTextureFormat FramebufferManager::GetEFBColorFormat()
   // Multisampling depends on user settings.
   // The distinction becomes important for certain operations, i.e. the
   // alpha channel should be ignored if the EFB does not have one.
-  return AbstractTextureFormat::RGBA8;
+  return g_ActiveConfig.iFramebufferFormat;
 }
 
 AbstractTextureFormat FramebufferManager::GetEFBDepthFormat()

@@ -59,8 +59,8 @@
     </integer-array>
 
     <string-array name="sensorBarPositionEntries" translatable="false">
-        <item>Bottom</item>
-        <item>Top</item>
+        <item>底部</item>
+        <item>顶部</item>
     </string-array>
     <integer-array name="sensorBarPositionValues" translatable="false">
         <item>0</item>

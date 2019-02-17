@@ -24,6 +24,8 @@
 
 constexpr int EFB_SCALE_AUTO_INTEGRAL = 0;
 
+enum class AbstractTextureFormat : u32;
+
 enum class AspectMode : int
 {
   Auto,
@@ -54,6 +56,7 @@ struct VideoConfig final
   bool bWidescreenHack;
   AspectMode aspect_mode;
   AspectMode suggested_aspect_mode;
+  AbstractTextureFormat iFramebufferFormat;
   float fDisplayScale;
   bool bCrop;  // Aspect ratio controls.
   bool bShaderCache;

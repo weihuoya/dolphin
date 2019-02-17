@@ -73,6 +73,7 @@ void VideoConfig::Refresh()
   else
     aspect_mode = config_aspect_mode;
   bCrop = Config::Get(Config::GFX_CROP);
+  iFramebufferFormat = Config::Get(Config::GFX_FRAMEBUFFER_FORMAT);
   fDisplayScale = Config::Get(Config::GFX_DISPLAY_SCALE);
   iSafeTextureCache_ColorSamples = Config::Get(Config::GFX_SAFE_TEXTURE_CACHE_COLOR_SAMPLES);
   bShowFPS = Config::Get(Config::GFX_SHOW_FPS);
