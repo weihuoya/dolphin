@@ -98,7 +98,6 @@ public:
   PostProcessingConfiguration* GetConfig() { return &m_config; }
 
   bool Initialize(AbstractTextureFormat format);
-  void Shutdown();
 
   void RecompileShader();
   void RecompilePipeline();

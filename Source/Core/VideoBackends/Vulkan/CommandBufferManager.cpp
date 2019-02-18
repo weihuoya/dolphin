@@ -251,14 +251,8 @@ void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
                                                VkSwapchainKHR present_swap_chain,
                                                uint32_t present_image_index)
 {
-  FrameResources& resources = m_frame_resources[m_current_frame];
-
-  // Fire fence tracking callbacks. This can't happen on the worker thread.
-  // We invoke these before submitting so that any last-minute commands can be added.
-  for (const auto& iter : m_fence_point_callbacks)
-    iter.second.first(resources.command_buffers[1], resources.fence);
-
   // End the current command buffer.
+  FrameResources& resources = m_frame_resources[m_current_frame];
   for (VkCommandBuffer command_buffer : resources.command_buffers)
   {
     VkResult res = vkEndCommandBuffer(command_buffer);
@@ -376,10 +370,10 @@ void CommandBufferManager::OnCommandBufferExecuted(u32 index)
   FrameResources& resources = m_frame_resources[index];
 
   // Fire fence tracking callbacks.
-  for (auto iter = m_fence_point_callbacks.begin(); iter != m_fence_point_callbacks.end();)
+  for (auto iter = m_fence_callbacks.begin(); iter != m_fence_callbacks.end();)
   {
     auto backup_iter = iter++;
-    backup_iter->second.second(resources.fence);
+    backup_iter->second(resources.fence);
   }
 
   // Clean up all objects pending destruction on this command buffer
@@ -477,20 +471,18 @@ void CommandBufferManager::DeferImageViewDestruction(VkImageView object)
       [object]() { vkDestroyImageView(g_vulkan_context->GetDevice(), object, nullptr); });
 }
 
-void CommandBufferManager::AddFencePointCallback(
-    const void* key, const CommandBufferQueuedCallback& queued_callback,
-    const CommandBufferExecutedCallback& executed_callback)
+void CommandBufferManager::AddFenceSignaledCallback(const void* key, FenceSignaledCallback callback)
 {
   // Shouldn't be adding twice.
-  ASSERT(m_fence_point_callbacks.find(key) == m_fence_point_callbacks.end());
-  m_fence_point_callbacks.emplace(key, std::make_pair(queued_callback, executed_callback));
+  ASSERT(m_fence_callbacks.find(key) == m_fence_callbacks.end());
+  m_fence_callbacks.emplace(key, std::move(callback));
 }
 
-void CommandBufferManager::RemoveFencePointCallback(const void* key)
+void CommandBufferManager::RemoveFenceSignaledCallback(const void* key)
 {
-  auto iter = m_fence_point_callbacks.find(key);
-  ASSERT(iter != m_fence_point_callbacks.end());
-  m_fence_point_callbacks.erase(iter);
+  auto iter = m_fence_callbacks.find(key);
+  ASSERT(iter != m_fence_callbacks.end());
+  m_fence_callbacks.erase(iter);
 }
 
 std::unique_ptr<CommandBufferManager> g_command_buffer_mgr;

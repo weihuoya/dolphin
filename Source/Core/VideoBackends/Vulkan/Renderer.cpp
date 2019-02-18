@@ -303,7 +303,7 @@ void Renderer::Flush()
 
 void Renderer::WaitForGPUIdle()
 {
-  g_command_buffer_mgr->WaitForGPUIdle();
+  ExecuteCommandBuffer(false, true);
 }
 
 void Renderer::BindBackbuffer(const ClearColor& clear_color)
@@ -355,7 +355,6 @@ void Renderer::PresentBackbuffer()
 
   // New cmdbuffer, so invalidate state.
   StateTracker::GetInstance()->InvalidateCachedState();
-  VertexManagerBase::InvalidateConstants();
 }
 
 void Renderer::ExecuteCommandBuffer(bool submit_off_thread, bool wait_for_completion)
@@ -369,7 +368,6 @@ void Renderer::ExecuteCommandBuffer(bool submit_off_thread, bool wait_for_comple
     g_command_buffer_mgr->WaitForFence(pending_fence);
 
   StateTracker::GetInstance()->InvalidateCachedState();
-  VertexManagerBase::InvalidateConstants();
 }
 
 void Renderer::CheckForSurfaceChange()

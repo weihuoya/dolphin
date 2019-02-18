@@ -87,6 +87,10 @@ u32 VertexManagerBase::GetRemainingSize() const
 DataReader VertexManagerBase::PrepareForAdditionalData(int primitive, u32 count, u32 stride,
                                                        bool cullall)
 {
+  // Flush all EFB pokes and invalidate the peek cache.
+  g_framebuffer_manager->InvalidatePeekCache();
+  g_framebuffer_manager->FlushEFBPokes();
+
   // The SSE vertex loader can write up to 4 bytes past the end
   u32 const needed_vertex_bytes = count * stride + 4;
 
@@ -267,10 +271,30 @@ bool VertexManagerBase::UploadTexelBuffer(const void* data, u32 data_size, Texel
   return false;
 }
 
+void VertexManagerBase::LoadTextures()
+{
+  BitSet32 usedtextures;
+  for (u32 i = 0; i < bpmem.genMode.numtevstages + 1u; ++i)
+    if (bpmem.tevorders[i / 2].getEnable(i & 1))
+      usedtextures[bpmem.tevorders[i / 2].getTexMap(i & 1)] = true;
+
+  if (bpmem.genMode.numindstages > 0)
+    for (unsigned int i = 0; i < bpmem.genMode.numtevstages + 1u; ++i)
+      if (bpmem.tevind[i].IsActive() && bpmem.tevind[i].bt < bpmem.genMode.numindstages)
+        usedtextures[bpmem.tevindref.getTexMap(bpmem.tevind[i].bt)] = true;
+
+  for (unsigned int i : usedtextures)
+    g_texture_cache->Load(i);
+
+  g_texture_cache->BindTextures();
+}
+
 void VertexManagerBase::Flush()
 {
   if (m_is_flushed)
     return;
+
+  m_is_flushed = true;
 
   // loading a state will invalidate BP, so check for it
   g_video_backend->CheckInvalidState();
@@ -315,29 +339,6 @@ void VertexManagerBase::Flush()
            (bpmem.alpha_test.hex >> 16) & 0xff);
 #endif
 
-  // If the primitave is marked CullAll. All we need to do is update the vertex constants and
-  // calculate the zfreeze refrence slope
-  if (!m_cull_all)
-  {
-    BitSet32 usedtextures;
-    for (u32 i = 0; i < bpmem.genMode.numtevstages + 1u; ++i)
-      if (bpmem.tevorders[i / 2].getEnable(i & 1))
-        usedtextures[bpmem.tevorders[i / 2].getTexMap(i & 1)] = true;
-
-    if (bpmem.genMode.numindstages > 0)
-      for (unsigned int i = 0; i < bpmem.genMode.numtevstages + 1u; ++i)
-        if (bpmem.tevind[i].IsActive() && bpmem.tevind[i].bt < bpmem.genMode.numindstages)
-          usedtextures[bpmem.tevindref.getTexMap(bpmem.tevind[i].bt)] = true;
-
-    for (unsigned int i : usedtextures)
-      g_texture_cache->Load(i);
-
-    g_texture_cache->BindTextures();
-  }
-
-  // set global vertex constants
-  VertexShaderManager::SetConstants();
-
   // Track some stats used elsewhere by the anamorphic widescreen heuristic.
   if (!SConfig::GetInstance().bWii)
   {
@@ -357,6 +358,7 @@ void VertexManagerBase::Flush()
   }
 
   // Calculate ZSlope for zfreeze
+  VertexShaderManager::SetConstants();
   if (!bpmem.genMode.zfreeze)
   {
     // Must be done after VertexShaderManager::SetConstants()
@@ -370,23 +372,23 @@ void VertexManagerBase::Flush()
 
   if (!m_cull_all)
   {
-    // Flush all EFB pokes and invalidate the peek cache.
-    g_framebuffer_manager->InvalidatePeekCache();
-    g_framebuffer_manager->FlushEFBPokes();
-
-    // Update and upload constants. Note for the Vulkan backend, this must occur before the
-    // vertex/index buffer is committed, otherwise the data will be associated with the
-    // previous command buffer, instead of the one with the draw if there is an overflow.
-    GeometryShaderManager::SetConstants();
-    PixelShaderManager::SetConstants();
-    UploadUniforms();
-
-    // Now the vertices can be flushed to the GPU.
+    // Now the vertices can be flushed to the GPU. Everything following the CommitBuffer() call
+    // must be careful to not upload any utility vertices, as the binding will be lost otherwise.
     const u32 num_indices = IndexGenerator::GetIndexLen();
     u32 base_vertex, base_index;
     CommitBuffer(IndexGenerator::GetNumVerts(),
                  VertexLoaderManager::GetCurrentVertexFormat()->GetVertexStride(), num_indices,
                  &base_vertex, &base_index);
+
+    // Texture loading can cause palettes to be applied (-> uniforms -> draws).
+    // Palette application does not use vertices, only a full-screen quad, so this is okay.
+    // Same with GPU texture decoding, which uses compute shaders.
+    LoadTextures();
+
+    // Now we can upload uniforms, as nothing else will override them.
+    GeometryShaderManager::SetConstants();
+    PixelShaderManager::SetConstants();
+    UploadUniforms();
 
     // Update the pipeline, or compile one if needed.
     UpdatePipelineConfig();
@@ -419,12 +421,11 @@ void VertexManagerBase::Flush()
   }
 
   if (xfmem.numTexGen.numTexGens != bpmem.genMode.numtexgens)
+  {
     ERROR_LOG(VIDEO,
               "xf.numtexgens (%d) does not match bp.numtexgens (%d). Error in command stream.",
               xfmem.numTexGen.numTexGens, bpmem.genMode.numtexgens.Value());
-
-  m_is_flushed = true;
-  m_cull_all = false;
+  }
 }
 
 void VertexManagerBase::DoState(PointerWrap& p)

@@ -82,7 +82,6 @@ public:
                                      const std::string& gcode);
   static StreamBuffer* GetUniformBuffer();
   static u32 GetUniformBufferAlignment();
-  static void InvalidateConstants();
   static void UploadConstants();
   static void UploadConstants(const void* data, u32 data_size);
 

@@ -1038,6 +1038,11 @@ void Renderer::Flush()
   glFlush();
 }
 
+void Renderer::WaitForGPUIdle()
+{
+  glFinish();
+}
+
 void Renderer::CheckForSurfaceChange()
 {
   if (!m_surface_changed.TestAndClear())

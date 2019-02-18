@@ -75,6 +75,7 @@ public:
     return m_texture_copy_vertex_shader.get();
   }
   const AbstractShader* GetEFBCopyVertexShader() const { return m_efb_copy_vertex_shader.get(); }
+
   const AbstractShader* GetTextureCopyPixelShader() const
   {
     return m_texture_copy_pixel_shader.get();

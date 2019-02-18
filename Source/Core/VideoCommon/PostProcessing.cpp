@@ -362,13 +362,6 @@ bool PostProcessing::Initialize(AbstractTextureFormat format)
   return CompileVertexShader() && CompilePixelShader() && CompilePipeline();
 }
 
-void PostProcessing::Shutdown()
-{
-  m_pipeline.reset();
-  m_pixel_shader.reset();
-  m_vertex_shader.reset();
-}
-
 void PostProcessing::RecompileShader()
 {
   m_pipeline.reset();
@@ -690,7 +683,7 @@ bool PostProcessing::CompilePipeline()
   config.vertex_shader = m_vertex_shader.get();
   config.geometry_shader = nullptr;
   config.pixel_shader = m_pixel_shader.get();
-  config.rasterization_state = RenderState::GetCullBackFaceRasterizationState(PrimitiveType::Triangles);
+  config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
   config.depth_state = RenderState::GetNoDepthTestingDepthState();
   config.blending_state = RenderState::GetNoBlendingBlendState();
   config.framebuffer_state = RenderState::GetColorFramebufferState(m_framebuffer_format);

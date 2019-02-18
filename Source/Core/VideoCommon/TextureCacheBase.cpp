@@ -2304,6 +2304,8 @@ void TextureCacheBase::CopyEFBToCacheEntry(TCacheEntry* entry, bool is_depth_cop
       is_depth_copy ? g_framebuffer_manager->ResolveEFBDepthTexture(scaled_src_rect) :
                       g_framebuffer_manager->ResolveEFBColorTexture(scaled_src_rect);
 
+  g_renderer->BeginUtilityDrawing();
+
   // Fill uniform buffer.
   struct Uniforms
   {
@@ -2335,7 +2337,6 @@ void TextureCacheBase::CopyEFBToCacheEntry(TCacheEntry* entry, bool is_depth_cop
   g_vertex_manager->UploadUtilityUniforms(&uniforms, sizeof(uniforms));
 
   // Use the copy pipeline to render the VRAM copy.
-  g_renderer->BeginUtilityDrawing();
   g_renderer->SetAndDiscardFramebuffer(entry->framebuffer.get());
   g_renderer->SetViewportAndScissor(entry->framebuffer->GetRect());
   g_renderer->SetPipeline(copy_pipeline);
@@ -2368,6 +2369,8 @@ void TextureCacheBase::CopyEFB(AbstractStagingTexture* dst, const EFBCopyParams&
   AbstractTexture* src_texture =
       params.depth ? g_framebuffer_manager->ResolveEFBDepthTexture(scaled_src_rect) :
                      g_framebuffer_manager->ResolveEFBColorTexture(scaled_src_rect);
+
+  g_renderer->BeginUtilityDrawing();
 
   // Fill uniform buffer.
   struct Uniforms
@@ -2409,7 +2412,6 @@ void TextureCacheBase::CopyEFB(AbstractStagingTexture* dst, const EFBCopyParams&
   const auto encode_rect = MathUtil::Rectangle<int>(0, 0, render_width, render_height);
 
   // Render to GPU texture, and then copy to CPU-accessible texture.
-  g_renderer->BeginUtilityDrawing();
   g_renderer->SetAndDiscardFramebuffer(m_efb_encoding_framebuffer.get());
   g_renderer->SetViewportAndScissor(encode_rect);
   g_renderer->SetPipeline(copy_pipeline);
@@ -2434,6 +2436,8 @@ bool TextureCacheBase::ConvertTexture(TCacheEntry* entry, TCacheEntry* unconvert
     return false;
   }
 
+  g_renderer->BeginUtilityDrawing();
+
   const u32 palette_size = unconverted->format == TextureFormat::I4 ? 32 : 512;
   u32 texel_buffer_offset;
   if (!g_vertex_manager->UploadTexelBuffer(palette, palette_size,
@@ -2456,7 +2460,6 @@ bool TextureCacheBase::ConvertTexture(TCacheEntry* entry, TCacheEntry* unconvert
   uniforms.texel_buffer_offset = texel_buffer_offset;
   g_vertex_manager->UploadUtilityUniforms(&uniforms, sizeof(uniforms));
 
-  g_renderer->BeginUtilityDrawing();
   g_renderer->SetAndDiscardFramebuffer(entry->framebuffer.get());
   g_renderer->SetViewportAndScissor(entry->texture->GetRect());
   g_renderer->SetPipeline(g_shader_cache->GetPaletteConversionPipeline(format));

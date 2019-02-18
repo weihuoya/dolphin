@@ -497,6 +497,7 @@ void FramebufferManager::ClearEFB(const MathUtil::Rectangle<int>& rc, bool clear
 {
   FlushEFBPokes();
   InvalidatePeekCache();
+  g_renderer->BeginUtilityDrawing();
 
   // Set up uniforms.
   struct Uniforms
@@ -517,7 +518,6 @@ void FramebufferManager::ClearEFB(const MathUtil::Rectangle<int>& rc, bool clear
 
   const auto target_rc = g_renderer->ConvertFramebufferRectangle(
       g_renderer->ConvertEFBRectangle(rc), m_efb_framebuffer.get());
-  g_renderer->BeginUtilityDrawing();
   g_renderer->SetPipeline(m_efb_clear_pipelines[clear_color][clear_alpha][clear_z].get());
   g_renderer->SetViewportAndScissor(target_rc);
   g_renderer->Draw(0, 3);
@@ -692,17 +692,14 @@ void FramebufferManager::FlushEFBPokes()
 void FramebufferManager::DrawPokeVertices(const EFBPokeVertex* vertices, u32 vertex_count,
                                           const AbstractPipeline* pipeline)
 {
-  // All vertices should be drawn for ordering, and since we need the buffer.
-  g_vertex_manager->Flush();
-
   // Copy to vertex buffer.
+  g_renderer->BeginUtilityDrawing();
   u32 base_vertex, base_index;
   g_vertex_manager->UploadUtilityVertices(vertices, sizeof(EFBPokeVertex),
                                           static_cast<u32>(vertex_count), nullptr, 0, &base_vertex,
                                           &base_index);
 
   // Now we can draw.
-  g_renderer->BeginUtilityDrawing();
   g_renderer->SetViewportAndScissor(m_efb_framebuffer->GetRect());
   g_renderer->SetPipeline(pipeline);
   g_renderer->Draw(base_vertex, vertex_count);

@@ -124,13 +124,11 @@ bool VertexManager::Initialize()
 void VertexManager::UploadUtilityUniforms(const void* uniforms, u32 uniforms_size)
 {
   // Just use the one buffer for all three.
+  InvalidateConstants();
   UpdateConstantBuffer(m_vertex_constant_buffer, uniforms, uniforms_size);
   D3D::stateman->SetVertexConstants(m_vertex_constant_buffer);
   D3D::stateman->SetGeometryConstants(m_vertex_constant_buffer);
   D3D::stateman->SetPixelConstants(m_vertex_constant_buffer);
-  VertexShaderManager::dirty = true;
-  GeometryShaderManager::dirty = true;
-  PixelShaderManager::dirty = true;
 }
 
 bool VertexManager::MapTexelBuffer(u32 required_size, D3D11_MAPPED_SUBRESOURCE& sr)

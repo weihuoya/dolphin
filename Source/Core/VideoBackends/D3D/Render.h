@@ -61,6 +61,9 @@ public:
   u16 BBoxRead(int index) override;
   void BBoxWrite(int index, u16 value) override;
 
+  void Flush() override;
+  void WaitForGPUIdle() override;
+
   void OnConfigChanged(u32 bits) override;
 
 private:

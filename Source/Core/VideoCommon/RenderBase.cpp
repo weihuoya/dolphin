@@ -105,14 +105,13 @@ void Renderer::Shutdown()
   // First stop any framedumping, which might need to dump the last xfb frame. This process
   // can require additional graphics sub-systems so it needs to be done first
   ShutdownFrameDumping();
-  m_post_processor->Shutdown();
   m_post_processor.reset();
-  m_raster_font->Shutdown();
   m_raster_font.reset();
 }
 
 void Renderer::BeginUtilityDrawing()
 {
+  g_vertex_manager->Flush();
 }
 
 void Renderer::EndUtilityDrawing()
@@ -383,7 +382,6 @@ void Renderer::CheckForConfigChanges()
   if (changed_bits & (CONFIG_CHANGE_BIT_MULTISAMPLES | CONFIG_CHANGE_BIT_STEREO_MODE |
                       CONFIG_CHANGE_BIT_TARGET_SIZE))
   {
-    WaitForGPUIdle();
     g_framebuffer_manager->RecreateEFBFramebuffer();
   }
 

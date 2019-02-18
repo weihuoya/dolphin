@@ -26,8 +26,7 @@ public:
   u8* GetCurrentHostPointer() const { return m_host_pointer + m_current_offset; }
   u32 GetCurrentSize() const { return m_current_size; }
   u32 GetCurrentOffset() const { return m_current_offset; }
-  bool ReserveMemory(u32 num_bytes, u32 alignment, bool allow_reuse = true,
-                     bool allow_growth = true, bool reallocate_if_full = false);
+  bool ReserveMemory(u32 num_bytes, u32 alignment);
   void CommitMemory(u32 final_num_bytes);
 
   static std::unique_ptr<StreamBuffer> Create(VkBufferUsageFlags usage, u32 initial_size,
@@ -35,8 +34,8 @@ public:
 
 private:
   bool ResizeBuffer(u32 size);
-  void OnCommandBufferQueued(VkCommandBuffer command_buffer, VkFence fence);
-  void OnCommandBufferExecuted(VkFence fence);
+  void UpdateCurrentFencePosition();
+  void OnFenceSignaled(VkFence fence);
 
   // Waits for as many fences as needed to allocate num_bytes bytes from the buffer.
   bool WaitForClearSpace(u32 num_bytes);

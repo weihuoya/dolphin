@@ -93,13 +93,9 @@ public:
   // Instruct the manager to fire the specified callback when a fence is flagged to be signaled.
   // This happens when command buffers are executed, and can be tested if signaled, which means
   // that all commands up to the point when the callback was fired have completed.
-  using CommandBufferQueuedCallback = std::function<void(VkCommandBuffer, VkFence)>;
-  using CommandBufferExecutedCallback = std::function<void(VkFence)>;
-
-  void AddFencePointCallback(const void* key, const CommandBufferQueuedCallback& queued_callback,
-                             const CommandBufferExecutedCallback& executed_callback);
-
-  void RemoveFencePointCallback(const void* key);
+  using FenceSignaledCallback = std::function<void(VkFence)>;
+  void AddFenceSignaledCallback(const void* key, FenceSignaledCallback callback);
+  void RemoveFenceSignaledCallback(const void* key);
 
 private:
   bool CreateCommandBuffers();
@@ -132,8 +128,7 @@ private:
   u32 m_current_frame;
 
   // callbacks when a fence point is set
-  std::map<const void*, std::pair<CommandBufferQueuedCallback, CommandBufferExecutedCallback>>
-      m_fence_point_callbacks;
+  std::map<const void*, FenceSignaledCallback> m_fence_callbacks;
 
   // Threaded command buffer execution
   // Semaphore determines when a command buffer can be queued

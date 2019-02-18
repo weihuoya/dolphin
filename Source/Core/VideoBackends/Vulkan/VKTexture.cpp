@@ -721,7 +721,7 @@ void VKStagingTexture::CopyFromTexture(const AbstractTexture* src,
   if (m_needs_flush)
   {
     // Drop copy before reusing it.
-    g_command_buffer_mgr->RemoveFencePointCallback(this);
+    g_command_buffer_mgr->RemoveFenceSignaledCallback(this);
     m_flush_fence = VK_NULL_HANDLE;
     m_needs_flush = false;
   }
@@ -752,24 +752,16 @@ void VKStagingTexture::CopyFromTexture(const AbstractTexture* src,
   src_tex->TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(), old_layout);
 
   m_needs_flush = true;
-  g_command_buffer_mgr->AddFencePointCallback(this,
-                                              [this](VkCommandBuffer buf, VkFence fence) {
-                                                ASSERT(m_needs_flush);
-                                                if (m_flush_fence != VK_NULL_HANDLE)
-                                                  return;
+  m_flush_fence = g_command_buffer_mgr->GetCurrentCommandBufferFence();
+  g_command_buffer_mgr->AddFenceSignaledCallback(this, [this](VkFence fence) {
+    if (m_flush_fence != fence)
+      return;
 
-                                                m_flush_fence = fence;
-                                              },
-                                              [this](VkFence fence) {
-                                                if (m_flush_fence != fence)
-                                                  return;
-
-                                                m_flush_fence = VK_NULL_HANDLE;
-                                                m_needs_flush = false;
-                                                g_command_buffer_mgr->RemoveFencePointCallback(
-                                                    this);
-                                                m_staging_buffer->InvalidateCPUCache();
-                                              });
+    m_flush_fence = VK_NULL_HANDLE;
+    m_needs_flush = false;
+    g_command_buffer_mgr->RemoveFenceSignaledCallback(this);
+    m_staging_buffer->InvalidateCPUCache();
+  });
 }
 
 void VKStagingTexture::CopyToTexture(const MathUtil::Rectangle<int>& src_rect, AbstractTexture* dst,
@@ -788,7 +780,7 @@ void VKStagingTexture::CopyToTexture(const MathUtil::Rectangle<int>& src_rect, A
   if (m_needs_flush)
   {
     // Drop copy before reusing it.
-    g_command_buffer_mgr->RemoveFencePointCallback(this);
+    g_command_buffer_mgr->RemoveFenceSignaledCallback(this);
     m_flush_fence = VK_NULL_HANDLE;
     m_needs_flush = false;
   }
@@ -820,23 +812,15 @@ void VKStagingTexture::CopyToTexture(const MathUtil::Rectangle<int>& src_rect, A
   dst_tex->TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(), old_layout);
 
   m_needs_flush = true;
-  g_command_buffer_mgr->AddFencePointCallback(this,
-                                              [this](VkCommandBuffer buf, VkFence fence) {
-                                                ASSERT(m_needs_flush);
-                                                if (m_flush_fence != VK_NULL_HANDLE)
-                                                  return;
+  m_flush_fence = g_command_buffer_mgr->GetCurrentCommandBufferFence();
+  g_command_buffer_mgr->AddFenceSignaledCallback(this, [this](VkFence fence) {
+    if (m_flush_fence != fence)
+      return;
 
-                                                m_flush_fence = fence;
-                                              },
-                                              [this](VkFence fence) {
-                                                if (m_flush_fence != fence)
-                                                  return;
-
-                                                m_flush_fence = VK_NULL_HANDLE;
-                                                m_needs_flush = false;
-                                                g_command_buffer_mgr->RemoveFencePointCallback(
-                                                    this);
-                                              });
+    m_flush_fence = VK_NULL_HANDLE;
+    m_needs_flush = false;
+    g_command_buffer_mgr->RemoveFenceSignaledCallback(this);
+  });
 }
 
 bool VKStagingTexture::Map()
@@ -856,19 +840,19 @@ void VKStagingTexture::Flush()
     return;
 
   // Either of the below two calls will cause the callback to fire.
-  g_command_buffer_mgr->RemoveFencePointCallback(this);
-  if (m_flush_fence != VK_NULL_HANDLE)
+  g_command_buffer_mgr->RemoveFenceSignaledCallback(this);
+  if (m_flush_fence == g_command_buffer_mgr->GetCurrentCommandBufferFence())
   {
-    // WaitForFence should fire the callback.
-    g_command_buffer_mgr->WaitForFence(m_flush_fence);
-    m_flush_fence = VK_NULL_HANDLE;
+    // The readback is in the current command buffer, and we must execute it.
+    Renderer::GetInstance()->ExecuteCommandBuffer(false, true);
   }
   else
   {
-    // We don't have a fence, and are pending. That means the readback is in the current
-    // command buffer, and must execute it to populate the staging texture.
-    Renderer::GetInstance()->ExecuteCommandBuffer(false, true);
+    // WaitForFence should fire the callback.
+    g_command_buffer_mgr->WaitForFence(m_flush_fence);
   }
+
+  DEBUG_ASSERT(m_flush_fence == VK_NULL_HANDLE);
   m_needs_flush = false;
 
   // For readback textures, invalidate the CPU cache as there is new data there.

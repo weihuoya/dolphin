@@ -14,7 +14,6 @@ class RasterFont
 {
 public:
   bool Initialize(AbstractTextureFormat format);
-  void Shutdown();
 
   void Prepare();
   void Draw(const std::string& text, float start_x, float start_y, u32 color);

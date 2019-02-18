@@ -121,13 +121,6 @@ bool RasterFont::Initialize(AbstractTextureFormat format)
   return CreateTexture() && CreatePipeline();
 }
 
-void RasterFont::Shutdown()
-{
-  m_pipeline.reset();
-  m_vertex_format.reset();
-  m_texture.reset();
-}
-
 bool RasterFont::CreateTexture()
 {
   std::vector<u32> texture_data;

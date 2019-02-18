@@ -147,7 +147,7 @@ void VideoConfig::Refresh()
 
   bPerfQueriesEnable = Config::Get(Config::GFX_PERF_QUERIES_ENABLE);
 
-  if(backend_info.api_type == APIType::Vulkan && !backend_info.bSupportsDualSourceBlend)
+  if(!backend_info.bSupportsDualSourceBlend)
   {
     bAlphaPassShadowHack = SConfig::GetInstance().m_AlphaPassShadowHack;
   }

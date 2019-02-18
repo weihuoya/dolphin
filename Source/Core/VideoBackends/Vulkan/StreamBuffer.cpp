@@ -20,17 +20,13 @@ namespace Vulkan
 StreamBuffer::StreamBuffer(VkBufferUsageFlags usage, u32 max_size)
     : m_usage(usage), m_maximum_size(max_size)
 {
-  // Add a callback that fires on fence point creation and signal
-  g_command_buffer_mgr->AddFencePointCallback(
-      this,
-      std::bind(&StreamBuffer::OnCommandBufferQueued, this, std::placeholders::_1,
-                std::placeholders::_2),
-      std::bind(&StreamBuffer::OnCommandBufferExecuted, this, std::placeholders::_1));
+  g_command_buffer_mgr->AddFenceSignaledCallback(
+      this, std::bind(&StreamBuffer::OnFenceSignaled, this, std::placeholders::_1));
 }
 
 StreamBuffer::~StreamBuffer()
 {
-  g_command_buffer_mgr->RemoveFencePointCallback(this);
+  g_command_buffer_mgr->RemoveFenceSignaledCallback(this);
 
   if (m_host_pointer)
     vkUnmapMemory(g_vulkan_context->GetDevice(), m_memory);
@@ -106,9 +102,7 @@ bool StreamBuffer::ResizeBuffer(u32 size)
   return true;
 }
 
-bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment, bool allow_reuse /* = true */,
-                                 bool allow_growth /* = true */,
-                                 bool reallocate_if_full /* = false */)
+bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment)
 {
   const u32 required_bytes = num_bytes + alignment;
 
@@ -122,6 +116,7 @@ bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment, bool allow_reuse 
   }
 
   // Is the GPU behind or up to date with our current offset?
+  UpdateCurrentFencePosition();
   if (m_current_offset >= m_current_gpu_position)
   {
     const u32 remaining_bytes = m_current_size - m_current_offset;
@@ -137,7 +132,7 @@ bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment, bool allow_reuse 
     // We use < here because we don't want to have the case of m_current_offset ==
     // m_current_gpu_position. That would mean the code above would assume the
     // GPU has caught up to us, which it hasn't.
-    if (allow_reuse && required_bytes < m_current_gpu_position)
+    if (required_bytes < m_current_gpu_position)
     {
       // Reset offset to zero, since we're allocating behind the gpu now
       m_current_offset = 0;
@@ -162,7 +157,7 @@ bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment, bool allow_reuse 
 
   // Try to grow the buffer up to the maximum size before waiting.
   // Double each time until the maximum size is reached.
-  if (allow_growth && m_current_size < m_maximum_size)
+  if (m_current_size < m_maximum_size)
   {
     const u32 new_size = std::min(std::max(num_bytes, m_current_size * 2), m_maximum_size);
     if (ResizeBuffer(new_size))
@@ -174,7 +169,7 @@ bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment, bool allow_reuse 
   }
 
   // Can we find a fence to wait on that will give us enough memory?
-  if (allow_reuse && WaitForClearSpace(required_bytes))
+  if (WaitForClearSpace(required_bytes))
   {
     ASSERT(m_current_offset == m_current_gpu_position ||
            (m_current_offset + required_bytes) < m_current_gpu_position);
@@ -183,17 +178,9 @@ bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment, bool allow_reuse 
     return true;
   }
 
-  // If we are not allowed to execute in our current state (e.g. in the middle of a render pass),
-  // as a last resort, reallocate the buffer. This will incur a performance hit and is not
-  // encouraged.
-  if (reallocate_if_full && ResizeBuffer(m_current_size))
-  {
-    m_last_allocation_size = num_bytes;
-    return true;
-  }
-
-  // We tried everything we could, and still couldn't get anything. If we're not at a point
-  // where the state is known and can be resumed, this is probably a fatal error.
+  // We tried everything we could, and still couldn't get anything. This means that too much space
+  // in the buffer is being used by the command buffer currently being recorded. Therefore, the
+  // only option is to execute it, and wait until it's done.
   return false;
 }
 
@@ -215,23 +202,25 @@ void StreamBuffer::CommitMemory(u32 final_num_bytes)
   m_current_offset += final_num_bytes;
 }
 
-void StreamBuffer::OnCommandBufferQueued(VkCommandBuffer command_buffer, VkFence fence)
+void StreamBuffer::UpdateCurrentFencePosition()
 {
   // Don't create a tracking entry if the GPU is caught up with the buffer.
   if (m_current_offset == m_current_gpu_position)
     return;
 
   // Has the offset changed since the last fence?
-  if (!m_tracked_fences.empty() && m_tracked_fences.back().second == m_current_offset)
+  const VkFence fence = g_command_buffer_mgr->GetCurrentCommandBufferFence();
+  if (!m_tracked_fences.empty() && m_tracked_fences.back().first == fence)
   {
-    // No need to track the new fence, the old one is sufficient.
+    // Still haven't executed a command buffer, so just update the offset.
+    m_tracked_fences.back().second = m_current_offset;
     return;
   }
 
   m_tracked_fences.emplace_back(fence, m_current_offset);
 }
 
-void StreamBuffer::OnCommandBufferExecuted(VkFence fence)
+void StreamBuffer::OnFenceSignaled(VkFence fence)
 {
   // Locate the entry for this fence (if any, we may have been forced to wait already)
   auto iter = std::find_if(m_tracked_fences.begin(), m_tracked_fences.end(),
@@ -250,7 +239,6 @@ void StreamBuffer::OnCommandBufferExecuted(VkFence fence)
 bool StreamBuffer::WaitForClearSpace(u32 num_bytes)
 {
   u32 new_offset = 0;
-  u32 new_gpu_position = 0;
   auto iter = m_tracked_fences.begin();
   for (; iter != m_tracked_fences.end(); iter++)
   {
@@ -263,7 +251,6 @@ bool StreamBuffer::WaitForClearSpace(u32 num_bytes)
     {
       // Start at the start of the buffer again.
       new_offset = 0;
-      new_gpu_position = 0;
       break;
     }
 
@@ -276,7 +263,6 @@ bool StreamBuffer::WaitForClearSpace(u32 num_bytes)
       if (gpu_position > num_bytes)
       {
         new_offset = 0;
-        new_gpu_position = gpu_position;
         break;
       }
     }
@@ -290,26 +276,22 @@ bool StreamBuffer::WaitForClearSpace(u32 num_bytes)
       {
         // Leave the offset as-is, but update the GPU position.
         new_offset = m_current_offset;
-        new_gpu_position = gpu_position;
         break;
       }
     }
   }
 
   // Did any fences satisfy this condition?
-  if (iter == m_tracked_fences.end())
+  // Has the command buffer been executed yet? If not, the caller should execute it.
+  if (iter == m_tracked_fences.end() ||
+      iter->first == g_command_buffer_mgr->GetCurrentCommandBufferFence())
+  {
     return false;
+  }
 
-  // Wait until this fence is signaled.
-  VkResult res =
-      vkWaitForFences(g_vulkan_context->GetDevice(), 1, &iter->first, VK_TRUE, UINT64_MAX);
-  if (res != VK_SUCCESS)
-    LOG_VULKAN_ERROR(res, "vkWaitForFences failed: ");
-
-  // Update GPU position, and remove all fences up to (and including) this fence.
+  // Wait until this fence is signaled. This will fire the callback, updating the GPU position.
+  g_command_buffer_mgr->WaitForFence(iter->first);
   m_current_offset = new_offset;
-  m_current_gpu_position = new_gpu_position;
-  m_tracked_fences.erase(m_tracked_fences.begin(), ++iter);
   return true;
 }
 

@@ -245,11 +245,8 @@ void VertexManager::UpdatePixelShaderConstants()
 
 bool VertexManager::ReserveConstantStorage()
 {
-  // Since we invalidate all constants on command buffer execution, it doesn't matter if this
-  // causes the stream buffer to be resized.
   if (m_uniform_stream_buffer->ReserveMemory(m_uniform_buffer_reserve_size,
-                                             g_vulkan_context->GetUniformBufferAlignment(), true,
-                                             true, false))
+                                             g_vulkan_context->GetUniformBufferAlignment()))
   {
     return true;
   }
@@ -277,7 +274,7 @@ void VertexManager::UploadAllConstants()
 
   // Allocate everything at once.
   // We should only be here if the buffer was full and a command buffer was submitted anyway.
-  if (!m_uniform_stream_buffer->ReserveMemory(allocation_size, ub_alignment, true, true, false))
+  if (!m_uniform_stream_buffer->ReserveMemory(allocation_size, ub_alignment))
   {
     PanicAlert("Failed to allocate space for constants in streaming buffer");
     return;
@@ -317,8 +314,9 @@ void VertexManager::UploadAllConstants()
 
 void VertexManager::UploadUtilityUniforms(const void* data, u32 data_size)
 {
-  if (!m_uniform_stream_buffer->ReserveMemory(
-          data_size, g_vulkan_context->GetUniformBufferAlignment(), true, true, false))
+  InvalidateConstants();
+  if (!m_uniform_stream_buffer->ReserveMemory(data_size,
+                                              g_vulkan_context->GetUniformBufferAlignment()))
   {
     WARN_LOG(VIDEO, "Executing command buffer while waiting for ext space in uniform buffer");
     Renderer::GetInstance()->ExecuteCommandBuffer(false);

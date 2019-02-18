@@ -130,6 +130,7 @@ public:
   void EndUtilityDrawing() override;
 
   void Flush() override;
+  void WaitForGPUIdle() override;
   void OnConfigChanged(u32 bits) override;
 
   void ClearScreen(const EFBRectangle& rc, bool colorEnable, bool alphaEnable, bool zEnable,

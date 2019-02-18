@@ -361,6 +361,17 @@ void Renderer::BBoxWrite(int index, u16 _value)
   BBox::Set(index, value);
 }
 
+void Renderer::Flush()
+{
+  D3D::context->Flush();
+}
+
+void Renderer::WaitForGPUIdle()
+{
+  // There is no glFinish() equivalent in D3D.
+  D3D::context->Flush();
+}
+
 void Renderer::SetFullscreen(bool enable_fullscreen)
 {
   D3D::SetFullscreenState(enable_fullscreen);

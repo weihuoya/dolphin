@@ -84,10 +84,6 @@ public:
     m_pipeline_config_changed = true;
   }
 
-  // In the Vulkan backend, we manually manage our uniform buffers. Therefore, we must invalidate
-  // the values when a command buffer is submitted, as the buffer can be re-used.
-  static void InvalidateConstants();
-
   // Utility pipeline drawing (e.g. EFB copies, post-processing, UI).
   virtual void UploadUtilityUniforms(const void* uniforms, u32 uniforms_size);
   void UploadUtilityVertices(const void* vertices, u32 vertex_stride, u32 num_vertices,
@@ -121,6 +117,9 @@ public:
   void OnEndFrame();
 
 protected:
+  // When utility uniforms are used, the GX uniforms need to be re-written afterwards.
+  static void InvalidateConstants();
+
   // Prepares the buffer for the next batch of vertices.
   virtual void ResetBuffer(u32 vertex_stride);
 
@@ -138,6 +137,7 @@ protected:
   static u32 GetRemainingIndices(int primitive);
 
   void CalculateZSlope(NativeVertexFormat* format);
+  void LoadTextures();
 
   u8* m_cur_buffer_pointer = nullptr;
   u8* m_base_buffer_pointer = nullptr;

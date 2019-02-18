@@ -220,13 +220,6 @@ u32 ProgramShaderCache::GetUniformBufferAlignment()
   return s_ubo_align;
 }
 
-void ProgramShaderCache::InvalidateConstants()
-{
-  VertexShaderManager::dirty = true;
-  GeometryShaderManager::dirty = true;
-  PixelShaderManager::dirty = true;
-}
-
 void ProgramShaderCache::UploadConstants()
 {
   if (PixelShaderManager::dirty || VertexShaderManager::dirty || GeometryShaderManager::dirty)

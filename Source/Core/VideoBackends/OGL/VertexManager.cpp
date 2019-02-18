@@ -92,7 +92,7 @@ bool VertexManager::Initialize()
 
 void VertexManager::UploadUtilityUniforms(const void* uniforms, u32 uniforms_size)
 {
-  ProgramShaderCache::InvalidateConstants();
+  InvalidateConstants();
   ProgramShaderCache::UploadConstants(uniforms, uniforms_size);
 }
 

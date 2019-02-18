@@ -748,7 +748,6 @@ VkResult VulkanContext::Allocate(const VkImageCreateInfo* create_info, VkImage* 
     return res;
   }
 
-  // Allocate memory to back this texture, we want device local memory in this case
   VkMemoryRequirements memory_requirements;
   VkMemoryDedicatedAllocateInfoKHR dedicatedAllocateInfo{
       VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR};
