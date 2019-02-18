@@ -17,23 +17,22 @@ namespace Vulkan
 class StreamBuffer
 {
 public:
-  StreamBuffer(VkBufferUsageFlags usage, u32 max_size);
+  StreamBuffer(VkBufferUsageFlags usage, u32 size);
   ~StreamBuffer();
 
   VkBuffer GetBuffer() const { return m_buffer; }
   VkDeviceMemory GetDeviceMemory() const { return m_memory; }
   u8* GetHostPointer() const { return m_host_pointer; }
   u8* GetCurrentHostPointer() const { return m_host_pointer + m_current_offset; }
-  u32 GetCurrentSize() const { return m_current_size; }
+  u32 GetCurrentSize() const { return m_size; }
   u32 GetCurrentOffset() const { return m_current_offset; }
   bool ReserveMemory(u32 num_bytes, u32 alignment);
   void CommitMemory(u32 final_num_bytes);
 
-  static std::unique_ptr<StreamBuffer> Create(VkBufferUsageFlags usage, u32 initial_size,
-                                              u32 max_size);
+  static std::unique_ptr<StreamBuffer> Create(VkBufferUsageFlags usage, u32 size);
 
 private:
-  bool ResizeBuffer(u32 size);
+  bool AllocateBuffer();
   void UpdateCurrentFencePosition();
   void OnFenceSignaled(VkFence fence);
 
@@ -41,8 +40,7 @@ private:
   bool WaitForClearSpace(u32 num_bytes);
 
   VkBufferUsageFlags m_usage;
-  u32 m_current_size = 0;
-  u32 m_maximum_size;
+  u32 m_size;
   u32 m_current_offset = 0;
   u32 m_current_gpu_position = 0;
   u32 m_last_allocation_size = 0;

@@ -72,7 +72,6 @@ std::unique_ptr<VKTexture> VKTexture::Create(const TextureConfig& tex_config)
                                   0,
                                   nullptr,
                                   VK_IMAGE_LAYOUT_UNDEFINED};
-
   VkImage image;
   VkDeviceMemory device_memory;
   VkResult res = g_vulkan_context->Allocate(&image_info, &image, &device_memory);
@@ -324,8 +323,7 @@ void VKTexture::Load(u32 level, u32 width, u32 height, u32 row_length, const u8*
   VkDeviceSize upload_buffer_offset;
 
   // Does this texture data fit within the streaming buffer?
-  if (upload_size <= STAGING_TEXTURE_UPLOAD_THRESHOLD &&
-      upload_size <= MAXIMUM_TEXTURE_UPLOAD_BUFFER_SIZE)
+  if (upload_size <= STAGING_TEXTURE_UPLOAD_THRESHOLD)
   {
     StreamBuffer* stream_buffer = g_object_cache->GetTextureUploadBuffer();
     if (!stream_buffer->ReserveMemory(upload_size, upload_alignment))

@@ -17,8 +17,7 @@
 
 namespace Vulkan
 {
-StreamBuffer::StreamBuffer(VkBufferUsageFlags usage, u32 max_size)
-    : m_usage(usage), m_maximum_size(max_size)
+StreamBuffer::StreamBuffer(VkBufferUsageFlags usage, u32 size) : m_usage(usage), m_size(size)
 {
   g_command_buffer_mgr->AddFenceSignaledCallback(
       this, std::bind(&StreamBuffer::OnFenceSignaled, this, std::placeholders::_1));
@@ -37,24 +36,23 @@ StreamBuffer::~StreamBuffer()
     g_command_buffer_mgr->DeferDeviceMemoryDestruction(m_memory);
 }
 
-std::unique_ptr<StreamBuffer> StreamBuffer::Create(VkBufferUsageFlags usage, u32 initial_size,
-                                                   u32 max_size)
+std::unique_ptr<StreamBuffer> StreamBuffer::Create(VkBufferUsageFlags usage, u32 size)
 {
-  std::unique_ptr<StreamBuffer> buffer = std::make_unique<StreamBuffer>(usage, max_size);
-  if (!buffer->ResizeBuffer(initial_size))
+  std::unique_ptr<StreamBuffer> buffer = std::make_unique<StreamBuffer>(usage, size);
+  if (!buffer->AllocateBuffer())
     return nullptr;
 
   return buffer;
 }
 
-bool StreamBuffer::ResizeBuffer(u32 size)
+bool StreamBuffer::AllocateBuffer()
 {
   // Create the buffer descriptor
   VkBufferCreateInfo buffer_create_info = {
       VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,  // VkStructureType        sType
       nullptr,                               // const void*            pNext
       0,                                     // VkBufferCreateFlags    flags
-      static_cast<VkDeviceSize>(size),       // VkDeviceSize           size
+      static_cast<VkDeviceSize>(m_size),     // VkDeviceSize           size
       m_usage,                               // VkBufferUsageFlags     usage
       VK_SHARING_MODE_EXCLUSIVE,             // VkSharingMode          sharingMode
       0,                                     // uint32_t               queueFamilyIndexCount
@@ -72,7 +70,7 @@ bool StreamBuffer::ResizeBuffer(u32 size)
 
   // Map this buffer into user-space
   void* mapped_ptr = nullptr;
-  res = vkMapMemory(g_vulkan_context->GetDevice(), memory, 0, size, 0, &mapped_ptr);
+  res = vkMapMemory(g_vulkan_context->GetDevice(), memory, 0, m_size, 0, &mapped_ptr);
   if (res != VK_SUCCESS)
   {
     LOG_VULKAN_ERROR(res, "vkMapMemory failed: ");
@@ -95,7 +93,6 @@ bool StreamBuffer::ResizeBuffer(u32 size)
   m_buffer = buffer;
   m_memory = memory;
   m_host_pointer = reinterpret_cast<u8*>(mapped_ptr);
-  m_current_size = size;
   m_current_offset = 0;
   m_current_gpu_position = 0;
   m_tracked_fences.clear();
@@ -107,10 +104,10 @@ bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment)
   const u32 required_bytes = num_bytes + alignment;
 
   // Check for sane allocations
-  if (required_bytes > m_maximum_size)
+  if (required_bytes > m_size)
   {
-    PanicAlert("Attempting to allocate %u bytes from a %u byte stream buffer, usage: 0x%08x",
-               static_cast<uint32_t>(num_bytes), static_cast<uint32_t>(m_maximum_size), m_usage);
+    PanicAlert("Attempting to allocate %u bytes from a %u byte stream buffer",
+               static_cast<uint32_t>(num_bytes), static_cast<uint32_t>(m_size));
 
     return false;
   }
@@ -119,7 +116,7 @@ bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment)
   UpdateCurrentFencePosition();
   if (m_current_offset >= m_current_gpu_position)
   {
-    const u32 remaining_bytes = m_current_size - m_current_offset;
+    const u32 remaining_bytes = m_size - m_current_offset;
     if (required_bytes <= remaining_bytes)
     {
       // Place at the current position, after the GPU position.
@@ -155,19 +152,6 @@ bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment)
     }
   }
 
-  // Try to grow the buffer up to the maximum size before waiting.
-  // Double each time until the maximum size is reached.
-  if (m_current_size < m_maximum_size)
-  {
-    const u32 new_size = std::min(std::max(num_bytes, m_current_size * 2), m_maximum_size);
-    if (ResizeBuffer(new_size))
-    {
-      // Allocating from the start of the buffer.
-      m_last_allocation_size = new_size;
-      return true;
-    }
-  }
-
   // Can we find a fence to wait on that will give us enough memory?
   if (WaitForClearSpace(required_bytes))
   {
@@ -186,7 +170,7 @@ bool StreamBuffer::ReserveMemory(u32 num_bytes, u32 alignment)
 
 void StreamBuffer::CommitMemory(u32 final_num_bytes)
 {
-  ASSERT((m_current_offset + final_num_bytes) <= m_current_size);
+  ASSERT((m_current_offset + final_num_bytes) <= m_size);
   ASSERT_MSG(MASTER_LOG, final_num_bytes <= m_last_allocation_size,
              _trans("StreamBuffer Commit Error.\n\nUsage: 0x%08X, Size: %ld, Total: %ld\n\nIgnore and continue?"),
              m_usage, final_num_bytes, m_last_allocation_size);

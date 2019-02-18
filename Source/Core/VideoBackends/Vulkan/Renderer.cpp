@@ -19,6 +19,7 @@
 #include "VideoBackends/Vulkan/BoundingBox.h"
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 #include "VideoBackends/Vulkan/ObjectCache.h"
+#include "VideoBackends/Vulkan/PerfQuery.h"
 #include "VideoBackends/Vulkan/Renderer.h"
 #include "VideoBackends/Vulkan/StateTracker.h"
 #include "VideoBackends/Vulkan/StreamBuffer.h"
@@ -340,6 +341,7 @@ void Renderer::PresentBackbuffer()
 {
   // End drawing to backbuffer
   StateTracker::GetInstance()->EndRenderPass();
+  PerfQuery::GetInstance()->FlushQueries();
 
   // Transition the backbuffer to PRESENT_SRC to ensure all commands drawing
   // to it have finished before present.
@@ -360,6 +362,7 @@ void Renderer::PresentBackbuffer()
 void Renderer::ExecuteCommandBuffer(bool submit_off_thread, bool wait_for_completion)
 {
   StateTracker::GetInstance()->EndRenderPass();
+  PerfQuery::GetInstance()->FlushQueries();
 
   // If we're waiting for completion, don't bother waking the worker thread.
   const VkFence pending_fence = g_command_buffer_mgr->GetCurrentCommandBufferFence();

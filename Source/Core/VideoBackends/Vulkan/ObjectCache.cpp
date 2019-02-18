@@ -52,8 +52,7 @@ bool ObjectCache::Initialize()
     return false;
 
   m_texture_upload_buffer =
-      StreamBuffer::Create(VK_BUFFER_USAGE_TRANSFER_SRC_BIT, INITIAL_TEXTURE_UPLOAD_BUFFER_SIZE,
-                           MAXIMUM_TEXTURE_UPLOAD_BUFFER_SIZE);
+      StreamBuffer::Create(VK_BUFFER_USAGE_TRANSFER_SRC_BIT, TEXTURE_UPLOAD_BUFFER_SIZE);
   if (!m_texture_upload_buffer)
   {
     PanicAlert("Failed to create texture upload buffer");

@@ -59,14 +59,12 @@ VertexManager::~VertexManager()
 
 bool VertexManager::Initialize()
 {
-  // TODO: Remove *2 when StreamBuffer is fixed.
-  m_vertex_stream_buffer = StreamBuffer::Create(
-      VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VERTEX_STREAM_BUFFER_SIZE, VERTEX_STREAM_BUFFER_SIZE * 2);
-  m_index_stream_buffer = StreamBuffer::Create(
-      VK_BUFFER_USAGE_INDEX_BUFFER_BIT, INDEX_STREAM_BUFFER_SIZE, INDEX_STREAM_BUFFER_SIZE * 2);
+  m_vertex_stream_buffer =
+      StreamBuffer::Create(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VERTEX_STREAM_BUFFER_SIZE * 4);
+  m_index_stream_buffer =
+      StreamBuffer::Create(VK_BUFFER_USAGE_INDEX_BUFFER_BIT, INDEX_STREAM_BUFFER_SIZE * 4);
   m_uniform_stream_buffer =
-      StreamBuffer::Create(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, UNIFORM_STREAM_BUFFER_SIZE,
-                           UNIFORM_STREAM_BUFFER_SIZE * 2);
+      StreamBuffer::Create(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, UNIFORM_STREAM_BUFFER_SIZE * 4);
   if (!m_vertex_stream_buffer || !m_index_stream_buffer || !m_uniform_stream_buffer)
   {
     PanicAlert("Failed to allocate streaming buffers");
@@ -91,8 +89,8 @@ bool VertexManager::Initialize()
       TEXEL_STREAM_BUFFER_SIZE > g_vulkan_context->GetDeviceLimits().maxTexelBufferElements ?
           g_vulkan_context->GetDeviceLimits().maxTexelBufferElements :
           TEXEL_STREAM_BUFFER_SIZE;
-  m_texel_stream_buffer = StreamBuffer::Create(VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT,
-                                               texel_buffer_size, texel_buffer_size);
+  m_texel_stream_buffer =
+      StreamBuffer::Create(VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT, texel_buffer_size);
   if (!m_texel_stream_buffer)
   {
     PanicAlert("Failed to allocate streaming texel buffer");
