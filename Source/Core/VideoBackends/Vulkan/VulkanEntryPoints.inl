@@ -190,4 +190,7 @@ VULKAN_DEVICE_ENTRY_POINT(vkGetSwapchainImagesKHR, false)
 VULKAN_DEVICE_ENTRY_POINT(vkAcquireNextImageKHR, false)
 VULKAN_DEVICE_ENTRY_POINT(vkQueuePresentKHR, false)
 
+VULKAN_DEVICE_ENTRY_POINT(vkGetImageMemoryRequirements2KHR, false)
+VULKAN_DEVICE_ENTRY_POINT(vkGetBufferMemoryRequirements2KHR, false)
+
 #endif  // VULKAN_DEVICE_ENTRY_POINT

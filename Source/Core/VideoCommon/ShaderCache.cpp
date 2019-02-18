@@ -326,11 +326,6 @@ bool ShaderCache::NeedsGeometryShader(const GeometryShaderUid& uid) const
   return m_host_config.backend_geometry_shaders && !uid.GetUidData()->IsPassthrough();
 }
 
-bool ShaderCache::UseGeometryShaderForEFBCopies() const
-{
-  return false;
-}
-
 AbstractPipelineConfig ShaderCache::GetGXPipelineConfig(
     const NativeVertexFormat* vertex_format, const AbstractShader* vertex_shader,
     const AbstractShader* geometry_shader, const AbstractShader* pixel_shader,
@@ -667,8 +662,7 @@ ShaderCache::GetEFBCopyToVRAMPipeline(const TextureConversionShaderGen::TCShader
   AbstractPipelineConfig config = {};
   config.vertex_format = nullptr;
   config.vertex_shader = m_efb_copy_vertex_shader.get();
-  config.geometry_shader =
-      UseGeometryShaderForEFBCopies() ? m_texcoord_geometry_shader.get() : nullptr;
+  config.geometry_shader = nullptr;
   config.pixel_shader = shader.get();
   config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
   config.depth_state = RenderState::GetNoDepthTestingDepthState();
@@ -697,8 +691,7 @@ const AbstractPipeline* ShaderCache::GetEFBCopyToRAMPipeline(const EFBCopyParams
   AbstractPipelineConfig config = {};
   config.vertex_format = nullptr;
   config.vertex_shader = m_screen_quad_vertex_shader.get();
-  config.geometry_shader =
-      UseGeometryShaderForEFBCopies() ? m_texcoord_geometry_shader.get() : nullptr;
+  config.geometry_shader = nullptr;
   config.pixel_shader = shader.get();
   config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
   config.depth_state = RenderState::GetNoDepthTestingDepthState();
@@ -721,16 +714,6 @@ bool ShaderCache::CompileSharedPipelines()
   if (!m_screen_quad_vertex_shader || !m_texture_copy_vertex_shader || !m_efb_copy_vertex_shader)
     return false;
 
-  if (UseGeometryShaderForEFBCopies())
-  {
-    m_texcoord_geometry_shader = g_renderer->CreateShaderFromSource(
-        ShaderStage::Geometry, FramebufferShaderGen::GeneratePassthroughGeometryShader(1, 0));
-    m_color_geometry_shader = g_renderer->CreateShaderFromSource(
-        ShaderStage::Geometry, FramebufferShaderGen::GeneratePassthroughGeometryShader(0, 1));
-    if (!m_texcoord_geometry_shader || !m_color_geometry_shader)
-      return false;
-  }
-
   m_texture_copy_pixel_shader = g_renderer->CreateShaderFromSource(
       ShaderStage::Pixel, FramebufferShaderGen::GenerateTextureCopyPixelShader());
   m_color_pixel_shader = g_renderer->CreateShaderFromSource(
@@ -751,14 +734,6 @@ bool ShaderCache::CompileSharedPipelines()
   m_copy_rgba8_pipeline = g_renderer->CreatePipeline(config);
   if (!m_copy_rgba8_pipeline)
     return false;
-
-  if (UseGeometryShaderForEFBCopies())
-  {
-    config.geometry_shader = m_texcoord_geometry_shader.get();
-    m_rgba8_stereo_copy_pipeline = g_renderer->CreatePipeline(config);
-    if (!m_rgba8_stereo_copy_pipeline)
-      return false;
-  }
 
   if (m_host_config.backend_palette_conversion)
   {

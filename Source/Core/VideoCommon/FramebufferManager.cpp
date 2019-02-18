@@ -303,7 +303,7 @@ bool FramebufferManager::CompileConversionPipelines()
 
     AbstractPipelineConfig config = {};
     config.vertex_shader = g_shader_cache->GetScreenQuadVertexShader();
-    config.geometry_shader = IsEFBStereo() ? g_shader_cache->GetTexcoordGeometryShader() : nullptr;
+    config.geometry_shader = nullptr;
     config.pixel_shader = pixel_shader.get();
     config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
     config.depth_state = RenderState::GetNoDepthTestingDepthState();
@@ -410,7 +410,7 @@ bool FramebufferManager::CompileReadbackPipelines()
 {
   AbstractPipelineConfig config = {};
   config.vertex_shader = g_shader_cache->GetScreenQuadVertexShader();
-  config.geometry_shader = IsEFBStereo() ? g_shader_cache->GetTexcoordGeometryShader() : nullptr;
+  config.geometry_shader = nullptr;
   config.pixel_shader = g_shader_cache->GetTextureCopyPixelShader();
   config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
   config.depth_state = RenderState::GetNoDepthTestingDepthState();
@@ -534,7 +534,7 @@ bool FramebufferManager::CompileClearPipelines()
   AbstractPipelineConfig config;
   config.vertex_format = nullptr;
   config.vertex_shader = vertex_shader.get();
-  config.geometry_shader = IsEFBStereo() ? g_shader_cache->GetColorGeometryShader() : nullptr;
+  config.geometry_shader = nullptr;
   config.pixel_shader = g_shader_cache->GetColorPixelShader();
   config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
   config.depth_state = RenderState::GetAlwaysWriteDepthState();
@@ -736,7 +736,7 @@ bool FramebufferManager::CompilePokePipelines()
   AbstractPipelineConfig config = {};
   config.vertex_format = m_poke_vertex_format.get();
   config.vertex_shader = poke_vertex_shader.get();
-  config.geometry_shader = IsEFBStereo() ? g_shader_cache->GetColorGeometryShader() : nullptr;
+  config.geometry_shader = nullptr;
   config.pixel_shader = g_shader_cache->GetColorPixelShader();
   config.rasterization_state = RenderState::GetNoCullRasterizationState(
       g_ActiveConfig.backend_info.bSupportsLargePoints ? PrimitiveType::Points :

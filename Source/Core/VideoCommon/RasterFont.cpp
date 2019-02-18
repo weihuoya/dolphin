@@ -273,7 +273,7 @@ bool RasterFont::CreatePipeline()
       RenderState::GetCullBackFaceRasterizationState(PrimitiveType::Triangles);
   pconfig.depth_state = RenderState::GetNoDepthTestingDepthState();
   pconfig.blending_state = RenderState::GetNoBlendingBlendState();
-  pconfig.blending_state.blendenable = false;
+  pconfig.blending_state.blendenable = true;
   pconfig.blending_state.srcfactor = BlendMode::SRCALPHA;
   pconfig.blending_state.dstfactor = BlendMode::INVSRCALPHA;
   pconfig.blending_state.srcfactoralpha = BlendMode::ZERO;
@@ -395,8 +395,8 @@ void RasterFont::Draw(const std::string& text, float start_x, float start_y, u32
   pc_block.char_size[1] = 1.0f;
 
   // shadows
-  pc_block.offset[0] = scale * 2.0f / screen_width;
-  pc_block.offset[1] = scale * -2.0f / screen_height;
+  pc_block.offset[0] = 2.0f / screen_width;
+  pc_block.offset[1] = -2.0f / screen_height;
   pc_block.color[3] = (color >> 24) / 255.0f;
   g_vertex_manager->UploadUtilityUniforms(&pc_block, sizeof(pc_block));
   g_renderer->Draw(out_base_vertex, num_vertices);

@@ -681,6 +681,183 @@ void VulkanContext::DisableDebugReports()
   }
 }
 
+void VulkanContext::GetImageMemoryRequirements(VkImage image, VkMemoryRequirements* mem_reqs,
+                                               bool* dedicated)
+{
+  bool KHR_dedicated_allocation = false;
+  if (KHR_dedicated_allocation)
+  {
+    VkImageMemoryRequirementsInfo2KHR memReqInfo2{
+        VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR};
+    memReqInfo2.image = image;
+
+    VkMemoryRequirements2KHR memReq2 = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR};
+    VkMemoryDedicatedRequirementsKHR memDedicatedReq{
+        VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR};
+    memReq2.pNext = &memDedicatedReq;
+
+    vkGetImageMemoryRequirements2KHR(GetDevice(), &memReqInfo2, &memReq2);
+
+    *mem_reqs = memReq2.memoryRequirements;
+    *dedicated = (memDedicatedReq.requiresDedicatedAllocation != VK_FALSE) ||
+                           (memDedicatedReq.prefersDedicatedAllocation != VK_FALSE);
+  }
+  else
+  {
+    vkGetImageMemoryRequirements(GetDevice(), image, mem_reqs);
+    *dedicated = false;
+  }
+}
+
+void VulkanContext::GetBufferMemoryRequirements(VkBuffer buffer, VkMemoryRequirements* mem_reqs,
+                                                bool* dedicated)
+{
+  bool KHR_dedicated_allocation = false;
+  if (KHR_dedicated_allocation)
+  {
+    VkBufferMemoryRequirementsInfo2KHR memReqInfo2{
+        VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2};
+    memReqInfo2.buffer = buffer;
+
+    VkMemoryRequirements2KHR memReq2 = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR};
+    VkMemoryDedicatedRequirementsKHR memDedicatedReq{
+        VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR};
+    memReq2.pNext = &memDedicatedReq;
+
+    vkGetBufferMemoryRequirements2KHR(GetDevice(), &memReqInfo2, &memReq2);
+
+    *mem_reqs = memReq2.memoryRequirements;
+    *dedicated = (memDedicatedReq.requiresDedicatedAllocation != VK_FALSE) ||
+                 (memDedicatedReq.prefersDedicatedAllocation != VK_FALSE);
+  }
+  else
+  {
+    vkGetBufferMemoryRequirements(GetDevice(), buffer, mem_reqs);
+    *dedicated = false;
+  }
+}
+
+VkResult VulkanContext::Allocate(const VkImageCreateInfo* create_info, VkImage* out_image,
+                                 VkDeviceMemory* out_memory)
+{
+  VkImage image = VK_NULL_HANDLE;
+  VkResult res = vkCreateImage(GetDevice(), create_info, nullptr, &image);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkCreateImage failed: ");
+    return res;
+  }
+
+  // Allocate memory to back this texture, we want device local memory in this case
+  VkMemoryRequirements memory_requirements;
+  VkMemoryDedicatedAllocateInfoKHR dedicatedAllocateInfo{
+      VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR};
+  bool dedicatedAllocation = false;
+  GetImageMemoryRequirements(image, &memory_requirements, &dedicatedAllocation);
+
+  VkMemoryAllocateInfo memory_info = {
+      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, memory_requirements.size,
+      GetMemoryType(memory_requirements.memoryTypeBits,
+                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
+  if (dedicatedAllocation)
+  {
+    dedicatedAllocateInfo.image = image;
+    memory_info.pNext = &dedicatedAllocateInfo;
+  }
+
+  VkDeviceMemory device_memory;
+  res = vkAllocateMemory(GetDevice(), &memory_info, nullptr, &device_memory);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkAllocateMemory failed: ");
+    vkDestroyImage(GetDevice(), image, nullptr);
+    return res;
+  }
+
+  res = vkBindImageMemory(GetDevice(), image, device_memory, 0);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkBindImageMemory failed: ");
+    vkDestroyImage(GetDevice(), image, nullptr);
+    vkFreeMemory(GetDevice(), device_memory, nullptr);
+    return res;
+  }
+
+  *out_image = image;
+  *out_memory = device_memory;
+  return res;
+}
+
+VkResult VulkanContext::Allocate(const VkBufferCreateInfo* create_info, VkBuffer* out_buffer,
+                                 VkDeviceMemory* out_memory, STAGING_BUFFER_TYPE type,
+                                 bool* out_coherent)
+{
+  VkBuffer buffer;
+  VkResult res = vkCreateBuffer(GetDevice(), create_info, nullptr, &buffer);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkCreateBuffer failed: ");
+    return res;
+  }
+
+  VkMemoryRequirements memory_requirements;
+  VkMemoryDedicatedAllocateInfoKHR dedicatedAllocateInfo{
+      VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR};
+  bool dedicatedAllocation = false;
+  GetBufferMemoryRequirements(buffer, &memory_requirements, &dedicatedAllocation);
+
+  uint32_t type_index = 0;
+  switch (type)
+  {
+  case STAGING_BUFFER_TYPE_UPLOAD:
+    type_index =
+        g_vulkan_context->GetUploadMemoryType(memory_requirements.memoryTypeBits, out_coherent);
+    break;
+  case STAGING_BUFFER_TYPE_READBACK:
+    type_index =
+        g_vulkan_context->GetReadbackMemoryType(memory_requirements.memoryTypeBits, out_coherent);
+    break;
+  case STAGING_BUFFER_TYPE_NONE:
+    type_index = g_vulkan_context->GetMemoryType(memory_requirements.memoryTypeBits,
+                                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    break;
+  }
+
+  VkMemoryAllocateInfo memory_allocate_info = {
+      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,  // VkStructureType    sType
+      nullptr,                                 // const void*        pNext
+      memory_requirements.size,                // VkDeviceSize       allocationSize
+      type_index                               // uint32_t           memoryTypeIndex
+  };
+  if (dedicatedAllocation)
+  {
+    dedicatedAllocateInfo.buffer = buffer;
+    memory_allocate_info.pNext = &dedicatedAllocateInfo;
+  }
+
+  VkDeviceMemory memory;
+  res = vkAllocateMemory(GetDevice(), &memory_allocate_info, nullptr, &memory);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkAllocateMemory failed: ");
+    vkDestroyBuffer(GetDevice(), buffer, nullptr);
+    return res;
+  }
+
+  res = vkBindBufferMemory(GetDevice(), buffer, memory, 0);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkBindBufferMemory failed: ");
+    vkDestroyBuffer(GetDevice(), buffer, nullptr);
+    vkFreeMemory(GetDevice(), memory, nullptr);
+    return res;
+  }
+
+  *out_buffer = buffer;
+  *out_memory = memory;
+  return res;
+}
+
 bool VulkanContext::GetMemoryType(u32 bits, VkMemoryPropertyFlags properties, u32* out_type_index)
 {
   for (u32 i = 0; i < VK_MAX_MEMORY_TYPES; i++)

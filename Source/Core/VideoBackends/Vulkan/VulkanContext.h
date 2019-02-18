@@ -100,6 +100,14 @@ public:
   bool GetMemoryType(u32 bits, VkMemoryPropertyFlags properties, u32* out_type_index);
   u32 GetMemoryType(u32 bits, VkMemoryPropertyFlags properties);
 
+  void GetImageMemoryRequirements(VkImage image, VkMemoryRequirements* mem_reqs, bool* dedicated);
+  void GetBufferMemoryRequirements(VkBuffer buffer, VkMemoryRequirements* mem_reqs, bool* dedicated);
+
+  VkResult Allocate(const VkImageCreateInfo* create_info, VkImage* out_image, VkDeviceMemory* out_memory);
+  VkResult Allocate(const VkBufferCreateInfo* create_info, VkBuffer* out_buffer,
+                    VkDeviceMemory* out_memory, STAGING_BUFFER_TYPE type = STAGING_BUFFER_TYPE_NONE,
+                    bool* out_coherent = nullptr);
+
   // Finds a memory type for upload or readback buffers.
   u32 GetUploadMemoryType(u32 bits, bool* is_coherent = nullptr);
   u32 GetReadbackMemoryType(u32 bits, bool* is_coherent = nullptr, bool* is_cached = nullptr);

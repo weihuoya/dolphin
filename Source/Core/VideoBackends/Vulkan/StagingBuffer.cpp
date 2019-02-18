@@ -180,47 +180,8 @@ bool StagingBuffer::AllocateBuffer(STAGING_BUFFER_TYPE type, VkDeviceSize size,
       0,                                     // uint32_t               queueFamilyIndexCount
       nullptr                                // const uint32_t*        pQueueFamilyIndices
   };
-  VkResult res =
-      vkCreateBuffer(g_vulkan_context->GetDevice(), &buffer_create_info, nullptr, out_buffer);
-  if (res != VK_SUCCESS)
-  {
-    LOG_VULKAN_ERROR(res, "vkCreateBuffer failed: ");
-    return false;
-  }
-
-  VkMemoryRequirements requirements;
-  vkGetBufferMemoryRequirements(g_vulkan_context->GetDevice(), *out_buffer, &requirements);
-
-  u32 type_index;
-  if (type == STAGING_BUFFER_TYPE_UPLOAD)
-    type_index = g_vulkan_context->GetUploadMemoryType(requirements.memoryTypeBits, out_coherent);
-  else
-    type_index = g_vulkan_context->GetReadbackMemoryType(requirements.memoryTypeBits, out_coherent);
-
-  VkMemoryAllocateInfo memory_allocate_info = {
-      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,  // VkStructureType    sType
-      nullptr,                                 // const void*        pNext
-      requirements.size,                       // VkDeviceSize       allocationSize
-      type_index                               // uint32_t           memoryTypeIndex
-  };
-  res = vkAllocateMemory(g_vulkan_context->GetDevice(), &memory_allocate_info, nullptr, out_memory);
-  if (res != VK_SUCCESS)
-  {
-    LOG_VULKAN_ERROR(res, "vkAllocateMemory failed: ");
-    vkDestroyBuffer(g_vulkan_context->GetDevice(), *out_buffer, nullptr);
-    return false;
-  }
-
-  res = vkBindBufferMemory(g_vulkan_context->GetDevice(), *out_buffer, *out_memory, 0);
-  if (res != VK_SUCCESS)
-  {
-    LOG_VULKAN_ERROR(res, "vkBindBufferMemory failed: ");
-    vkDestroyBuffer(g_vulkan_context->GetDevice(), *out_buffer, nullptr);
-    vkFreeMemory(g_vulkan_context->GetDevice(), *out_memory, nullptr);
-    return false;
-  }
-
-  return true;
+  VkResult res = g_vulkan_context->Allocate(&buffer_create_info, out_buffer, out_memory, type, out_coherent);
+  return res == VK_SUCCESS;
 }
 
 std::unique_ptr<StagingBuffer> StagingBuffer::Create(STAGING_BUFFER_TYPE type, VkDeviceSize size,

@@ -73,38 +73,11 @@ std::unique_ptr<VKTexture> VKTexture::Create(const TextureConfig& tex_config)
                                   nullptr,
                                   VK_IMAGE_LAYOUT_UNDEFINED};
 
-  VkImage image = VK_NULL_HANDLE;
-  VkResult res = vkCreateImage(g_vulkan_context->GetDevice(), &image_info, nullptr, &image);
-  if (res != VK_SUCCESS)
-  {
-    LOG_VULKAN_ERROR(res, "vkCreateImage failed: ");
-    return nullptr;
-  }
-
-  // Allocate memory to back this texture, we want device local memory in this case
-  VkMemoryRequirements memory_requirements;
-  vkGetImageMemoryRequirements(g_vulkan_context->GetDevice(), image, &memory_requirements);
-
-  VkMemoryAllocateInfo memory_info = {
-      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, memory_requirements.size,
-      g_vulkan_context->GetMemoryType(memory_requirements.memoryTypeBits,
-                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
-
+  VkImage image;
   VkDeviceMemory device_memory;
-  res = vkAllocateMemory(g_vulkan_context->GetDevice(), &memory_info, nullptr, &device_memory);
+  VkResult res = g_vulkan_context->Allocate(&image_info, &image, &device_memory);
   if (res != VK_SUCCESS)
   {
-    LOG_VULKAN_ERROR(res, "vkAllocateMemory failed: ");
-    vkDestroyImage(g_vulkan_context->GetDevice(), image, nullptr);
-    return nullptr;
-  }
-
-  res = vkBindImageMemory(g_vulkan_context->GetDevice(), image, device_memory, 0);
-  if (res != VK_SUCCESS)
-  {
-    LOG_VULKAN_ERROR(res, "vkBindImageMemory failed: ");
-    vkDestroyImage(g_vulkan_context->GetDevice(), image, nullptr);
-    vkFreeMemory(g_vulkan_context->GetDevice(), device_memory, nullptr);
     return nullptr;
   }
 

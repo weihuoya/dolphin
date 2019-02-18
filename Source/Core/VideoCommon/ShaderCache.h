@@ -75,15 +75,10 @@ public:
     return m_texture_copy_vertex_shader.get();
   }
   const AbstractShader* GetEFBCopyVertexShader() const { return m_efb_copy_vertex_shader.get(); }
-  const AbstractShader* GetTexcoordGeometryShader() const
-  {
-    return m_texcoord_geometry_shader.get();
-  }
   const AbstractShader* GetTextureCopyPixelShader() const
   {
     return m_texture_copy_pixel_shader.get();
   }
-  const AbstractShader* GetColorGeometryShader() const { return m_color_geometry_shader.get(); }
   const AbstractShader* GetColorPixelShader() const { return m_color_pixel_shader.get(); }
 
   // EFB copy to RAM/VRAM pipelines
@@ -93,10 +88,6 @@ public:
 
   // RGBA8 framebuffer copy pipelines
   const AbstractPipeline* GetRGBA8CopyPipeline() const { return m_copy_rgba8_pipeline.get(); }
-  const AbstractPipeline* GetRGBA8StereoCopyPipeline() const
-  {
-    return m_rgba8_stereo_copy_pipeline.get();
-  }
 
   // Palette texture conversion pipelines
   const AbstractPipeline* GetPaletteConversionPipeline(TLUTFormat format);
@@ -126,9 +117,6 @@ private:
                                           std::unique_ptr<AbstractShader> shader);
   const AbstractShader* CreateGeometryShader(const GeometryShaderUid& uid);
   bool NeedsGeometryShader(const GeometryShaderUid& uid) const;
-
-  // Should we use geometry shaders for EFB copies?
-  bool UseGeometryShaderForEFBCopies() const;
 
   // GX pipeline compiler methods
   AbstractPipelineConfig
@@ -166,8 +154,6 @@ private:
   std::unique_ptr<AbstractShader> m_screen_quad_vertex_shader;
   std::unique_ptr<AbstractShader> m_texture_copy_vertex_shader;
   std::unique_ptr<AbstractShader> m_efb_copy_vertex_shader;
-  std::unique_ptr<AbstractShader> m_texcoord_geometry_shader;
-  std::unique_ptr<AbstractShader> m_color_geometry_shader;
   std::unique_ptr<AbstractShader> m_texture_copy_pixel_shader;
   std::unique_ptr<AbstractShader> m_color_pixel_shader;
 
@@ -198,7 +184,6 @@ private:
 
   // Copy pipeline for RGBA8 textures
   std::unique_ptr<AbstractPipeline> m_copy_rgba8_pipeline;
-  std::unique_ptr<AbstractPipeline> m_rgba8_stereo_copy_pipeline;
 
   // Palette conversion pipelines
   std::array<std::unique_ptr<AbstractPipeline>, NUM_PALETTE_CONVERSION_SHADERS>

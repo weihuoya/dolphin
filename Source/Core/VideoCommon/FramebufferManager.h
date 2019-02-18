@@ -54,7 +54,6 @@ public:
   u32 GetEFBLayers() const { return m_efb_color_texture->GetLayers(); }
   u32 GetEFBSamples() const { return m_efb_color_texture->GetSamples(); }
   bool IsEFBMultisampled() const { return m_efb_color_texture->IsMultisampled(); }
-  bool IsEFBStereo() const { return m_efb_color_texture->GetLayers() > 1; }
   FramebufferState GetEFBFramebufferState() const;
 
   // First-time setup.

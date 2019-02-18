@@ -65,46 +65,12 @@ bool StreamBuffer::ResizeBuffer(u32 size)
       nullptr                                // const uint32_t*        pQueueFamilyIndices
   };
 
-  VkBuffer buffer = VK_NULL_HANDLE;
-  VkResult res =
-      vkCreateBuffer(g_vulkan_context->GetDevice(), &buffer_create_info, nullptr, &buffer);
+  VkBuffer buffer;
+  VkDeviceMemory memory;
+  VkResult res = g_vulkan_context->Allocate(&buffer_create_info, &buffer, &memory,
+                                            STAGING_BUFFER_TYPE_UPLOAD, &m_coherent_mapping);
   if (res != VK_SUCCESS)
   {
-    LOG_VULKAN_ERROR(res, "vkCreateBuffer failed: ");
-    return false;
-  }
-
-  // Get memory requirements (types etc) for this buffer
-  VkMemoryRequirements memory_requirements;
-  vkGetBufferMemoryRequirements(g_vulkan_context->GetDevice(), buffer, &memory_requirements);
-
-  // Aim for a coherent mapping if possible.
-  u32 memory_type_index = g_vulkan_context->GetUploadMemoryType(memory_requirements.memoryTypeBits,
-                                                                &m_coherent_mapping);
-
-  // Allocate memory for backing this buffer
-  VkMemoryAllocateInfo memory_allocate_info = {
-      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,  // VkStructureType    sType
-      nullptr,                                 // const void*        pNext
-      memory_requirements.size,                // VkDeviceSize       allocationSize
-      memory_type_index                        // uint32_t           memoryTypeIndex
-  };
-  VkDeviceMemory memory = VK_NULL_HANDLE;
-  res = vkAllocateMemory(g_vulkan_context->GetDevice(), &memory_allocate_info, nullptr, &memory);
-  if (res != VK_SUCCESS)
-  {
-    LOG_VULKAN_ERROR(res, "vkAllocateMemory failed: ");
-    vkDestroyBuffer(g_vulkan_context->GetDevice(), buffer, nullptr);
-    return false;
-  }
-
-  // Bind memory to buffer
-  res = vkBindBufferMemory(g_vulkan_context->GetDevice(), buffer, memory, 0);
-  if (res != VK_SUCCESS)
-  {
-    LOG_VULKAN_ERROR(res, "vkBindBufferMemory failed: ");
-    vkDestroyBuffer(g_vulkan_context->GetDevice(), buffer, nullptr);
-    vkFreeMemory(g_vulkan_context->GetDevice(), memory, nullptr);
     return false;
   }
 
