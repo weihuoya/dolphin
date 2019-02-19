@@ -145,6 +145,9 @@ public final class SettingsActivity extends AppCompatActivity implements Setting
       }
       mShouldSave = false;
     }
+
+    getFragment().closeDialog();
+    mStackCount = 0;
   }
 
   @Override

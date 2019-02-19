@@ -978,14 +978,14 @@ void Renderer::SetAndClearFramebuffer(AbstractFramebuffer* framebuffer,
   GLbitfield clear_mask = 0;
   if (framebuffer->HasColorBuffer())
   {
-    //glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    //glClearColor(color_value[0], color_value[1], color_value[2], color_value[3]);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glClearColor(color_value[0], color_value[1], color_value[2], color_value[3]);
     clear_mask |= GL_COLOR_BUFFER_BIT;
   }
   if (framebuffer->HasDepthBuffer())
   {
-    //glDepthMask(GL_TRUE);
-    //glClearDepth(depth_value);
+    glDepthMask(GL_TRUE);
+    glClearDepthf(depth_value);
     clear_mask |= GL_DEPTH_BUFFER_BIT;
   }
   glClear(clear_mask);

@@ -683,7 +683,8 @@ bool PostProcessing::CompilePipeline()
   config.vertex_shader = m_vertex_shader.get();
   config.geometry_shader = nullptr;
   config.pixel_shader = m_pixel_shader.get();
-  config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
+  config.rasterization_state =
+      RenderState::GetCullBackFaceRasterizationState(PrimitiveType::Triangles);
   config.depth_state = RenderState::GetNoDepthTestingDepthState();
   config.blending_state = RenderState::GetNoBlendingBlendState();
   config.framebuffer_state = RenderState::GetColorFramebufferState(m_framebuffer_format);

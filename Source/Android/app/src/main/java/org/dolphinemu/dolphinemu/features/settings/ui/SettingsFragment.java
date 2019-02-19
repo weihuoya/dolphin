@@ -128,4 +128,9 @@ public final class SettingsFragment extends Fragment implements SettingsFragment
       mAdapter.setSettings(mSettingsList);
     }
   }
+
+  public void closeDialog()
+  {
+    mAdapter.closeDialog();
+  }
 }
