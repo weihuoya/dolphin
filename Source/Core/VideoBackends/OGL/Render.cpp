@@ -979,13 +979,13 @@ void Renderer::SetAndClearFramebuffer(AbstractFramebuffer* framebuffer,
   if (framebuffer->HasColorBuffer())
   {
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glClearColor(color_value[0], color_value[1], color_value[2], color_value[3]);
+    //glClearColor(color_value[0], color_value[1], color_value[2], color_value[3]);
     clear_mask |= GL_COLOR_BUFFER_BIT;
   }
   if (framebuffer->HasDepthBuffer())
   {
     glDepthMask(GL_TRUE);
-    glClearDepthf(depth_value);
+    //glClearDepthf(depth_value);
     clear_mask |= GL_DEPTH_BUFFER_BIT;
   }
   glClear(clear_mask);
@@ -1190,16 +1190,17 @@ void Renderer::ApplyBlendingState(const BlendingState state)
                         src_factors[state.srcfactoralpha], dst_factors[state.dstfactoralpha]);
   }
 
-  const GLenum logic_op_codes[16] = {
-      GL_CLEAR,         GL_AND,         GL_AND_REVERSE, GL_COPY,  GL_AND_INVERTED, GL_NOOP,
-      GL_XOR,           GL_OR,          GL_NOR,         GL_EQUIV, GL_INVERT,       GL_OR_REVERSE,
-      GL_COPY_INVERTED, GL_OR_INVERTED, GL_NAND,        GL_SET};
-
   // Logic ops aren't available in GLES3
   if (!IsGLES())
   {
     if (state.logicopenable)
     {
+      const GLenum logic_op_codes[16] = {
+          GL_CLEAR,         GL_AND,         GL_AND_REVERSE, GL_COPY,
+          GL_AND_INVERTED,  GL_NOOP,        GL_XOR,         GL_OR,
+          GL_NOR,           GL_EQUIV,       GL_INVERT,      GL_OR_REVERSE,
+          GL_COPY_INVERTED, GL_OR_INVERTED, GL_NAND,        GL_SET};
+
       glEnable(GL_COLOR_LOGIC_OP);
       glLogicOp(logic_op_codes[state.logicmode]);
     }
