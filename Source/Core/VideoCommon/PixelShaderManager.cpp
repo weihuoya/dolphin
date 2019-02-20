@@ -35,6 +35,33 @@ static u32 s_blend_subtract;
 static u32 s_blend_subtract_alpha;
 
 PixelShaderConstants PixelShaderManager::constants;
+using uint4 = std::array<u32, 4>;
+using int4 = std::array<s32, 4>;
+static struct ConstantsPadding
+{
+  u32 genmode;                  // .z
+  u32 alphaTest;                // .w
+  u32 fogParam3;                // .x
+  u32 fogRangeBase;             // .y
+  u32 dstalpha;                 // .z
+  u32 ztex_op;                  // .w
+  u32 late_ztest;               // .x (bool)
+  u32 rgba6_format;             // .y (bool)
+  u32 dither;                   // .z (bool)
+  u32 bounding_box;             // .w (bool)
+  std::array<uint4, 16> pack1;  // .xy - combiners, .z - tevind, .w - iref
+  std::array<uint4, 8> pack2;   // .x - tevorder, .y - tevksel
+  std::array<int4, 32> konst;   // .rgba
+  // The following are used in ubershaders when using shader_framebuffer_fetch blending
+  u32 blend_enable;
+  u32 blend_src_factor;
+  u32 blend_src_factor_alpha;
+  u32 blend_dst_factor;
+  u32 blend_dst_factor_alpha;
+  u32 blend_subtract;
+  u32 blend_subtract_alpha;
+} StatePaddingAfter{};
+
 bool PixelShaderManager::dirty;
 
 void PixelShaderManager::Init()
@@ -475,6 +502,7 @@ void PixelShaderManager::DoState(PointerWrap& p)
   p.Do(s_bDestAlphaDirty);
 
   p.Do(constants);
+  p.Do(StatePaddingAfter);
 
   if (p.GetMode() == PointerWrap::MODE_READ)
   {

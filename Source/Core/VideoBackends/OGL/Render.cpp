@@ -979,13 +979,13 @@ void Renderer::SetAndClearFramebuffer(AbstractFramebuffer* framebuffer,
   if (framebuffer->HasColorBuffer())
   {
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    //glClearColor(color_value[0], color_value[1], color_value[2], color_value[3]);
+    // glClearColor(color_value[0], color_value[1], color_value[2], color_value[3]);
     clear_mask |= GL_COLOR_BUFFER_BIT;
   }
   if (framebuffer->HasDepthBuffer())
   {
     glDepthMask(GL_TRUE);
-    //glClearDepthf(depth_value);
+    // glClearDepthf(depth_value);
     clear_mask |= GL_DEPTH_BUFFER_BIT;
   }
   glClear(clear_mask);
@@ -1143,11 +1143,21 @@ void Renderer::ApplyBlendingState(const BlendingState state)
   if (m_current_blend_state == state)
     return;
 
-  bool useDualSource = g_ActiveConfig.backend_info.bSupportsDualSourceBlend &&
-    !DriverDetails::HasBug(DriverDetails::BUG_BROKEN_DUAL_SOURCE_BLENDING);
+  bool useDualSource = false;
   // Only use shader blend if we need to and we don't support dual-source blending directly
-  bool useShaderBlend = !useDualSource && state.IsDualSourceBlend() &&
-                        g_ActiveConfig.backend_info.bSupportsFramebufferFetch;
+  bool useShaderBlend = false;
+  if (state.IsDualSourceBlend())
+  {
+    if (g_ActiveConfig.backend_info.bSupportsDualSourceBlend &&
+      !DriverDetails::HasBug(DriverDetails::BUG_BROKEN_DUAL_SOURCE_BLENDING))
+    {
+      useDualSource = true;
+    }
+    else if (g_ActiveConfig.backend_info.bSupportsFramebufferFetch)
+    {
+      useShaderBlend = true;
+    }
+  }
 
   if (useShaderBlend)
   {

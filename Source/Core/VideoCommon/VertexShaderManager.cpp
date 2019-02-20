@@ -46,6 +46,20 @@ static Common::Vec3 s_fViewTranslationVector;
 static float s_fViewRotation[2];
 
 VertexShaderConstants VertexShaderManager::constants;
+using uint4 = std::array<u32, 4>;
+static struct ConstantsPaddingBefore
+{
+  u32 components;           // .x
+  u32 xfmem_dualTexInfo;    // .y
+  u32 xfmem_numColorChans;  // .z
+  u32 pad1;                 // .w
+} StatePaddingBefore{};
+static struct ConstantsPaddingAfter
+{
+  std::array<float, 2> pad2;
+  std::array<uint4, 8> xfmem_pack1;
+} StatePaddingAfter{};
+
 bool VertexShaderManager::dirty;
 
 // Viewport correction:
@@ -480,7 +494,7 @@ void VertexShaderManager::SetConstants()
   if (bTexMtxInfoChanged)
   {
     bTexMtxInfoChanged = false;
-    //constants.xfmem_dualTexInfo = xfmem.dualTexTrans.enabled;
+    // constants.xfmem_dualTexInfo = xfmem.dualTexTrans.enabled;
 
     dirty = true;
   }
@@ -489,7 +503,7 @@ void VertexShaderManager::SetConstants()
   {
     bLightingConfigChanged = false;
 
-    //constants.xfmem_numColorChans = xfmem.numChan.numColorChans;
+    // constants.xfmem_numColorChans = xfmem.numChan.numColorChans;
 
     dirty = true;
   }
@@ -750,7 +764,9 @@ void VertexShaderManager::DoState(PointerWrap& p)
   p.Do(bTexMtxInfoChanged);
   p.Do(bLightingConfigChanged);
 
+  p.Do(StatePaddingBefore);
   p.Do(constants);
+  p.Do(StatePaddingAfter);
 
   if (p.GetMode() == PointerWrap::MODE_READ)
   {
