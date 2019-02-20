@@ -225,6 +225,11 @@ public final class InputOverlayDrawableDpad
     mPressedTwoDirectionsStateBitmap.setBounds(left, top, right, bottom);
   }
 
+  public void setAlpha(int value)
+  {
+    mDefaultStateBitmap.setAlpha(value);
+  }
+
   private void setDpadState(int pointerX, int pointerY)
   {
     // Up, Down, Left, Right

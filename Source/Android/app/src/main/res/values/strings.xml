@@ -292,6 +292,7 @@
     <string name="emulation_toggle_controls">Toggle Controls</string>
     <string name="emulation_toggle_all">Toggle All</string>
     <string name="emulation_control_scale">Adjust Scale</string>
+    <string name="emulation_control_alpha">Adjust Alpha</string>
     <string name="emulation_control_joystick_rel_center">Relative Stick Center</string>
     <string name="emulation_control_rumble">Rumble</string>
     <string name="emulation_choose_controller">Choose Controller</string>

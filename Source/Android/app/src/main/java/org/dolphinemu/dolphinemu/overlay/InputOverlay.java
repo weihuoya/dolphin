@@ -38,6 +38,8 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
   public static final String CONTROL_INIT_PREF_KEY = "InitOverlay";
   public static final String CONTROL_SCALE_PREF_KEY = "ControlScale";
   public static int sControllerScale;
+  public static final String CONTROL_ALPHA_PREF_KEY = "ControlAlpha";
+  public static int sControllerAlpha;
 
   public static final String POINTER_PREF_KEY = "TouchPointer";
   public static final String RECENTER_PREF_KEY = "IRRecenter";
@@ -922,6 +924,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     // Need to set the image's position
     overlayDrawable.setPosition(drawableX, drawableY);
+    overlayDrawable.setAlpha((sControllerAlpha * 255) / 100);
 
     return overlayDrawable;
   }
@@ -1005,6 +1008,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     // Need to set the image's position
     overlayDrawable.setPosition(drawableX, drawableY);
+    overlayDrawable.setAlpha((sControllerAlpha * 255) / 100);
 
     return overlayDrawable;
   }
@@ -1074,6 +1078,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     // Need to set the image's position
     overlayDrawable.setPosition(drawableX, drawableY);
+    overlayDrawable.setAlpha((sControllerAlpha * 255) / 100);
 
     return overlayDrawable;
   }

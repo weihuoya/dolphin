@@ -459,11 +459,13 @@ public final class EmulationActivity extends AppCompatActivity
   {
     String id = mSelectedGameId.length() > 3 ? mSelectedGameId.substring(0, 3) : mSelectedGameId;
     String scaleKey = InputOverlay.CONTROL_SCALE_PREF_KEY + "_" + id;
+    String alphaKey = InputOverlay.CONTROL_ALPHA_PREF_KEY + "_" + id;
     String typeKey = InputOverlay.CONTROL_TYPE_PREF_KEY + "_" + id;
     String joystickKey = InputOverlay.JOYSTICK_PREF_KEY + "_" + id;
     String recenterKey = InputOverlay.RECENTER_PREF_KEY + "_" + id;
 
     InputOverlay.sControllerScale = mPreferences.getInt(scaleKey, 50);
+    InputOverlay.sControllerAlpha = mPreferences.getInt(alphaKey, 100);
     InputOverlay.sControllerType = mPreferences.getInt(typeKey, InputOverlay.CONTROLLER_WIINUNCHUK);
     InputOverlay.sJoyStickSetting = mPreferences.getInt(joystickKey, InputOverlay.JOYSTICK_EMULATE_NONE);
     InputOverlay.sJoystickRelative = mPreferences.getBoolean(InputOverlay.RELATIVE_PREF_KEY, true);
@@ -482,6 +484,7 @@ public final class EmulationActivity extends AppCompatActivity
   {
     String id = mSelectedGameId.length() > 3 ? mSelectedGameId.substring(0, 3) : mSelectedGameId;
     String scaleKey = InputOverlay.CONTROL_SCALE_PREF_KEY + "_" + id;
+    String alphaKey = InputOverlay.CONTROL_ALPHA_PREF_KEY + "_" + id;
     String typeKey = InputOverlay.CONTROL_TYPE_PREF_KEY + "_" + id;
     String joystickKey = InputOverlay.JOYSTICK_PREF_KEY + "_" + id;
     String recenterKey = InputOverlay.RECENTER_PREF_KEY + "_" + id;
@@ -489,6 +492,7 @@ public final class EmulationActivity extends AppCompatActivity
     SharedPreferences.Editor editor = mPreferences.edit();
     editor.putInt(typeKey, InputOverlay.sControllerType);
     editor.putInt(scaleKey, InputOverlay.sControllerScale);
+    editor.putInt(alphaKey, InputOverlay.sControllerAlpha);
     editor.putInt(joystickKey, InputOverlay.sJoyStickSetting);
     editor.putBoolean(InputOverlay.RELATIVE_PREF_KEY, InputOverlay.sJoystickRelative);
     editor.putBoolean(recenterKey, InputOverlay.sIRRecenter);
@@ -586,15 +590,15 @@ public final class EmulationActivity extends AppCompatActivity
   private void adjustScale()
   {
     LayoutInflater inflater = LayoutInflater.from(this);
-    View view = inflater.inflate(R.layout.dialog_seekbar, null);
+    View view = inflater.inflate(R.layout.dialog_input_adjust, null);
 
-    final SeekBar seekbar = view.findViewById(R.id.seekbar);
-    final TextView value = view.findViewById(R.id.text_value);
-    final TextView units = view.findViewById(R.id.text_units);
+    // scale
+    final SeekBar seekbarScale = view.findViewById(R.id.input_scale_seekbar);
+    final TextView valueScale = view.findViewById(R.id.input_scale_value);
 
-    seekbar.setMax(150);
-    seekbar.setProgress(InputOverlay.sControllerScale);
-    seekbar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener()
+    seekbarScale.setMax(150);
+    seekbarScale.setProgress(InputOverlay.sControllerScale);
+    seekbarScale.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener()
     {
       public void onStartTrackingTouch(SeekBar seekBar)
       {
@@ -603,7 +607,7 @@ public final class EmulationActivity extends AppCompatActivity
 
       public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser)
       {
-        value.setText(String.valueOf(progress + 50));
+        valueScale.setText((progress + 50) + "%");
       }
 
       public void onStopTrackingTouch(SeekBar seekBar)
@@ -611,16 +615,39 @@ public final class EmulationActivity extends AppCompatActivity
         // Do nothing
       }
     });
+    valueScale.setText((seekbarScale.getProgress() + 50) + "%");
 
-    value.setText(String.valueOf(seekbar.getProgress() + 50));
-    units.setText("%");
+    // alpha
+    final SeekBar seekbarAlpha = view.findViewById(R.id.input_alpha_seekbar);
+    final TextView valueAlpha = view.findViewById(R.id.input_alpha_value);
+    seekbarAlpha.setMax(100);
+    seekbarAlpha.setProgress(InputOverlay.sControllerAlpha);
+    seekbarAlpha.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener()
+    {
+      public void onStartTrackingTouch(SeekBar seekBar)
+      {
+        // Do nothing
+      }
+
+      public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser)
+      {
+        valueAlpha.setText(progress + "%");
+      }
+
+      public void onStopTrackingTouch(SeekBar seekBar)
+      {
+        // Do nothing
+      }
+    });
+    valueAlpha.setText(seekbarAlpha.getProgress() + "%");
 
     AlertDialog.Builder builder = new AlertDialog.Builder(this);
     builder.setTitle(R.string.emulation_control_scale);
     builder.setView(view);
     builder.setPositiveButton(getString(R.string.ok), (dialogInterface, i) ->
     {
-      InputOverlay.sControllerScale = seekbar.getProgress();
+      InputOverlay.sControllerScale = seekbarScale.getProgress();
+      InputOverlay.sControllerAlpha = seekbarAlpha.getProgress();
       mEmulationFragment.refreshInputOverlay();
     });
 

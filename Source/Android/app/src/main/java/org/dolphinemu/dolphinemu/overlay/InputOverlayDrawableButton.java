@@ -130,6 +130,11 @@ public final class InputOverlayDrawableButton
     mPressedStateBitmap.setBounds(left, top, right, bottom);
   }
 
+  public void setAlpha(int value)
+  {
+    mDefaultStateBitmap.setAlpha(value);
+  }
+
   public Rect getBounds()
   {
     return mDefaultStateBitmap.getBounds();
