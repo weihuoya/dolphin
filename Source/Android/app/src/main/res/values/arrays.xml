@@ -100,6 +100,18 @@
         <item>8</item>
     </integer-array>
 
+    <!-- SerialPort1 Device Selection -->
+    <string-array name="serialDeviceEntries" translatable="false">
+        <item>Nothing</item>
+        <item>Dummy</item>
+        <item>Broadband Adapter (TAP)</item>
+    </string-array>
+    <integer-array name="serialDeviceValues" translatable="false">
+        <item>255</item>
+        <item>0</item>
+        <item>5</item>
+    </integer-array>
+
     <!-- Video backend selection -->
     <string-array name="videoBackendEntries" translatable="false">
         <item>OpenGL</item>

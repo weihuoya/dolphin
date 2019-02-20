@@ -120,7 +120,7 @@
     <string name="dual_core">Dual Core</string>
     <string name="dual_core_description">Split workload to two CPU cores instead of one. Increases speed.</string>
     <string name="overclock_enable">Override Emulated CPU Clock Speed</string>
-    <string name="overclock_enable_description">Higher values can make variable-framerate games run at a higher framerate, requiring a powerful device. Lower values make games run at a lower framerate, increasing emulation speed, but reducing the emulated console\'s performance.</string>
+    <string name="overclock_enable_description">Higher values can make variable-framerate games run at a higher framerate, requiring a powerful device.</string>
     <string name="overclock_title">Emulated CPU Clock Speed</string>
     <string name="overclock_title_description">Adjusts the emulated CPU\'s clock rate if \"Override Emulated CPU Clock Speed\" is enabled.</string>
     <string name="speed_limit">Speed Limit</string>
@@ -128,8 +128,9 @@
     <string name="gamecube_submenu">GameCube</string>
     <string name="gamecube_system_language">System Language</string>
     <string name="override_gamecube_language">Override Language on NTSC games</string>
-    <string name="slot_a_device">GameCube Slot A Device</string>
-    <string name="slot_b_device">GameCube Slot B Device</string>
+    <string name="slot_a_device">Slot A Device</string>
+    <string name="slot_b_device">Slot B Device</string>
+    <string name="serial_port_1">Serial Port 1</string>
     <string name="wii_submenu">Wii</string>
     <string name="wiimote_scanning">Wii Remote Continuous Scanning</string>
     <string name="wiimote_scanning_description">Leave this on if you are using a DolphinBar for real Wiimote support.</string>
@@ -157,7 +158,7 @@
     <!-- Interface Preference Fragment -->
     <string name="interface_submenu">Interface</string>
     <string name="panic_handlers">Use Panic Handlers</string>
-    <string name="panic_handlers_description">Show a message box when a potentially serious error has occurred. Disabling this may avoid annoying and non-fatal messages, but it may result in major crashes having no explanation at all.</string>
+    <string name="panic_handlers_description">Show a message box when a potentially serious error has occurred. Disabling this may avoid annoying and non-fatal messages.</string>
     <string name="osd_messages">Show On-Screen Display Messages</string>
     <string name="osd_messages_description">Display messages over the emulation screen area. These messages include memory card writes, video backend and CPU information, and JIT cache clearing.</string>
 
@@ -172,9 +173,9 @@
 
     <string name="enhancements_submenu">Enhancements</string>
     <string name="internal_resolution">Internal Resolution</string>
-    <string name="internal_resolution_description">Specifies the resolution used to render at. A high resolution will improve visual quality a lot but is also quite heavy on performance and might cause glitches in certain games.</string>
+    <string name="internal_resolution_description">A high resolution will improve visual quality a lot but is also quite heavy on performance and might cause glitches in certain games.</string>
     <string name="FSAA">Full-scene Anti-aliasing</string>
-    <string name="FSAA_description">Reduces the amount of aliasing caused by rasterizing 3D graphics. This makes the rendered picture look less blocky. Heavily decreases emulation speed and sometimes causes issues.</string>
+    <string name="FSAA_description">Reduces the amount of aliasing caused by rasterizing 3D graphics. Heavily decreases emulation speed and sometimes causes issues.</string>
     <string name="anisotropic_filtering">Anisotropic Filtering</string>
     <string name="anisotropic_filtering_description">Enhances visual quality of textures that are at oblique viewing angles. Might cause issues in a small number of games.</string>
     <string name="post_processing_shader">Post-Processing Effect</string>
@@ -182,15 +183,15 @@
     <string name="postprocessing_shader">Post Processing Shader</string>
     <string name="postprocessing_shader_description">Apply a post-processing effect after finishing a frame.</string>
     <string name="scaled_efb_copy">Scaled EFB Copy</string>
-    <string name="scaled_efb_copy_description">Greatly increases quality of textures generated using render to texture effects. Raising the internal resolution will improve the effect of this setting. Slightly decreases performance and possibly causes issues (although unlikely).</string>
+    <string name="scaled_efb_copy_description">Increases quality of textures generated using render to texture effects. Slightly decreases performance and possibly causes issues (although unlikely).</string>
     <string name="per_pixel_lighting">Per-Pixel Lighting</string>
-    <string name="per_pixel_lighting_description">Calculate lighting of 3D graphics per-pixel rather than per vertex. Decreases emulation speed by some percent (depending on your GPU). This usually is a safe enhancement, but might cause issues sometimes.</string>
+    <string name="per_pixel_lighting_description">Calculate lighting of 3D graphics per-pixel rather than per vertex. Decreases emulation speed by some percent (depending on your GPU).</string>
     <string name="force_texture_filtering">Force Texture Filtering</string>
     <string name="force_texture_filtering_description">Force texture filtering even if the emulated game explicitly disabled it. Improves texture quality slightly but causes glitches in some games.</string>
     <string name="force_24bit_color">Force 24-Bit Color</string>
-    <string name="force_24bit_color_description">Forces the game to render the RGB color channels in 24-bit, thereby increasing quality by reducing color banding.\nIt has no impact on performance and causes few graphical issues. If unsure, leave this checked.</string>
+    <string name="force_24bit_color_description">Forces the game to render the RGB color channels in 24-bit, thereby increasing quality by reducing color banding.</string>
     <string name="disable_fog">Disable Fog</string>
-    <string name="disable_fog_description">Makes distant objects more visible by removing fog, thus increasing the overall detail. Disabling fog will break some games which rely on proper fog emulation.</string>
+    <string name="disable_fog_description">Makes distant objects more visible by removing fog, thus increasing the overall detail.</string>
     <string name="disable_copy_filter">Disable Copy Filter</string>
     <string name="disable_copy_filter_description">Disables the blending of adjacent rows when copying the EFB. This is known in some games as \"deflickering\" or \"smoothing\". Disabling the filter is usually safe, and may result in a sharper image.</string>
     <string name="arbitrary_mipmap_detection">Arbitrary Mipmap Detection</string>

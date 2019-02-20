@@ -31,6 +31,7 @@ public final class InputOverlayDrawableJoystick
   private int mPreviousTouchX, mPreviousTouchY;
   private int mWidth;
   private int mHeight;
+  private int mAlpha;
   private Rect mVirtBounds;
   private Rect mOrigBounds;
   private BitmapDrawable mOuterBitmap;
@@ -93,7 +94,7 @@ public final class InputOverlayDrawableJoystick
   {
     boolean reCenter = InputOverlay.sJoystickRelative;
     mOuterBitmap.setAlpha(0);
-    mBoundsBoxBitmap.setAlpha(255);
+    mBoundsBoxBitmap.setAlpha(mAlpha);
     if (reCenter)
     {
       getVirtBounds().offset((int)x - getVirtBounds().centerX(), (int)y - getVirtBounds().centerY());
@@ -111,7 +112,7 @@ public final class InputOverlayDrawableJoystick
 
   public void onPointerUp(int id, float x, float y)
   {
-    mOuterBitmap.setAlpha(255);
+    mOuterBitmap.setAlpha(mAlpha);
     mBoundsBoxBitmap.setAlpha(0);
     setVirtBounds(new Rect(mOrigBounds.left, mOrigBounds.top, mOrigBounds.right, mOrigBounds.bottom));
     setBounds(new Rect(mOrigBounds.left, mOrigBounds.top, mOrigBounds.right, mOrigBounds.bottom));
@@ -385,6 +386,7 @@ public final class InputOverlayDrawableJoystick
 
   public void setAlpha(int value)
   {
+    mAlpha = value;
     mDefaultStateInnerBitmap.setAlpha(value);
     mOuterBitmap.setAlpha(value);
   }

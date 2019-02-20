@@ -255,6 +255,7 @@ public final class SettingsFragmentPresenter
     Setting overrideGCLanguage = coreSection.getSetting(SettingsFile.KEY_OVERRIDE_GAME_CUBE_LANGUAGE);
     Setting slotADevice = coreSection.getSetting(SettingsFile.KEY_SLOT_A_DEVICE);
     Setting slotBDevice = coreSection.getSetting(SettingsFile.KEY_SLOT_B_DEVICE);
+    Setting serialDevice = coreSection.getSetting(SettingsFile.KEY_SERIAL_PORT_1);
 
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_GAME_CUBE_LANGUAGE, Settings.SECTION_INI_CORE,
       R.string.gamecube_system_language, 0, R.array.gameCubeSystemLanguageEntries,
@@ -268,6 +269,9 @@ public final class SettingsFragmentPresenter
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_SLOT_B_DEVICE, Settings.SECTION_INI_CORE,
       R.string.slot_b_device, 0, R.array.slotDeviceEntries, R.array.slotDeviceValues, 255,
       slotBDevice));
+    sl.add(new SingleChoiceSetting(SettingsFile.KEY_SERIAL_PORT_1, Settings.SECTION_INI_CORE,
+      R.string.serial_port_1, 0, R.array.serialDeviceEntries, R.array.serialDeviceValues, 255,
+      serialDevice));
   }
 
   private void addWiiSettings(ArrayList<SettingsItem> sl)

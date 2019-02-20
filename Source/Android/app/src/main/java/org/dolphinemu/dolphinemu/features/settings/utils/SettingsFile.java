@@ -55,6 +55,7 @@ public final class SettingsFile
   public static final String KEY_OVERRIDE_GAME_CUBE_LANGUAGE = "OverrideGCLang";
   public static final String KEY_SLOT_A_DEVICE = "SlotA";
   public static final String KEY_SLOT_B_DEVICE = "SlotB";
+  public static final String KEY_SERIAL_PORT_1 = "SerialPort1";
 
   public static final String KEY_USE_PANIC_HANDLERS = "UsePanicHandlers";
   public static final String KEY_OSD_MESSAGES = "OnScreenDisplayMessages";

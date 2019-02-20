@@ -128,8 +128,9 @@
     <string name="gamecube_submenu">GameCube</string>
     <string name="gamecube_system_language">系统语言</string>
     <string name="override_gamecube_language">覆盖NTSC游戏语言</string>
-    <string name="slot_a_device">GameCube A槽设备</string>
-    <string name="slot_b_device">GameCube B槽设备</string>
+    <string name="slot_a_device">插槽 A 设备</string>
+    <string name="slot_b_device">插槽 B 设备</string>
+    <string name="serial_port_1">串口 1 设备</string>
     <string name="wii_submenu">Wii</string>
     <string name="wiimote_scanning">Wii连续扫描</string>
     <string name="wiimote_scanning_description">如果使用DolphinBar来获得真正的Wiimote支持，请取消此选项。</string>

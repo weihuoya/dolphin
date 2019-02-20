@@ -88,8 +88,8 @@
     <!-- Slot A Device Selection -->
     <string-array name="slotDeviceEntries" translatable="false">
         <item>无</item>
-        <item>虚拟</item>
-        <item>记忆卡</item>
+        <item>虚设</item>
+        <item>存储卡</item>
         <item>GCI文件夹</item>
     </string-array>
     <integer-array name="slotDeviceValues" translatable="false">
@@ -97,6 +97,18 @@
         <item>0</item>
         <item>1</item>
         <item>8</item>
+    </integer-array>
+
+    <!-- SerialPort1 Device Selection -->
+    <string-array name="serialDeviceEntries" translatable="false">
+        <item>无</item>
+        <item>虚设</item>
+        <item>上网卡 (TAP)</item>
+    </string-array>
+    <integer-array name="serialDeviceValues" translatable="false">
+        <item>255</item>
+        <item>0</item>
+        <item>5</item>
     </integer-array>
 
     <!-- Video backend selection -->
