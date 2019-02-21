@@ -514,11 +514,11 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
     // GLES does not support logic op.
     g_Config.backend_info.bSupportsLogicOp = false;
 
-    if (GLExtensions::Supports("GL_EXT_shader_framebuffer_fetch") && false)
+    if (GLExtensions::Supports("GL_EXT_shader_framebuffer_fetch"))
     {
       g_ogl_config.SupportedFramebufferFetch = EsFbFetchType::FbFetchExt;
     }
-    else if (GLExtensions::Supports("GL_ARM_shader_framebuffer_fetch") && false)
+    else if (GLExtensions::Supports("GL_ARM_shader_framebuffer_fetch"))
     {
       g_ogl_config.SupportedFramebufferFetch = EsFbFetchType::FbFetchArm;
     }
@@ -1117,11 +1117,11 @@ void Renderer::ApplyDepthState(const DepthState state)
   if (m_current_depth_state == state)
     return;
 
-  const GLenum glCmpFuncs[8] = {GL_NEVER,   GL_LESS,     GL_EQUAL,  GL_LEQUAL,
-                                GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_ALWAYS};
-
   if (state.testenable)
   {
+    const GLenum glCmpFuncs[8] = {GL_NEVER,   GL_LESS,     GL_EQUAL,  GL_LEQUAL,
+                                  GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_ALWAYS};
+
     glEnable(GL_DEPTH_TEST);
     glDepthMask(state.updateenable ? GL_TRUE : GL_FALSE);
     glDepthFunc(glCmpFuncs[state.func]);

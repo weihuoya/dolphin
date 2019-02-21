@@ -166,7 +166,6 @@ public:
   // Use this to convert a whole native EFB rect to backbuffer coordinates
   TargetRectangle ConvertEFBRectangle(const EFBRectangle& rc);
 
-  const TargetRectangle& GetTargetRectangle() const { return m_target_rectangle; }
   float CalculateDrawAspectRatio() const;
 
   std::tuple<float, float> ScaleToDisplayAspectRatio(int width, int height) const;

@@ -899,8 +899,7 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
 
 void Renderer::RenderXFBToScreen(const AbstractTexture* texture, const EFBRectangle& rc)
 {
-  const auto target_rc = GetTargetRectangle();
-  m_post_processor->BlitFromTexture(target_rc, rc, texture, 0);
+  m_post_processor->BlitFromTexture(m_target_rectangle, rc, texture, 0);
 }
 
 bool Renderer::IsFrameDumping()
@@ -919,9 +918,8 @@ void Renderer::DumpCurrentFrame()
   int target_width, target_height;
   if (!g_ActiveConfig.bInternalResolutionFrameDumps && !IsHeadless())
   {
-    auto target_rect = GetTargetRectangle();
-    target_width = target_rect.GetWidth();
-    target_height = target_rect.GetHeight();
+    target_width = m_target_rectangle.GetWidth();
+    target_height = m_target_rectangle.GetHeight();
   }
   else
   {
