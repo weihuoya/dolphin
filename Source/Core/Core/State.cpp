@@ -316,7 +316,7 @@ static void CompressAndDumpState(CompressAndDumpState_args save_args)
       File::Delete((File::GetUserPath(D_STATESAVES_IDX) + "lastState.sav.dtm"));
 
     if (!File::Rename(filename, File::GetUserPath(D_STATESAVES_IDX) + "lastState.sav"))
-      Core::DisplayMessage("Failed to move previous state to state undo backup", 1000);
+      Core::DisplayMessage("Failed to move previous state to state undo backup", 2000);
     else
       File::Rename(filename + ".dtm", File::GetUserPath(D_STATESAVES_IDX) + "lastState.sav.dtm");
   }
@@ -329,7 +329,7 @@ static void CompressAndDumpState(CompressAndDumpState_args save_args)
   File::IOFile f(filename, "wb");
   if (!f)
   {
-    Core::DisplayMessage("Could not save state", 2000);
+    Core::DisplayMessage("Could not save state", 4000);
     return;
   }
 
@@ -376,7 +376,7 @@ static void CompressAndDumpState(CompressAndDumpState_args save_args)
     f.WriteBytes(buffer_data, buffer_size);
   }
 
-  Core::DisplayMessage(StringFromFormat("Saved State to %s", filename.c_str()), 2000);
+  Core::DisplayMessage(StringFromFormat("Saved State to %s", filename.c_str()), 4000);
   Host_UpdateMainFrame();
 }
 
@@ -400,7 +400,7 @@ void SaveAs(const std::string& filename, bool wait)
 
     if (p.GetMode() == PointerWrap::MODE_WRITE)
     {
-      Core::DisplayMessage("Saving State...", 1000);
+      Core::DisplayMessage("Saving State...", 2000);
 
       CompressAndDumpState_args save_args;
       save_args.buffer_vector = &g_current_buffer;
@@ -426,7 +426,7 @@ bool ReadHeader(const std::string& filename, StateHeader& header)
   File::IOFile f(filename, "rb");
   if (!f)
   {
-    Core::DisplayMessage("State not found", 2000);
+    Core::DisplayMessage("State not found", 4000);
     return false;
   }
 
@@ -453,7 +453,7 @@ static void LoadFileStateData(const std::string& filename, std::vector<u8>& ret_
   File::IOFile f(filename, "rb");
   if (!f)
   {
-    Core::DisplayMessage("State not found", 2000);
+    Core::DisplayMessage("State not found", 4000);
     return;
   }
 
@@ -463,7 +463,7 @@ static void LoadFileStateData(const std::string& filename, std::vector<u8>& ret_
   if (strncmp(SConfig::GetInstance().GetGameID().c_str(), header.gameID, 6))
   {
     Core::DisplayMessage(
-        StringFromFormat("State belongs to a different game (ID %.*s)", 6, header.gameID), 2000);
+        StringFromFormat("State belongs to a different game (ID %.*s)", 6, header.gameID), 4000);
     return;
   }
 
@@ -471,7 +471,7 @@ static void LoadFileStateData(const std::string& filename, std::vector<u8>& ret_
 
   if (header.size != 0)  // non-zero size means the state is compressed
   {
-    Core::DisplayMessage("Decompressing State...", 500);
+    Core::DisplayMessage("Decompressing State...", 1000);
 
     buffer.resize(header.size);
 
@@ -562,7 +562,7 @@ void LoadAs(const std::string& filename)
     {
       if (loadedSuccessfully)
       {
-        Core::DisplayMessage(StringFromFormat("Loaded state from %s", filename.c_str()), 2000);
+        Core::DisplayMessage(StringFromFormat("Loaded state from %s", filename.c_str()), 4000);
         if (File::Exists(filename + ".dtm"))
           Movie::LoadInput(filename + ".dtm");
         else if (!Movie::IsJustStartingRecordingInputFromSaveState() &&
@@ -636,7 +636,7 @@ void LoadLastSaved(int i)
   std::map<double, int> savedStates = GetSavedStates();
 
   if (i > (int)savedStates.size())
-    Core::DisplayMessage("State doesn't exist", 2000);
+    Core::DisplayMessage("State doesn't exist", 4000);
   else
   {
     std::map<double, int>::iterator it = savedStates.begin();

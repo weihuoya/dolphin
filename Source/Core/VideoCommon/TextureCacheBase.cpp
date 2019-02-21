@@ -2404,7 +2404,7 @@ void TextureCacheBase::CopyEFB(AbstractStagingTexture* dst, const EFBCopyParams&
   // TODO: This only produces perfect downsampling for 2x IR, other resolutions will need more
   //       complex down filtering to average all pixels and produce the correct result.
   const bool linear_filter =
-      (scale_by_half && !params.depth) || g_renderer->GetEFBScale() != 1 || y_scale > 1.0f;
+      (scale_by_half && !params.depth) || g_renderer->IsScaledEFB() || y_scale > 1.0f;
 
   // Because the shader uses gl_FragCoord and we read it back, we must render to the lower-left.
   const u32 render_width = bytes_per_row / sizeof(u32);

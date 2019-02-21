@@ -642,9 +642,8 @@ public final class EmulationActivity extends AppCompatActivity
     valueAlpha.setText(seekbarAlpha.getProgress() + "%");
 
     AlertDialog.Builder builder = new AlertDialog.Builder(this);
-    builder.setTitle(R.string.emulation_control_scale);
     builder.setView(view);
-    builder.setPositiveButton(getString(R.string.ok), (dialogInterface, i) ->
+    builder.setOnDismissListener((dialogInterface) ->
     {
       InputOverlay.sControllerScale = seekbarScale.getProgress();
       InputOverlay.sControllerAlpha = seekbarAlpha.getProgress();

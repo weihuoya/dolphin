@@ -56,6 +56,7 @@
 #include "VideoCommon/PixelEngine.h"
 #include "VideoCommon/PixelShaderManager.h"
 #include "VideoCommon/PostProcessing.h"
+#include "VideoCommon/RasterFont.h"
 #include "VideoCommon/ShaderCache.h"
 #include "VideoCommon/ShaderGenCommon.h"
 #include "VideoCommon/Statistics.h"
@@ -67,7 +68,6 @@
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
-#include "VideoCommon/RasterFont.h"
 
 std::unique_ptr<Renderer> g_renderer;
 
@@ -253,19 +253,24 @@ void Renderer::RenderToXFB(u32 xfbAddr, const EFBRectangle& sourceRc, u32 fbStri
     return;
 }
 
-unsigned int Renderer::GetEFBScale() const
+float Renderer::GetEFBScale() const
 {
   return m_efb_scale;
 }
 
+bool Renderer::IsScaledEFB() const
+{
+  return m_efb_scale != 1;
+}
+
 int Renderer::EFBToScaledX(int x) const
 {
-  return x * static_cast<int>(m_efb_scale);
+  return m_efb_scale > 9 ? x * m_efb_scale / 100 : x * m_efb_scale;
 }
 
 int Renderer::EFBToScaledY(int y) const
 {
-  return y * static_cast<int>(m_efb_scale);
+  return m_efb_scale > 9 ? y * m_efb_scale / 100 : y * m_efb_scale;
 }
 
 float Renderer::EFBToScaledXf(float x) const
@@ -280,7 +285,10 @@ float Renderer::EFBToScaledYf(float y) const
 
 std::tuple<int, int> Renderer::CalculateTargetScale(int x, int y) const
 {
-  return std::make_tuple(x * static_cast<int>(m_efb_scale), y * static_cast<int>(m_efb_scale));
+  if (m_efb_scale > 9)
+    return std::make_tuple(x * m_efb_scale / 100, y * m_efb_scale / 100);
+  else
+    return std::make_tuple(x * m_efb_scale, y * m_efb_scale);
 }
 
 // return true if target size changed
@@ -298,9 +306,16 @@ bool Renderer::CalculateTargetSize()
     m_efb_scale = g_ActiveConfig.iEFBScale;
   }
 
-  const u32 max_size = g_ActiveConfig.backend_info.MaxTextureSize;
-  if (max_size < EFB_WIDTH * m_efb_scale)
+  const int max_size = g_ActiveConfig.backend_info.MaxTextureSize;
+  if (m_efb_scale > 9)
+  {
+    if(max_size < EFB_WIDTH * m_efb_scale / 100)
+      m_efb_scale = max_size / EFB_WIDTH;
+  }
+  else if (max_size < EFB_WIDTH * m_efb_scale)
+  {
     m_efb_scale = max_size / EFB_WIDTH;
+  }
 
   int new_efb_width = 0;
   int new_efb_height = 0;

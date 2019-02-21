@@ -265,6 +265,7 @@ public final class SettingsFile
 
   public static final String KEY_WIIMOTE_SCAN = "WiimoteContinuousScanning";
   public static final String KEY_WIIMOTE_SPEAKER = "WiimoteEnableSpeaker";
+  public static final String KEY_WII_SD_CARD = "WiiSDCard";
 
   // SYSCONF.IPL
   public static final String KEY_SYSCONF_SCREENSAVER = "Screensaver";

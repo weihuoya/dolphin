@@ -172,7 +172,8 @@ public:
   std::tuple<float, float> ScaleToDisplayAspectRatio(int width, int height) const;
   void UpdateDrawRectangle();
 
-  unsigned int GetEFBScale() const;
+  bool IsScaledEFB() const;
+  float GetEFBScale() const;
 
   // Use this to upscale native EFB coordinates to IDEAL internal resolution
   int EFBToScaledX(int x) const;
@@ -281,7 +282,7 @@ private:
   std::tuple<int, int> CalculateOutputDimensions(int width, int height);
 
   PEControl::PixelFormat m_prev_efb_format = PEControl::INVALID_FMT;
-  unsigned int m_efb_scale = 1;
+  int m_efb_scale = 1;
 
   // These will be set on the first call to SetWindowSize.
   int m_last_window_request_width = 0;

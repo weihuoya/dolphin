@@ -136,6 +136,8 @@
     <string name="wiimote_scanning_description">如果使用DolphinBar来获得真正的Wiimote支持，请取消此选项。</string>
     <string name="wiimote_speaker">Wii扬声器</string>
     <string name="wiimote_speaker_description">通过真实Wiimote的扬声器启用声音输出（需要DolphinBar）。</string>
+    <string name="wii_sd_card">插入 SD 卡</string>
+    <string name="wii_sd_card_description">保存在 /Wii/sd.raw (默认大小是 128mb)。</string>
     <string name="audio_stretch">音频拉伸</string>
     <string name="audio_stretch_description">拉伸音频以减少声音不流畅的问题，增加延迟。</string>
 

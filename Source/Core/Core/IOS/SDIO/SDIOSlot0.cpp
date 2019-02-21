@@ -15,6 +15,7 @@
 #include "Common/FileUtil.h"
 #include "Common/Logging/Log.h"
 #include "Common/SDCardUtil.h"
+#include "Core/Core.h"
 #include "Core/ConfigManager.h"
 #include "Core/HW/Memmap.h"
 #include "Core/IOS/IOS.h"
@@ -78,6 +79,7 @@ void SDIOSlot0::OpenInternal()
 
 IPCCommandResult SDIOSlot0::Open(const OpenRequest& request)
 {
+  Core::DisplayMessage("Open SD card image...", 2000);
   OpenInternal();
   m_registers.fill(0);
 

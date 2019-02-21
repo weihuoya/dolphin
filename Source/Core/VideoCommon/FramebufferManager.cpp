@@ -331,7 +331,7 @@ bool FramebufferManager::PopulateColorReadbackTexture()
   // Issue a copy from framebuffer -> copy texture if we have >1xIR or MSAA on.
   AbstractTexture* src_texture =
       ResolveEFBColorTexture(MathUtil::Rectangle<int>(0, 0, GetEFBWidth(), GetEFBHeight()));
-  if (g_renderer->GetEFBScale() != 1)
+  if (g_renderer->IsScaledEFB())
   {
     // Downsample from internal resolution to 1x.
     // TODO: This won't produce correct results at IRs above 2x.
@@ -369,7 +369,7 @@ bool FramebufferManager::PopulateDepthReadbackTexture()
   // Issue a copy from framebuffer -> copy texture if we have >1xIR or MSAA on.
   AbstractTexture* src_texture =
       ResolveEFBDepthTexture(MathUtil::Rectangle<int>(0, 0, GetEFBWidth(), GetEFBHeight()));
-  if (g_renderer->GetEFBScale() != 1)
+  if (g_renderer->IsScaledEFB())
   {
     // Downsample from internal resolution to 1x.
     // TODO: This won't produce correct results at IRs above 2x.
@@ -459,7 +459,7 @@ bool FramebufferManager::CreateReadbackFramebuffer()
       EFB_WIDTH, EFB_HEIGHT, 1, 1, 1,
       AbstractTexture::GetColorFormatForDepthFormat(GetEFBDepthFormat()),
       AbstractTextureFlag_RenderTarget);
-  if (g_renderer->GetEFBScale() != 1)
+  if (g_renderer->IsScaledEFB())
   {
     m_color_copy_texture = g_renderer->CreateTexture(color_config);
     m_depth_copy_texture = g_renderer->CreateTexture(depth_config);
