@@ -255,22 +255,22 @@ void Renderer::RenderToXFB(u32 xfbAddr, const EFBRectangle& sourceRc, u32 fbStri
 
 float Renderer::GetEFBScale() const
 {
-  return m_efb_scale;
+  return m_efb_scale / 100.0f;
 }
 
 bool Renderer::IsScaledEFB() const
 {
-  return m_efb_scale != 1;
+  return m_efb_scale != 100;
 }
 
 int Renderer::EFBToScaledX(int x) const
 {
-  return m_efb_scale > 9 ? x * m_efb_scale / 100 : x * m_efb_scale;
+  return x * m_efb_scale / 100;
 }
 
 int Renderer::EFBToScaledY(int y) const
 {
-  return m_efb_scale > 9 ? y * m_efb_scale / 100 : y * m_efb_scale;
+  return y * m_efb_scale / 100;
 }
 
 float Renderer::EFBToScaledXf(float x) const
@@ -285,10 +285,7 @@ float Renderer::EFBToScaledYf(float y) const
 
 std::tuple<int, int> Renderer::CalculateTargetScale(int x, int y) const
 {
-  if (m_efb_scale > 9)
-    return std::make_tuple(x * m_efb_scale / 100, y * m_efb_scale / 100);
-  else
-    return std::make_tuple(x * m_efb_scale, y * m_efb_scale);
+  return std::make_tuple(x * m_efb_scale / 100, y * m_efb_scale / 100);
 }
 
 // return true if target size changed
@@ -304,18 +301,13 @@ bool Renderer::CalculateTargetSize()
   else
   {
     m_efb_scale = g_ActiveConfig.iEFBScale;
+    if (m_efb_scale < 10)
+      m_efb_scale *= 100;
   }
 
   const int max_size = g_ActiveConfig.backend_info.MaxTextureSize;
-  if (m_efb_scale > 9)
-  {
-    if(max_size < EFB_WIDTH * m_efb_scale / 100)
-      m_efb_scale = max_size / EFB_WIDTH;
-  }
-  else if (max_size < EFB_WIDTH * m_efb_scale)
-  {
-    m_efb_scale = max_size / EFB_WIDTH;
-  }
+  if(max_size < EFB_WIDTH * m_efb_scale / 100)
+    m_efb_scale = max_size / EFB_WIDTH * 100;
 
   int new_efb_width = 0;
   int new_efb_height = 0;
