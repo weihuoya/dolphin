@@ -4,6 +4,10 @@ import org.dolphinemu.dolphinemu.utils.Log;
 
 public class InputOverlayPointer
 {
+  public final static int TYPE_OFF = 0;
+  public final static int TYPE_CLICK = 1;
+  public final static int TYPE_STICK = 2;
+
   private int mType;
   private int mTrackId;
 
@@ -16,14 +20,20 @@ public class InputOverlayPointer
   private float mAdjustY;
 
   private int[] mAxisIDs = new int[4];
-  private float[] mAxises = new float[4];
 
+  // used for stick
+  private float[] mAxises = new float[4];
   private float mCenterX;
   private float mCenterY;
 
+  // used for click
+  private long mLastClickTime;
+  private int mClickButtonId;
+  private boolean mIsDoubleClick;
+
   public InputOverlayPointer(int width, int height, float scaledDensity)
   {
-    mType = 0;
+    mType = TYPE_OFF;
     mAxisIDs[0] = 0;
     mAxisIDs[1] = 0;
     mAxisIDs[2] = 0;
@@ -38,6 +48,10 @@ public class InputOverlayPointer
     mAdjustY = 1.0f;
 
     mTrackId = -1;
+
+    mLastClickTime = 0;
+    mIsDoubleClick = false;
+    mClickButtonId = NativeLibrary.ButtonType.WIIMOTE_BUTTON_A;
 
     if(NativeLibrary.IsRunning())
     {
@@ -71,7 +85,7 @@ public class InputOverlayPointer
     reset();
     mType = type;
 
-    if(type == 1)
+    if(type == TYPE_CLICK)
     {
       // click
       mAxisIDs[0] = 0;
@@ -79,7 +93,7 @@ public class InputOverlayPointer
       mAxisIDs[2] = 0;
       mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_IR + 4;
     }
-    else
+    else if(type == TYPE_STICK)
     {
       // stick
       mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
@@ -111,6 +125,17 @@ public class InputOverlayPointer
     mCenterX = x;
     mCenterY = y;
     setPointerState(x, y);
+
+    if(mType == TYPE_CLICK)
+    {
+      long currentTime = System.currentTimeMillis();
+      if(currentTime - mLastClickTime < 300)
+      {
+        mIsDoubleClick = true;
+        NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, mClickButtonId, NativeLibrary.ButtonState.PRESSED);
+      }
+      mLastClickTime = currentTime;
+    }
   }
 
   public void onPointerMove(int id, float x, float y)
@@ -122,19 +147,25 @@ public class InputOverlayPointer
   {
     mTrackId = -1;
     setPointerState(x, y);
+
+    if(mIsDoubleClick)
+    {
+      NativeLibrary.onGamePadEvent(NativeLibrary.TouchScreenDevice, mClickButtonId, NativeLibrary.ButtonState.RELEASED);
+      mIsDoubleClick = false;
+    }
   }
 
   private void setPointerState(float x, float y)
   {
     float[] axises = new float[4];
 
-    if(mType == 1)
+    if(mType == TYPE_CLICK)
     {
       // click
       axises[0] = axises[1] = ((y * mAdjustY) - mGameHeightHalf) / mGameHeightHalf;
       axises[2] = axises[3] = ((x * mAdjustX) - mGameWidthHalf) / mGameWidthHalf;
     }
-    else
+    else if(mType == TYPE_STICK)
     {
       // stick
       axises[0] = axises[1] = (y - mCenterY) / mGameHeightHalf * mScaledDensity;
@@ -151,9 +182,9 @@ public class InputOverlayPointer
           // recenter
           value = 0;
         }
-        if(mType != 1)
+        if(mType == TYPE_STICK)
         {
-          // stick
+          // stick, save current value
           mAxises[i] = value;
         }
       }

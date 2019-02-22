@@ -306,7 +306,7 @@ bool Renderer::CalculateTargetSize()
   }
 
   const int max_size = g_ActiveConfig.backend_info.MaxTextureSize;
-  if(max_size < EFB_WIDTH * m_efb_scale / 100)
+  if (max_size < EFB_WIDTH * m_efb_scale / 100)
     m_efb_scale = max_size / EFB_WIDTH * 100;
 
   int new_efb_width = 0;
@@ -879,9 +879,18 @@ void Renderer::Swap(u32 xfbAddr, u32 fbWidth, u32 fbStride, u32 fbHeight, const 
       Flush();
     }
 
-    // Update our last xfb values
-    m_last_xfb_width = (fbStride < 1 || fbStride > MAX_XFB_WIDTH) ? MAX_XFB_WIDTH : fbStride;
-    m_last_xfb_height = (fbHeight < 1 || fbHeight > MAX_XFB_HEIGHT) ? MAX_XFB_HEIGHT : fbHeight;
+    if (g_ActiveConfig.iEFBScale == EFB_SCALE_AUTO_INTEGRAL)
+    {
+      // Update our last xfb values
+      float prev_xfb_width = m_last_xfb_width;
+      float prev_xfb_height = m_last_xfb_height;
+      m_last_xfb_width = (fbStride < 1 || fbStride > MAX_XFB_WIDTH) ? MAX_XFB_WIDTH : fbStride;
+      m_last_xfb_height = (fbHeight < 1 || fbHeight > MAX_XFB_HEIGHT) ? MAX_XFB_HEIGHT : fbHeight;
+      if (prev_xfb_width != m_last_xfb_width || prev_xfb_height != m_last_xfb_height)
+      {
+        g_ActiveConfig.bDirty = true;
+      }
+    }
   }
   else
   {
