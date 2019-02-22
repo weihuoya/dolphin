@@ -196,7 +196,7 @@ public final class InputOverlayDrawableJoystick
         break;
       case InputOverlay.JOYSTICK_EMULATE_WII_SHAKE:
         mJoystickType = 0;
-        mAxisIDs[0] = 0;
+        mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
         mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_X;
         mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Y;
         mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_SHAKE_Z;
@@ -229,7 +229,7 @@ public final class InputOverlayDrawableJoystick
         break;
       case InputOverlay.JOYSTICK_EMULATE_NUNCHUK_SHAKE:
         mJoystickType = 0;
-        mAxisIDs[0] = 0;
+        mAxisIDs[0] = NativeLibrary.ButtonType.NUNCHUK_SHAKE_X;
         mAxisIDs[1] = NativeLibrary.ButtonType.NUNCHUK_SHAKE_X;
         mAxisIDs[2] = NativeLibrary.ButtonType.NUNCHUK_SHAKE_Y;
         mAxisIDs[3] = NativeLibrary.ButtonType.NUNCHUK_SHAKE_Z;
@@ -273,7 +273,7 @@ public final class InputOverlayDrawableJoystick
       InputOverlay.sJoyStickSetting == InputOverlay.JOYSTICK_EMULATE_NUNCHUK_SHAKE)
     {
       // shake
-      axises[0] = 0;
+      axises[0] = -axises[1];
       axises[1] = -axises[1];
       axises[3] = -axises[3];
       handleShakeEvent(axises);

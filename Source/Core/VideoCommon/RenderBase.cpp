@@ -81,17 +81,17 @@ Renderer::Renderer(int backbuffer_width, int backbuffer_height, float backbuffer
     : m_backbuffer_width(backbuffer_width), m_backbuffer_height(backbuffer_height),
       m_backbuffer_scale(backbuffer_scale), m_backbuffer_format(backbuffer_format)
 {
-  UpdateActiveConfig();
-  UpdateDrawRectangle();
-  CalculateTargetSize();
-
   m_aspect_wide = SConfig::GetInstance().bWii && Config::Get(Config::SYSCONF_WIDESCREEN);
+  UpdateActiveConfig();
 }
 
 Renderer::~Renderer() = default;
 
 bool Renderer::Initialize()
 {
+  UpdateDrawRectangle();
+  CalculateTargetSize();
+
   m_raster_font = std::make_unique<VideoCommon::RasterFont>();
   if (!m_raster_font->Initialize(m_backbuffer_format))
     return false;
@@ -265,12 +265,12 @@ bool Renderer::IsScaledEFB() const
 
 int Renderer::EFBToScaledX(int x) const
 {
-  return x * m_efb_scale / 100;
+  return x * m_efb_scale / 100.0f;
 }
 
 int Renderer::EFBToScaledY(int y) const
 {
-  return y * m_efb_scale / 100;
+  return y * m_efb_scale / 100.0f;
 }
 
 float Renderer::EFBToScaledXf(float x) const
@@ -285,7 +285,7 @@ float Renderer::EFBToScaledYf(float y) const
 
 std::tuple<int, int> Renderer::CalculateTargetScale(int x, int y) const
 {
-  return std::make_tuple(x * m_efb_scale / 100, y * m_efb_scale / 100);
+  return std::make_tuple(x * m_efb_scale / 100.0f, y * m_efb_scale / 100.0f);
 }
 
 // return true if target size changed
@@ -294,8 +294,8 @@ bool Renderer::CalculateTargetSize()
   if (g_ActiveConfig.iEFBScale == EFB_SCALE_AUTO_INTEGRAL)
   {
     // Set a scale based on the window size
-    int width = EFB_WIDTH * m_target_rectangle.GetWidth() / m_last_xfb_width;
-    int height = EFB_HEIGHT * m_target_rectangle.GetHeight() / m_last_xfb_height;
+    int width = EFB_WIDTH * m_target_rectangle.GetWidth() * 100 / m_last_xfb_width;
+    int height = EFB_HEIGHT * m_target_rectangle.GetHeight() * 100 / m_last_xfb_height;
     m_efb_scale = std::max((width - 1) / EFB_WIDTH + 1, (height - 1) / EFB_HEIGHT + 1);
   }
   else
@@ -307,7 +307,7 @@ bool Renderer::CalculateTargetSize()
 
   const int max_size = g_ActiveConfig.backend_info.MaxTextureSize;
   if (max_size < EFB_WIDTH * m_efb_scale / 100)
-    m_efb_scale = max_size / EFB_WIDTH * 100;
+    m_efb_scale = max_size * 100 / EFB_WIDTH;
 
   int new_efb_width = 0;
   int new_efb_height = 0;
@@ -317,6 +317,11 @@ bool Renderer::CalculateTargetSize()
 
   if (new_efb_width != m_target_width || new_efb_height != m_target_height)
   {
+    OSD::AddTypedMessage(OSD::MessageType::EFBScale,
+                         StringFromFormat("Backend: %s - Scale: %.02f",
+                                          SConfig::GetInstance().m_strVideoBackend.c_str(),
+                                          m_efb_scale / 100.0f),
+                         4000);
     m_target_width = new_efb_width;
     m_target_height = new_efb_height;
     PixelShaderManager::SetEfbScaleChanged(EFBToScaledXf(1), EFBToScaledYf(1));
@@ -659,8 +664,8 @@ void Renderer::UpdateDrawRectangle()
   draw_width = std::ceil(draw_width) - static_cast<int>(std::ceil(draw_width)) % 4;
   draw_height = std::ceil(draw_height) - static_cast<int>(std::ceil(draw_height)) % 4;
 
-  m_target_rectangle.left = static_cast<int>(std::round(win_width / 2.0 - draw_width / 2.0));
-  m_target_rectangle.top = static_cast<int>(std::round(win_height / 2.0 - draw_height / 2.0));
+  m_target_rectangle.left = static_cast<int>(win_width - draw_width) / 2;
+  m_target_rectangle.top = static_cast<int>(win_height - draw_height) / 2;
   m_target_rectangle.right = m_target_rectangle.left + static_cast<int>(draw_width);
   m_target_rectangle.bottom = m_target_rectangle.top + static_cast<int>(draw_height);
 }
