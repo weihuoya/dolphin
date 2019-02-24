@@ -129,7 +129,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
   {
     super(context, attrs);
 
-    mPreferences = PreferenceManager.getDefaultSharedPreferences(getContext());
+    mPreferences = PreferenceManager.getDefaultSharedPreferences(context);
     if (!mPreferences.getBoolean(CONTROL_INIT_PREF_KEY, false))
       defaultOverlay();
 
@@ -1098,35 +1098,17 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     SharedPreferences.Editor sPrefsEditor = mPreferences.edit();
     Resources res = getResources();
 
-    // It's possible that a user has created their overlay before this was added
-    // Only change the overlay if the 'A' button is not in the upper corner.
-
     // GameCube
-    if (mPreferences.getFloat(CONTROLLER_GAMECUBE + "_" + ButtonType.BUTTON_A + "_X", 0f) == 0f)
-    {
-      gcDefaultOverlay(sPrefsEditor, res);
-    }
+    gcDefaultOverlay(sPrefsEditor, res);
 
     // Wii Nunchuk
-    if (mPreferences
-      .getFloat(CONTROLLER_WIINUNCHUK + "_" + ButtonType.WIIMOTE_BUTTON_A + "_X", 0f) == 0f)
-    {
-      wiiNunchukDefaultOverlay(sPrefsEditor, res);
-    }
+    wiiNunchukDefaultOverlay(sPrefsEditor, res);
 
     // Wii Remote
-    if (mPreferences
-      .getFloat(CONTROLLER_WIIREMOTE + "_" + ButtonType.WIIMOTE_BUTTON_A + "_X", 0f) == 0f)
-    {
-      wiiRemoteDefaultOverlay(sPrefsEditor, res);
-    }
+    wiiRemoteDefaultOverlay(sPrefsEditor, res);
 
     // Wii Classic
-    if (mPreferences
-      .getFloat(COCONTROLLER_CLASSIC + "_" + ButtonType.CLASSIC_BUTTON_A + "_X", 0f) == 0f)
-    {
-      wiiClassicDefaultOverlay(sPrefsEditor, res);
-    }
+    wiiClassicDefaultOverlay(sPrefsEditor, res);
 
     sPrefsEditor.putBoolean(CONTROL_INIT_PREF_KEY, true);
     sPrefsEditor.apply();

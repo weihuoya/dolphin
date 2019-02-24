@@ -118,9 +118,9 @@ public:
   VkFramebuffer GetFB() const { return m_fb; }
   VkRect2D GetRect() const { return VkRect2D{{0, 0}, {m_width, m_height}}; }
 
-  VkRenderPass GetLoadRenderPass() const { return m_load_render_pass; }
-  VkRenderPass GetDiscardRenderPass() const { return m_discard_render_pass; }
-  VkRenderPass GetClearRenderPass() const { return m_clear_render_pass; }
+  VkRenderPass GetLoadRenderPass();
+  VkRenderPass GetDiscardRenderPass();
+  VkRenderPass GetClearRenderPass();
   void TransitionForRender();
 
   static std::unique_ptr<VKFramebuffer> Create(VKTexture* color_attachments,

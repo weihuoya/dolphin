@@ -895,21 +895,29 @@ std::unique_ptr<VKFramebuffer> VKFramebuffer::Create(VKTexture* color_attachment
 
   std::array<VkImageView, 2> attachment_views{};
   u32 num_attachments = 0;
+  VkRenderPass render_pass;
+  VkRenderPass load_render_pass = VK_NULL_HANDLE;
+  VkRenderPass discard_render_pass = VK_NULL_HANDLE;
+  VkRenderPass clear_render_pass = VK_NULL_HANDLE;
 
   if (color_attachment)
     attachment_views[num_attachments++] = color_attachment->GetView();
 
   if (depth_attachment)
+  {
     attachment_views[num_attachments++] = depth_attachment->GetView();
-
-  VkRenderPass load_render_pass = g_object_cache->GetRenderPass(
+    load_render_pass = g_object_cache->GetRenderPass(
       vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_LOAD);
-  VkRenderPass discard_render_pass = g_object_cache->GetRenderPass(
+    render_pass = load_render_pass;
+  }
+  else
+  {
+    discard_render_pass = g_object_cache->GetRenderPass(
       vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
-  VkRenderPass clear_render_pass = g_object_cache->GetRenderPass(
-      vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_CLEAR);
-  if (load_render_pass == VK_NULL_HANDLE || discard_render_pass == VK_NULL_HANDLE ||
-      clear_render_pass == VK_NULL_HANDLE)
+    render_pass = discard_render_pass;
+  }
+
+  if (render_pass == VK_NULL_HANDLE)
   {
     return nullptr;
   }
@@ -917,7 +925,7 @@ std::unique_ptr<VKFramebuffer> VKFramebuffer::Create(VKTexture* color_attachment
   VkFramebufferCreateInfo framebuffer_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                                               nullptr,
                                               0,
-                                              load_render_pass,
+                                              render_pass,
                                               num_attachments,
                                               attachment_views.data(),
                                               width,
@@ -936,6 +944,42 @@ std::unique_ptr<VKFramebuffer> VKFramebuffer::Create(VKTexture* color_attachment
   return std::make_unique<VKFramebuffer>(color_attachment, depth_attachment, width, height, layers,
                                          samples, fb, load_render_pass, discard_render_pass,
                                          clear_render_pass);
+}
+
+VkRenderPass VKFramebuffer::GetLoadRenderPass()
+{
+  if(m_load_render_pass == VK_NULL_HANDLE)
+  {
+    const VkFormat vk_color_format = VKTexture::GetVkFormatForHostTextureFormat(m_color_format);
+    const VkFormat vk_depth_format = VKTexture::GetVkFormatForHostTextureFormat(m_depth_format);
+    m_load_render_pass = g_object_cache->GetRenderPass(
+      vk_color_format, vk_depth_format, m_samples, VK_ATTACHMENT_LOAD_OP_LOAD);
+  }
+  return m_load_render_pass;
+}
+
+VkRenderPass VKFramebuffer::GetDiscardRenderPass()
+{
+  if(m_discard_render_pass == VK_NULL_HANDLE)
+  {
+    const VkFormat vk_color_format = VKTexture::GetVkFormatForHostTextureFormat(m_color_format);
+    const VkFormat vk_depth_format = VKTexture::GetVkFormatForHostTextureFormat(m_depth_format);
+    m_discard_render_pass = g_object_cache->GetRenderPass(
+      vk_color_format, vk_depth_format, m_samples, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
+  }
+  return m_discard_render_pass;
+}
+
+VkRenderPass VKFramebuffer::GetClearRenderPass()
+{
+  if(m_clear_render_pass == VK_NULL_HANDLE)
+  {
+    const VkFormat vk_color_format = VKTexture::GetVkFormatForHostTextureFormat(m_color_format);
+    const VkFormat vk_depth_format = VKTexture::GetVkFormatForHostTextureFormat(m_depth_format);
+    m_clear_render_pass = g_object_cache->GetRenderPass(
+      vk_color_format, vk_depth_format, m_samples, VK_ATTACHMENT_LOAD_OP_CLEAR);
+  }
+  return m_clear_render_pass;
 }
 
 void VKFramebuffer::TransitionForRender()

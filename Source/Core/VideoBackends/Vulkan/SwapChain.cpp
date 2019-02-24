@@ -361,16 +361,6 @@ bool SwapChain::SetupSwapChainImages()
 
   const TextureConfig texture_config(TextureConfig(
       m_width, m_height, 1, m_layers, 1, m_texture_format, AbstractTextureFlag_RenderTarget));
-  const VkRenderPass load_render_pass = g_object_cache->GetRenderPass(
-      m_surface_format.format, VK_FORMAT_UNDEFINED, 1, VK_ATTACHMENT_LOAD_OP_LOAD);
-  const VkRenderPass clear_render_pass = g_object_cache->GetRenderPass(
-      m_surface_format.format, VK_FORMAT_UNDEFINED, 1, VK_ATTACHMENT_LOAD_OP_CLEAR);
-  if (load_render_pass == VK_NULL_HANDLE || clear_render_pass == VK_NULL_HANDLE)
-  {
-    PanicAlert("Failed to get swap chain render passes.");
-    return false;
-  }
-
   m_swap_chain_images.reserve(image_count);
   for (uint32_t i = 0; i < image_count; i++)
   {
