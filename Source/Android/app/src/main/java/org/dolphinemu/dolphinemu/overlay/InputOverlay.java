@@ -49,7 +49,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
   public static final String CONTROL_TYPE_PREF_KEY = "WiiController";
   public static final int CONTROLLER_GAMECUBE = 0;
-  public static final int COCONTROLLER_CLASSIC = 1;
+  public static final int CONTROLLER_CLASSIC = 1;
   public static final int CONTROLLER_WIINUNCHUK = 2;
   public static final int CONTROLLER_WIIREMOTE = 3;
   public static int sControllerType;
@@ -748,7 +748,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       {
         addGameCubeOverlayControls();
       }
-      else if (sControllerType == COCONTROLLER_CLASSIC)
+      else if (sControllerType == CONTROLLER_CLASSIC)
       {
         addClassicOverlayControls();
       }
@@ -763,6 +763,31 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     }
 
     invalidate();
+  }
+
+  public void resetCurrentLayout()
+  {
+    SharedPreferences.Editor sPrefsEditor = mPreferences.edit();
+    Resources res = getResources();
+
+    switch (getControllerType())
+    {
+      case CONTROLLER_GAMECUBE:
+        gcDefaultOverlay(sPrefsEditor, res);
+        break;
+      case CONTROLLER_CLASSIC:
+        wiiClassicDefaultOverlay(sPrefsEditor, res);
+        break;
+      case CONTROLLER_WIINUNCHUK:
+        wiiNunchukDefaultOverlay(sPrefsEditor, res);
+        break;
+      case CONTROLLER_WIIREMOTE:
+        wiiRemoteDefaultOverlay(sPrefsEditor, res);
+        break;
+    }
+
+    sPrefsEditor.apply();
+    refreshControls();
   }
 
   public void setTouchPointer(int type)
@@ -1270,7 +1295,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
   private void wiiClassicDefaultOverlay(SharedPreferences.Editor sPrefsEditor, Resources res)
   {
-    final int controller = COCONTROLLER_CLASSIC;
+    final int controller = CONTROLLER_CLASSIC;
     // Each value is a percent from max X/Y stored as an int. Have to bring that value down
     // to a decimal before multiplying by MAX X/Y.
     sPrefsEditor.putFloat(controller + "_" + ButtonType.CLASSIC_BUTTON_A + "_X",

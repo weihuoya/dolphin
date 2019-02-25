@@ -550,7 +550,7 @@ public final class EmulationActivity extends AppCompatActivity
       resId = R.array.gcpadButtons;
       keyPrefix = "buttonToggleGc";
     }
-    else if (controller == InputOverlay.COCONTROLLER_CLASSIC)
+    else if (controller == InputOverlay.CONTROLLER_CLASSIC)
     {
       resId = R.array.classicButtons;
       keyPrefix = "buttonToggleClassic";
@@ -649,6 +649,11 @@ public final class EmulationActivity extends AppCompatActivity
       InputOverlay.sControllerAlpha = seekbarAlpha.getProgress();
       mEmulationFragment.refreshInputOverlay();
     });
+    builder.setNeutralButton(getString(R.string.emulation_control_reset_layout),
+      (dialogInterface, i) ->
+      {
+        mEmulationFragment.resetCurrentLayout();
+      });
 
     AlertDialog alertDialog = builder.create();
     alertDialog.show();

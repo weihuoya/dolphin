@@ -63,7 +63,7 @@ public class InputOverlaySensor
           mFactors[1] = 1;
           mFactors[2] = 1;
           mFactors[3] = 1;
-          if(InputOverlay.sControllerType == InputOverlay.COCONTROLLER_CLASSIC)
+          if(InputOverlay.sControllerType == InputOverlay.CONTROLLER_CLASSIC)
           {
             mAxisIDs[0] = NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_UP;
             mAxisIDs[1] = NativeLibrary.ButtonType.CLASSIC_STICK_LEFT_DOWN;

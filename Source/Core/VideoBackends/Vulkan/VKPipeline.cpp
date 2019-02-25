@@ -220,7 +220,10 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
   VkRenderPass render_pass = g_object_cache->GetRenderPass(
       VKTexture::GetVkFormatForHostTextureFormat(config.framebuffer_state.color_texture_format),
       VKTexture::GetVkFormatForHostTextureFormat(config.framebuffer_state.depth_texture_format),
-      config.framebuffer_state.samples, VK_ATTACHMENT_LOAD_OP_LOAD);
+      config.framebuffer_state.samples,
+      config.depth_state.testenable || config.depth_state.updateenable ?
+          VK_ATTACHMENT_LOAD_OP_LOAD :
+          VK_ATTACHMENT_LOAD_OP_DONT_CARE);
 
   // Get pipeline layout.
   VkPipelineLayout pipeline_layout;

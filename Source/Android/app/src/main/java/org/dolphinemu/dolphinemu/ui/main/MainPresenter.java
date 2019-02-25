@@ -147,11 +147,7 @@ public final class MainPresenter
       }
     }
 
-    SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(context);
-    SharedPreferences.Editor editor = pref.edit();
-    editor.putBoolean(InputOverlay.CONTROL_INIT_PREF_KEY, false);
-    editor.apply();
-
-    Toast.makeText(context, String.format("Delete %d files", count), Toast.LENGTH_SHORT).show();
+    Toast.makeText(context, context.getString(R.string.delete_cache_toast, count),
+      Toast.LENGTH_SHORT).show();
   }
 }

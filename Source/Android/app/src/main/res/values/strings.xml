@@ -295,7 +295,8 @@
     <string name="emulation_toggle_controls">Toggle Controls</string>
     <string name="emulation_toggle_all">Toggle All</string>
     <string name="emulation_control_scale">Adjust Scale</string>
-    <string name="emulation_control_alpha">Adjust Alpha</string>
+    <string name="emulation_control_alpha">Adujst Opacity</string>
+    <string name="emulation_control_reset_layout">Reset Layout</string>
     <string name="emulation_control_joystick_rel_center">Relative Stick Center</string>
     <string name="emulation_control_rumble">Rumble</string>
     <string name="emulation_choose_controller">Choose Controller</string>
@@ -354,6 +355,7 @@
     <string name="use_builtin_title_database">Use Built-In Database of Game Names</string>
     <string name="touch_ir_click">Click</string>
     <string name="touch_ir_stick">Stick</string>
+    <string name="delete_cache_toast">Delete %1$d cache files.</string>
 
     <string name="sysconf_screensaver">Screensaver</string>
     <string name="sysconf_language">System Language</string>

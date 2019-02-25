@@ -296,6 +296,7 @@
     <string name="emulation_toggle_all">切换全部</string>
     <string name="emulation_control_scale">调整比例</string>
     <string name="emulation_control_alpha">调整透明度</string>
+    <string name="emulation_control_reset_layout">重置布局</string>
     <string name="emulation_control_joystick_rel_center">摇杆点击居中</string>
     <string name="emulation_control_rumble">振动反馈</string>
     <string name="emulation_choose_controller">选择手柄</string>
@@ -354,6 +355,7 @@
     <string name="use_builtin_title_database">使用游戏名称数据库</string>
     <string name="touch_ir_click">点击</string>
     <string name="touch_ir_stick">摇杆</string>
+    <string name="delete_cache_toast">删除 %1$d 个缓存文件。</string>
 
     <string name="sysconf_screensaver">屏幕保护程序</string>
     <string name="sysconf_language">系统语言</string>
