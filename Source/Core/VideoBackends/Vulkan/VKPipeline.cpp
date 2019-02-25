@@ -5,6 +5,7 @@
 #include "Common/Assert.h"
 #include "Common/MsgHandler.h"
 
+#include "VideoCommon/OnScreenDisplay.h"
 #include "VideoBackends/Vulkan/ObjectCache.h"
 #include "VideoBackends/Vulkan/VKPipeline.h"
 #include "VideoBackends/Vulkan/VKShader.h"
@@ -181,22 +182,25 @@ GetVulkanColorBlendState(const BlendingState& state,
                          const VkPipelineColorBlendAttachmentState* attachments,
                          uint32_t num_attachments)
 {
-  static constexpr std::array<VkLogicOp, 16> vk_logic_ops = {
-      {VK_LOGIC_OP_CLEAR, VK_LOGIC_OP_AND, VK_LOGIC_OP_AND_REVERSE, VK_LOGIC_OP_COPY,
-       VK_LOGIC_OP_AND_INVERTED, VK_LOGIC_OP_NO_OP, VK_LOGIC_OP_XOR, VK_LOGIC_OP_OR,
-       VK_LOGIC_OP_NOR, VK_LOGIC_OP_EQUIVALENT, VK_LOGIC_OP_INVERT, VK_LOGIC_OP_OR_REVERSE,
-       VK_LOGIC_OP_COPY_INVERTED, VK_LOGIC_OP_OR_INVERTED, VK_LOGIC_OP_NAND, VK_LOGIC_OP_SET}};
-
-  VkBool32 vk_logic_op_enable = static_cast<VkBool32>(state.logicopenable);
-  if (vk_logic_op_enable && !g_ActiveConfig.backend_info.bSupportsLogicOp)
+  VkBool32 vk_logic_op_enable = VK_FALSE;
+  VkLogicOp vk_logic_op = VK_LOGIC_OP_CLEAR;
+  if (g_ActiveConfig.backend_info.bSupportsLogicOp)
   {
-    // At the time of writing, Adreno and Mali drivers didn't support logic ops.
-    // The "emulation" through blending path has been removed, so just disable it completely.
-    // These drivers don't support dual-source blend either, so issues are to be expected.
-    vk_logic_op_enable = VK_FALSE;
+    if (state.logicopenable)
+    {
+      constexpr std::array<VkLogicOp, 16> vk_logic_ops = {
+          {VK_LOGIC_OP_CLEAR, VK_LOGIC_OP_AND, VK_LOGIC_OP_AND_REVERSE, VK_LOGIC_OP_COPY,
+           VK_LOGIC_OP_AND_INVERTED, VK_LOGIC_OP_NO_OP, VK_LOGIC_OP_XOR, VK_LOGIC_OP_OR,
+           VK_LOGIC_OP_NOR, VK_LOGIC_OP_EQUIVALENT, VK_LOGIC_OP_INVERT, VK_LOGIC_OP_OR_REVERSE,
+           VK_LOGIC_OP_COPY_INVERTED, VK_LOGIC_OP_OR_INVERTED, VK_LOGIC_OP_NAND, VK_LOGIC_OP_SET}};
+      vk_logic_op_enable = VK_TRUE;
+      vk_logic_op = vk_logic_ops[state.logicmode];
+    }
   }
-
-  VkLogicOp vk_logic_op = vk_logic_op_enable ? vk_logic_ops[state.logicmode] : VK_LOGIC_OP_CLEAR;
+  else if (state.logicopenable)
+  {
+    OSD::AddTypedMessage(OSD::MessageType::LogicOpsNotice, "Logic ops aren't available!", 4000);
+  }
 
   VkPipelineColorBlendStateCreateInfo vk_state = {
       VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,  // VkStructureType sType

@@ -28,6 +28,7 @@ enum class MessageType
   NetPlayPing,
   NetPlayBuffer,
   EFBScale,
+  LogicOpsNotice,
 
   // This entry must be kept last so that persistent typed messages are
   // displayed before other messages

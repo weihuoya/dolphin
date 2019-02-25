@@ -241,7 +241,6 @@ void VulkanContext::PopulateBackendInfo(VideoConfig* config)
 {
   config->backend_info.api_type = APIType::Vulkan;
   config->backend_info.bSupportsExclusiveFullscreen = false;  // Currently WSI does not allow this.
-  config->backend_info.bSupports3DVision = false;             // D3D-exclusive.
   config->backend_info.bSupportsOversizedViewports = true;    // Assumed support.
   config->backend_info.bSupportsEarlyZ = true;                // Assumed support.
   config->backend_info.bSupportsBindingLayout = false;        // Assumed support.
