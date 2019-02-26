@@ -14,8 +14,6 @@ import com.squareup.picasso.Callback;
 import com.squareup.picasso.Picasso;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.util.ArrayList;
-import java.util.List;
 
 public class GameFile
 {
@@ -56,6 +54,8 @@ public class GameFile
 
   public native String getGameId();
 
+  public native String getGameTdbId();
+
   public native int getDiscNumber();
 
   public native int getRevision();
@@ -70,7 +70,7 @@ public class GameFile
 
   public String getCoverPath()
   {
-    return DirectoryInitialization.getCoverDirectory() + File.separator + getGameId() + ".png";
+    return DirectoryInitialization.getCoverDirectory() + File.separator + getGameTdbId() + ".png";
   }
 
   public String getLastSavedState()
