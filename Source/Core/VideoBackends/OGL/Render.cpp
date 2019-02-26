@@ -1219,9 +1219,9 @@ void Renderer::ApplyBlendingState(const BlendingState state)
       glDisable(GL_COLOR_LOGIC_OP);
     }
   }
-  else if (state.logicopenable)
+  else if (state.logicopenable && !g_Config.backend_info.bSupportsFramebufferFetch)
   {
-    OSD::AddTypedMessage(OSD::MessageType::LogicOpsNotice, "Logic ops aren't available!", 4000);
+    OSD::AddTypedMessage(OSD::MessageType::LogicOpsNotice, "Logic ops aren't available!");
   }
 
   glColorMask(state.colorupdate, state.colorupdate, state.colorupdate, state.alphaupdate);
