@@ -569,6 +569,9 @@ void Wiimote::DoState(PointerWrap& p)
   m_camera_logic.DoState(p);
   m_camera_logic.SetEnabled(m_status.ir);
 
+  if (p.GetMode() == PointerWrap::MODE_READ)
+    m_camera_logic.SetEnabled(m_status.ir);
+
   p.Do(m_is_motion_plus_attached);
   p.Do(m_active_extension);
 
