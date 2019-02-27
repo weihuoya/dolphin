@@ -360,7 +360,8 @@ PixelShaderUid GetPixelShaderUid()
     uid_data->doAlphaPass = true;
   }
 
-  if (state.logicopenable && !g_ActiveConfig.backend_info.bSupportsLogicOp &&
+  if (state.logicopenable && state.logicmode != BlendMode::LogicOp::COPY &&
+      !g_ActiveConfig.backend_info.bSupportsLogicOp &&
       g_ActiveConfig.backend_info.bSupportsFramebufferFetch)
   {
     // shader logic ops
@@ -381,6 +382,23 @@ void ClearUnusedPixelShaderUidBits(APIType ApiType, const ShaderHostConfig& host
   // uint output when logic op is not supported (i.e. driver/device does not support D3D11.1).
   if (ApiType != APIType::D3D || !host_config.backend_logic_op)
     uid_data->uint_output = 0;
+
+  if(host_config.backend_dual_source_blend)
+  {
+    uid_data->blend_enable = 0;
+    uid_data->blend_src_factor = 0;
+    uid_data->blend_src_factor_alpha = 0;
+    uid_data->blend_dst_factor = 0;
+    uid_data->blend_dst_factor_alpha = 0;
+    uid_data->blend_subtract = 0;
+    uid_data->blend_subtract_alpha = 0;
+  }
+
+  if (host_config.backend_logic_op)
+  {
+    uid_data->logic_op_enable = 0;
+    uid_data->logic_mode = 0;
+  }
 
   if (!host_config.backend_shader_framebuffer_fetch)
   {
@@ -653,17 +671,12 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
 
     out.Write("void main()\n{\n");
     out.Write("\tfloat4 rawpos = gl_FragCoord;\n");
-    if (use_shader_blend)
+    if (use_shader_blend || use_shader_logic)
     {
       // Store off a copy of the initial fb value for blending
       out.Write("\tfloat4 initial_ocol0 = FB_FETCH_VALUE;\n");
       out.Write("\tfloat4 ocol0;\n");
       out.Write("\tfloat4 ocol1;\n");
-    }
-    else if (use_shader_logic)
-    {
-      // Store off a copy of the initial fb value for logic
-      out.Write("\tfloat4 initial_ocol0 = FB_FETCH_VALUE;\n");
     }
   }
   else  // D3D
