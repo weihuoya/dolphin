@@ -328,18 +328,18 @@ PixelShaderUid GetPixelShaderUid()
   BlendingState state = {};
   state.Generate(bpmem);
 
+  uid_data->useDstAlpha = bpmem.dstalpha.enable && bpmem.blendmode.alphaupdate &&
+                          bpmem.zcontrol.pixel_format == PEControl::RGBA6_Z24;
+
   if (state.IsDualSourceBlend())
   {
-    if (g_ActiveConfig.backend_info.bSupportsDualSourceBlend &&
-        !DriverDetails::HasBug(DriverDetails::BUG_BROKEN_DUAL_SOURCE_BLENDING))
+    if (g_ActiveConfig.backend_info.bSupportsDualSourceBlend)
     {
       // hardware blend
-      uid_data->useDstAlpha = bpmem.zcontrol.pixel_format == PEControl::RGBA6_Z24;
     }
     else if (g_ActiveConfig.backend_info.bSupportsFramebufferFetch)
     {
       // shader blend
-      uid_data->useDstAlpha = state.alphaupdate;
       uid_data->blend_enable = state.blendenable;
       uid_data->blend_src_factor = state.srcfactor;
       uid_data->blend_src_factor_alpha = state.srcfactoralpha;
@@ -353,6 +353,11 @@ PixelShaderUid GetPixelShaderUid()
       // alpha pass
       uid_data->useDstAlpha = false;
     }
+  }
+  else if(uid_data->useDstAlpha)
+  {
+    uid_data->useDstAlpha = false;
+    uid_data->doAlphaPass = true;
   }
 
   if (state.logicopenable && !g_ActiveConfig.backend_info.bSupportsLogicOp &&
@@ -376,6 +381,19 @@ void ClearUnusedPixelShaderUidBits(APIType ApiType, const ShaderHostConfig& host
   // uint output when logic op is not supported (i.e. driver/device does not support D3D11.1).
   if (ApiType != APIType::D3D || !host_config.backend_logic_op)
     uid_data->uint_output = 0;
+
+  if (!host_config.backend_shader_framebuffer_fetch)
+  {
+    uid_data->blend_enable = 0;
+    uid_data->blend_src_factor = 0;
+    uid_data->blend_src_factor_alpha = 0;
+    uid_data->blend_dst_factor = 0;
+    uid_data->blend_dst_factor_alpha = 0;
+    uid_data->blend_subtract = 0;
+    uid_data->blend_subtract_alpha = 0;
+    uid_data->logic_op_enable = 0;
+    uid_data->logic_mode = 0;
+  }
 }
 
 void WritePixelShaderCommonHeader(ShaderCode& out, APIType ApiType, u32 num_texgens,
@@ -547,13 +565,19 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
   // Only use dual-source blending when required on drivers that don't support it very well.
   bool use_dual_source = false;
   bool use_shader_blend = false;
-  if (uid_data->blend_enable)
+  bool use_shader_logic = false;
+  if (uid_data->useDstAlpha && host_config.backend_dual_source_blend)
+  {
+    use_dual_source = true;
+  }
+  else if (uid_data->blend_enable && host_config.backend_shader_framebuffer_fetch)
   {
     use_shader_blend = true;
   }
-  else if (uid_data->useDstAlpha)
+
+  if (uid_data->logic_op_enable && host_config.backend_shader_framebuffer_fetch)
   {
-    use_dual_source = true;
+    use_shader_logic = true;
   }
 
   if (ApiType == APIType::OpenGL || ApiType == APIType::Vulkan)
@@ -571,7 +595,7 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
         out.Write("FRAGMENT_OUTPUT_LOCATION_INDEXED(0, 1) out vec4 ocol1;\n");
       }
     }
-    else if (use_shader_blend || uid_data->logic_op_enable)
+    else if (use_shader_blend || use_shader_logic)
     {
       // QComm's Adreno driver doesn't seem to like using the framebuffer_fetch value as an
       // intermediate value with multiple reads & modifications, so pull out the "real" output value
@@ -636,7 +660,7 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
       out.Write("\tfloat4 ocol0;\n");
       out.Write("\tfloat4 ocol1;\n");
     }
-    else if (uid_data->logic_op_enable)
+    else if (use_shader_logic)
     {
       // Store off a copy of the initial fb value for logic
       out.Write("\tfloat4 initial_ocol0 = FB_FETCH_VALUE;\n");
@@ -859,6 +883,12 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
 
   if (use_shader_blend)
     WriteBlend(out, uid_data);
+
+  if (use_shader_logic)
+    WriteLogicOp(out, uid_data);
+
+  if (use_shader_blend || use_shader_logic)
+    out.Write("\treal_ocol0 = ocol0;\n");
 
   if (uid_data->bounding_box)
   {
@@ -1439,8 +1469,6 @@ static void WriteColor(ShaderCode& out, APIType api_type, const pixel_shader_uid
   // Use dual-source color blending to perform dst alpha in a single pass
   if (use_dual_source)
     out.Write("\tocol1 = float4(0.0, 0.0, 0.0, float(prev.a) / 255.0);\n");
-  else if (uid_data->logic_op_enable)
-    WriteLogicOp(out, uid_data);
 
   // Colors will be blended against the 8-bit alpha from ocol1 and
   // the 6-bit alpha from ocol0 will be written to the framebuffer
@@ -1451,10 +1479,9 @@ static void WriteColor(ShaderCode& out, APIType api_type, const pixel_shader_uid
   }
 
   if (uid_data->rgba6_format)
-    out.Write("\t%s = float4(prev >> 2) / 63.0;\n",
-              uid_data->logic_op_enable ? "real_ocol0" : "ocol0");
+    out.Write("\tocol0 = float4(prev >> 2) / 63.0;\n");
   else
-    out.Write("\t%s = float4(prev) / 255.0;\n", uid_data->logic_op_enable ? "real_ocol0" : "ocol0");
+    out.Write("\tocol0 = float4(prev) / 255.0;\n");
 }
 
 static void WriteBlend(ShaderCode& out, const pixel_shader_uid_data* uid_data)
@@ -1506,31 +1533,63 @@ static void WriteBlend(ShaderCode& out, const pixel_shader_uid_data* uid_data)
   out.Write("\tblend_dst.rgb = %s\n", blendDstFactor[uid_data->blend_dst_factor]);
   out.Write("\tblend_dst.a = %s\n", blendDstFactorAlpha[uid_data->blend_dst_factor_alpha]);
 
-  out.Write("\tfloat4 blend_result;\n");
-  if (uid_data->blend_subtract)
+  if (uid_data->blend_subtract == uid_data->blend_subtract_alpha)
   {
-    out.Write(
-        "\tblend_result.rgb = initial_ocol0.rgb * blend_dst.rgb - ocol0.rgb * blend_src.rgb;\n");
+    if (uid_data->blend_subtract)
+    {
+      out.Write("\tocol0 = initial_ocol0 * blend_dst - ocol0 * blend_src;\n");
+    }
+    else
+    {
+      out.Write("\tocol0 = initial_ocol0 * blend_dst + ocol0 * blend_src;\n");
+    }
   }
   else
   {
-    out.Write(
-        "\tblend_result.rgb = initial_ocol0.rgb * blend_dst.rgb + ocol0.rgb * blend_src.rgb;\n");
+    if (uid_data->blend_subtract)
+    {
+      out.Write("\tocol0.rgb = initial_ocol0.rgb * blend_dst.rgb - ocol0.rgb * blend_src.rgb;\n");
+    }
+    else
+    {
+      out.Write("\tocol0.rgb = initial_ocol0.rgb * blend_dst.rgb + ocol0.rgb * blend_src.rgb;\n");
+    }
+
+    if (uid_data->blend_subtract_alpha)
+    {
+      out.Write("\tocol0.a = initial_ocol0.a * blend_dst.a - ocol0.a * blend_src.a;\n");
+    }
+    else
+    {
+      out.Write("\tocol0.a = initial_ocol0.a * blend_dst.a + ocol0.a * blend_src.a;\n");
+    }
   }
+}
 
-  if (uid_data->blend_subtract_alpha)
-    out.Write("\tblend_result.a = initial_ocol0.a * blend_dst.a - ocol0.a * blend_src.a;\n");
-  else
-    out.Write("\tblend_result.a = initial_ocol0.a * blend_dst.a + ocol0.a * blend_src.a;\n");
-
-  if (uid_data->logic_op_enable)
-  {
-    out.Write("\tprev = int4(blend_result * 255.0);\n");
-    WriteLogicOp(out, uid_data);
-    out.Write("\tblend_result.rgb = float3(prev) / 255.0;\n");
-  }
-
-  out.Write("\treal_ocol0 = blend_result;\n");
+static void WriteLogicOp(ShaderCode& out, const pixel_shader_uid_data* uid_data)
+{
+  static const std::array<const char*, 16> logicOps{{
+      "\tnew_color = int3(0);\n",                   // CLEAR
+      "\tnew_color = new_color & old_color;\n",     // AND
+      "\tnew_color = new_color & (~old_color);\n",  // AND_REVERSE
+      "\n",                                         // COPY
+      "\tnew_color = (~new_color & old_color;\n",   // AND_INVERTED
+      "\tnew_color = old_color;\n",                 // NOOP
+      "\tnew_color = new_color ^ old_color;\n",     // XOR
+      "\tnew_color = new_color | old_color;\n",     // OR
+      "\tnew_color = ~(new_color | old_color);\n",  // NOR
+      "\tnew_color = ~(new_color ^ old_color);\n",  // EQUIV
+      "\tnew_color = ~old_color;\n",                // INVERT
+      "\tnew_color = new_color | (~old_color);\n",  // OR_REVERSE
+      "\tnew_color = ~new_color;\n",                // COPY_INVERTED
+      "\tnew_color = (~new_color) | old_color;\n",  // OR_INVERTED
+      "\tnew_color = ~(new_color & old_color);\n",  // NAND
+      "\tnew_color = int3(255);\n",                 // SET
+  }};
+  out.Write("\tint3 old_color = int3(initial_ocol0.rgb * 255.0);\n");
+  out.Write("\tint3 new_color = int3(ocol0.rgb * 255.0);\n");
+  out.Write("%s", logicOps[uid_data->logic_mode]);
+  out.Write("\tocol0.rgb = float3(new_color) / 255.0;\n");
 }
 
 static void WriteZCoord(ShaderCode& out, APIType api_type, const ShaderHostConfig& host_config,
@@ -1570,30 +1629,4 @@ static void WriteZCoord(ShaderCode& out, APIType api_type, const ShaderHostConfi
       out.Write("\tint zCoord = int(rawpos.z * 16777216.0);\n");
   }
   out.Write("\tzCoord = clamp(zCoord, 0, 0xFFFFFF);\n");
-}
-
-static void WriteLogicOp(ShaderCode& out, const pixel_shader_uid_data* uid_data)
-{
-  static const std::array<const char*, 16> logicOps{{
-      "\tnew_color = int3(0);\n",                   // CLEAR
-      "\tnew_color = new_color & old_color;\n",     // AND
-      "\tnew_color = new_color & (~old_color);\n",  // AND_REVERSE
-      "\n",                                         // COPY
-      "\tnew_color = (~new_color & old_color;\n",   // AND_INVERTED
-      "\tnew_color = old_color;\n",                 // NOOP
-      "\tnew_color = new_color ^ old_color;\n",     // XOR
-      "\tnew_color = new_color | old_color;\n",     // OR
-      "\tnew_color = ~(new_color | old_color);\n",  // NOR
-      "\tnew_color = ~(new_color ^ old_color);\n",  // EQUIV
-      "\tnew_color = ~old_color;\n",                // INVERT
-      "\tnew_color = new_color | (~old_color);\n",  // OR_REVERSE
-      "\tnew_color = ~new_color;\n",                // COPY_INVERTED
-      "\tnew_color = (~new_color) | old_color;\n",  // OR_INVERTED
-      "\tnew_color = ~(new_color & old_color);\n",  // NAND
-      "\tnew_color = int3(255);\n",                 // SET
-  }};
-  out.Write("\tint3 old_color = int3(initial_ocol0.rgb * 255.0);\n");
-  out.Write("\tint3 new_color = prev.rgb;\n");
-  out.Write("%s", logicOps[uid_data->logic_mode]);
-  out.Write("\tprev.rgb = new_color;\n");
 }

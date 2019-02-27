@@ -1148,8 +1148,7 @@ void Renderer::ApplyBlendingState(const BlendingState state)
   bool useShaderBlend = false;
   if (state.IsDualSourceBlend())
   {
-    if (g_ActiveConfig.backend_info.bSupportsDualSourceBlend &&
-        !DriverDetails::HasBug(DriverDetails::BUG_BROKEN_DUAL_SOURCE_BLENDING))
+    if (g_ActiveConfig.backend_info.bSupportsDualSourceBlend)
     {
       useDualSource = true;
     }
