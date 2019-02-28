@@ -1591,12 +1591,12 @@ void TextureCacheBase::LoadTextureLevelZeroFromMemory(TCacheEntry* entry_to_upda
   const u8* tlut = &texMem[tex_info.tlut_address];
 
   if (!decode_on_gpu ||
-      DecodeTextureOnGPU(entry_to_update, 0, tex_info.src_data, tex_info.total_bytes,
-                         tex_info.full_format.texfmt, tex_info.native_width, tex_info.native_height,
-                         tex_info.expanded_width, tex_info.expanded_height,
-                         tex_info.bytes_per_block *
-                             (tex_info.expanded_width / tex_info.block_width),
-                         tlut, tex_info.full_format.tlutfmt))
+      !DecodeTextureOnGPU(entry_to_update, 0, tex_info.src_data, tex_info.total_bytes,
+                          tex_info.full_format.texfmt, tex_info.native_width,
+                          tex_info.native_height, tex_info.expanded_width, tex_info.expanded_height,
+                          tex_info.bytes_per_block *
+                              (tex_info.expanded_width / tex_info.block_width),
+                          tlut, tex_info.full_format.tlutfmt))
   {
     size_t decoded_texture_size = tex_info.expanded_width * sizeof(u32) * tex_info.expanded_height;
     CheckTempSize(decoded_texture_size);
@@ -2387,8 +2387,8 @@ void TextureCacheBase::CopyEFB(AbstractStagingTexture* dst, const EFBCopyParams&
   const auto framebuffer_rect = g_renderer->ConvertFramebufferRectangle(
       scaled_src_rect, g_framebuffer_manager->GetEFBFramebuffer());
   const float rcp_efb_height = 1.0f / static_cast<float>(g_framebuffer_manager->GetEFBHeight());
-  encoder_params.position_uniform[0] = scaled_src_rect.left;
-  encoder_params.position_uniform[1] = scaled_src_rect.top;
+  encoder_params.position_uniform[0] = src_rect.left;
+  encoder_params.position_uniform[1] = src_rect.top;
   encoder_params.position_uniform[2] = static_cast<s32>(native_width);
   encoder_params.position_uniform[3] = scale_by_half ? 2 : 1;
   encoder_params.y_scale = y_scale;
