@@ -1586,7 +1586,7 @@ static void WriteLogicOp(ShaderCode& out, const pixel_shader_uid_data* uid_data)
       "\tnew_color = new_color & old_color;\n",     // AND
       "\tnew_color = new_color & (~old_color);\n",  // AND_REVERSE
       "\n",                                         // COPY
-      "\tnew_color = (~new_color & old_color;\n",   // AND_INVERTED
+      "\tnew_color = (~new_color) & old_color;\n",  // AND_INVERTED
       "\tnew_color = old_color;\n",                 // NOOP
       "\tnew_color = new_color ^ old_color;\n",     // XOR
       "\tnew_color = new_color | old_color;\n",     // OR
@@ -1602,7 +1602,7 @@ static void WriteLogicOp(ShaderCode& out, const pixel_shader_uid_data* uid_data)
   out.Write("\tint3 old_color = int3(initial_ocol0.rgb * 255.0);\n");
   out.Write("\tint3 new_color = int3(ocol0.rgb * 255.0);\n");
   out.Write("%s", logicOps[uid_data->logic_mode]);
-  out.Write("\tocol0.rgb = float3(new_color) / 255.0;\n");
+  out.Write("\tocol0.rgb = float3(new_color & 255) / 255.0;\n");
 }
 
 static void WriteZCoord(ShaderCode& out, APIType api_type, const ShaderHostConfig& host_config,
