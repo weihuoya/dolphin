@@ -331,11 +331,31 @@ PixelShaderUid GetPixelShaderUid()
   uid_data->useDstAlpha = bpmem.dstalpha.enable && bpmem.blendmode.alphaupdate &&
                           bpmem.zcontrol.pixel_format == PEControl::RGBA6_Z24;
 
+  if (state.logicopenable && state.logicmode != BlendMode::LogicOp::COPY &&
+      !g_ActiveConfig.backend_info.bSupportsLogicOp)
+  {
+    // shader logic ops
+    if (g_ActiveConfig.backend_info.bSupportsFramebufferFetch)
+    {
+      uid_data->logic_op_enable = state.logicopenable;
+      uid_data->logic_mode = state.logicmode;
+    }
+    else if(state.logicmode == BlendMode::LogicOp::CLEAR ||
+            state.logicmode == BlendMode::LogicOp::COPY_INVERTED ||
+            state.logicmode == BlendMode::LogicOp::SET)
+    {
+      uid_data->logic_op_enable = state.logicopenable;
+      uid_data->logic_mode = state.logicmode;
+    }
+  }
+
   if (state.IsDualSourceBlend())
   {
     if (g_ActiveConfig.backend_info.bSupportsDualSourceBlend)
     {
       // hardware blend
+      uid_data->logic_op_enable = 0;
+      uid_data->logic_mode = 0;
     }
     else if (g_ActiveConfig.backend_info.bSupportsFramebufferFetch)
     {
@@ -360,15 +380,6 @@ PixelShaderUid GetPixelShaderUid()
     uid_data->doAlphaPass = true;
   }
 
-  if (state.logicopenable && state.logicmode != BlendMode::LogicOp::COPY &&
-      !g_ActiveConfig.backend_info.bSupportsLogicOp &&
-      g_ActiveConfig.backend_info.bSupportsFramebufferFetch)
-  {
-    // shader logic ops
-    uid_data->logic_op_enable = state.logicopenable;
-    uid_data->logic_mode = state.logicmode;
-  }
-
   return out;
 }
 
@@ -383,7 +394,7 @@ void ClearUnusedPixelShaderUidBits(APIType ApiType, const ShaderHostConfig& host
   if (ApiType != APIType::D3D || !host_config.backend_logic_op)
     uid_data->uint_output = 0;
 
-  if(host_config.backend_dual_source_blend)
+  if (host_config.backend_dual_source_blend)
   {
     uid_data->blend_enable = 0;
     uid_data->blend_src_factor = 0;
@@ -392,6 +403,13 @@ void ClearUnusedPixelShaderUidBits(APIType ApiType, const ShaderHostConfig& host
     uid_data->blend_dst_factor_alpha = 0;
     uid_data->blend_subtract = 0;
     uid_data->blend_subtract_alpha = 0;
+
+    // don't use shader logic ops before hardware blend
+    if (uid_data->useDstAlpha)
+    {
+      uid_data->logic_op_enable = 0;
+      uid_data->logic_mode = 0;
+    }
   }
 
   if (host_config.backend_logic_op)
@@ -409,8 +427,18 @@ void ClearUnusedPixelShaderUidBits(APIType ApiType, const ShaderHostConfig& host
     uid_data->blend_dst_factor_alpha = 0;
     uid_data->blend_subtract = 0;
     uid_data->blend_subtract_alpha = 0;
-    uid_data->logic_op_enable = 0;
-    uid_data->logic_mode = 0;
+
+    if (uid_data->logic_mode == BlendMode::LogicOp::CLEAR ||
+        uid_data->logic_mode == BlendMode::LogicOp::COPY_INVERTED ||
+        uid_data->logic_mode == BlendMode::LogicOp::SET)
+    {
+      // handle these logic ops event backend doesn't support framebuffer fetch.
+    }
+    else
+    {
+      uid_data->logic_op_enable = 0;
+      uid_data->logic_mode = 0;
+    }
   }
 }
 
@@ -583,7 +611,7 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
   // Only use dual-source blending when required on drivers that don't support it very well.
   bool use_dual_source = false;
   bool use_shader_blend = false;
-  bool use_shader_logic = false;
+  bool use_shader_logic = uid_data->logic_op_enable;
   if (uid_data->useDstAlpha && host_config.backend_dual_source_blend)
   {
     use_dual_source = true;
@@ -591,11 +619,6 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
   else if (uid_data->blend_enable && host_config.backend_shader_framebuffer_fetch)
   {
     use_shader_blend = true;
-  }
-
-  if (uid_data->logic_op_enable && host_config.backend_shader_framebuffer_fetch)
-  {
-    use_shader_logic = true;
   }
 
   if (ApiType == APIType::OpenGL || ApiType == APIType::Vulkan)
@@ -613,19 +636,24 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
         out.Write("FRAGMENT_OUTPUT_LOCATION_INDEXED(0, 1) out vec4 ocol1;\n");
       }
     }
-    else if (use_shader_blend || use_shader_logic)
+    else if (use_shader_blend)
     {
       // QComm's Adreno driver doesn't seem to like using the framebuffer_fetch value as an
       // intermediate value with multiple reads & modifications, so pull out the "real" output value
       // and use a temporary for calculations, then set the output value once at the end of the
       // shader
-      if (DriverDetails::HasBug(DriverDetails::BUG_BROKEN_FRAGMENT_SHADER_INDEX_DECORATION))
+      out.Write("FRAGMENT_OUTPUT_LOCATION(0) FRAGMENT_INOUT vec4 real_ocol0;\n");
+    }
+    else if (use_shader_logic)
+    {
+      // use shader logic without shader blend
+      if (host_config.backend_shader_framebuffer_fetch)
       {
         out.Write("FRAGMENT_OUTPUT_LOCATION(0) FRAGMENT_INOUT vec4 real_ocol0;\n");
       }
       else
       {
-        out.Write("FRAGMENT_OUTPUT_LOCATION_INDEXED(0, 0) FRAGMENT_INOUT vec4 real_ocol0;\n");
+        out.Write("FRAGMENT_OUTPUT_LOCATION(0) out vec4 real_ocol0;\n");
       }
     }
     else
@@ -671,10 +699,23 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
 
     out.Write("void main()\n{\n");
     out.Write("\tfloat4 rawpos = gl_FragCoord;\n");
-    if (use_shader_blend || use_shader_logic)
+    if (use_shader_blend)
     {
       // Store off a copy of the initial fb value for blending
       out.Write("\tfloat4 initial_ocol0 = FB_FETCH_VALUE;\n");
+      out.Write("\tfloat4 ocol0;\n");
+      out.Write("\tfloat4 ocol1;\n");
+    }
+    else if (use_shader_logic)
+    {
+      if (host_config.backend_shader_framebuffer_fetch)
+      {
+        out.Write("\tfloat4 initial_ocol0 = FB_FETCH_VALUE;\n");
+      }
+      else
+      {
+        out.Write("\tfloat4 initial_ocol0 = float4(0.0);\n");
+      }
       out.Write("\tfloat4 ocol0;\n");
       out.Write("\tfloat4 ocol1;\n");
     }
