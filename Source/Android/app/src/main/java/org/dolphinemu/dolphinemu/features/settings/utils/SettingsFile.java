@@ -87,7 +87,6 @@ public final class SettingsFile
   public static final String KEY_IMMEDIATE_XFB = "ImmediateXFBEnable";
   public static final String KEY_FAST_DEPTH = "FastDepthCalc";
   public static final String KEY_ASPECT_RATIO = "AspectRatio";
-  public static final String KEY_FRAMEBUFFER_FORMAT = "FramebufferFormat";
   public static final String KEY_DISPLAY_SCALE = "DisplayScale";
   public static final String KEY_SHADER_COMPILATION_MODE = "ShaderCompilationMode";
   public static final String KEY_WAIT_FOR_SHADERS = "WaitForShadersBeforeStarting";

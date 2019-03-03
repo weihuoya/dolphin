@@ -35,6 +35,7 @@
 #include "VideoCommon/HiresTextures.h"
 #include "VideoCommon/PixelShaderManager.h"
 #include "VideoCommon/RenderBase.h"
+#include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/SamplerCommon.h"
 #include "VideoCommon/ShaderCache.h"
 #include "VideoCommon/Statistics.h"
@@ -1789,6 +1790,7 @@ void TextureCacheBase::CopyRenderTargetToTexture(
     // so if the game does try to use the scrambled texture, dolphin will grab the scrambled
     // texture (or black if copy_to_ram is also disabled) out of ram.
     ERROR_LOG(VIDEO, "Memory stride too small (%i < %i)", dstStride, bytes_per_row);
+    OSD::AddTypedMessage(OSD::MessageType::StrideNotice, "Memory stride too small!");
     copy_to_vram = false;
   }
 

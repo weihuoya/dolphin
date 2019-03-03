@@ -552,7 +552,6 @@ public final class SettingsFragmentPresenter
     Setting xfbToTexture = hacksSection.getSetting(SettingsFile.KEY_XFB_TEXTURE);
     Setting immediateXfb = hacksSection.getSetting(SettingsFile.KEY_IMMEDIATE_XFB);
     Setting fastDepth = gfxSection.getSetting(SettingsFile.KEY_FAST_DEPTH);
-    Setting framebufferFormat = gfxSection.getSetting(SettingsFile.KEY_FRAMEBUFFER_FORMAT);
 
     sl.add(new HeaderSetting(null, null, R.string.embedded_frame_buffer, 0));
 
@@ -583,10 +582,6 @@ public final class SettingsFragmentPresenter
     sl.add(new HeaderSetting(null, null, R.string.other, 0));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_FAST_DEPTH, Settings.SECTION_GFX_SETTINGS,
       R.string.fast_depth_calculation, R.string.fast_depth_calculation_description, true, fastDepth));
-    sl.add(new SingleChoiceSetting(SettingsFile.KEY_FRAMEBUFFER_FORMAT, Settings.SECTION_GFX_SETTINGS,
-      R.string.setting_framebuffer_format, R.string.setting_framebuffer_format_description,
-      R.array.framebufferTypeEntries, R.array.framebufferTypeValues, 0,
-      framebufferFormat));
   }
 
   private void addDebugSettings(ArrayList<SettingsItem> sl)
