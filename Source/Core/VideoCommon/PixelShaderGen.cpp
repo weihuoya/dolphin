@@ -356,6 +356,7 @@ PixelShaderUid GetPixelShaderUid()
       // hardware blend
       uid_data->logic_op_enable = 0;
       uid_data->logic_mode = 0;
+      uid_data->dualSrcBlend = true;
     }
     else if (g_ActiveConfig.backend_info.bSupportsFramebufferFetch)
     {
@@ -373,11 +374,6 @@ PixelShaderUid GetPixelShaderUid()
       // alpha pass
       uid_data->useDstAlpha = false;
     }
-  }
-  else if(uid_data->useDstAlpha)
-  {
-    uid_data->useDstAlpha = false;
-    uid_data->doAlphaPass = true;
   }
 
   return out;
@@ -410,6 +406,10 @@ void ClearUnusedPixelShaderUidBits(APIType ApiType, const ShaderHostConfig& host
       uid_data->logic_op_enable = 0;
       uid_data->logic_mode = 0;
     }
+  }
+  else
+  {
+    uid_data->dualSrcBlend = false;
   }
 
   if (host_config.backend_logic_op)
@@ -609,17 +609,9 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
   }
 
   // Only use dual-source blending when required on drivers that don't support it very well.
-  bool use_dual_source = false;
-  bool use_shader_blend = false;
+  bool use_dual_source = uid_data->dualSrcBlend;
+  bool use_shader_blend = uid_data->blend_enable;
   bool use_shader_logic = uid_data->logic_op_enable;
-  if (uid_data->useDstAlpha && host_config.backend_dual_source_blend)
-  {
-    use_dual_source = true;
-  }
-  else if (uid_data->blend_enable && host_config.backend_shader_framebuffer_fetch)
-  {
-    use_shader_blend = true;
-  }
 
   if (ApiType == APIType::OpenGL || ApiType == APIType::Vulkan)
   {
@@ -1526,7 +1518,7 @@ static void WriteColor(ShaderCode& out, APIType api_type, const pixel_shader_uid
 
   // Colors will be blended against the 8-bit alpha from ocol1 and
   // the 6-bit alpha from ocol0 will be written to the framebuffer
-  if (uid_data->useDstAlpha || uid_data->doAlphaPass)
+  if (uid_data->useDstAlpha)
   {
     out.SetConstantsUsed(C_ALPHA, C_ALPHA);
     out.Write("\tprev.a = " I_ALPHA ".a;\n");

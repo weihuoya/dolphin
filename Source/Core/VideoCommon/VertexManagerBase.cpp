@@ -621,7 +621,7 @@ const AbstractPipeline* VertexManagerBase::GetPipelineForAlphaPass()
     uid_data->fog_proj = 0;
     uid_data->fog_RangeBaseEnabled = 0;
     // alpha pass
-    uid_data->doAlphaPass = true;
+    uid_data->useDstAlpha = true;
 
     switch (g_ActiveConfig.iShaderCompilationMode)
     {
