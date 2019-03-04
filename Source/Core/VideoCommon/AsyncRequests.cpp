@@ -7,6 +7,7 @@
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/Fifo.h"
 #include "VideoCommon/RenderBase.h"
+#include "VideoCommon/Statistics.h"
 #include "VideoCommon/VertexManagerBase.h"
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoCommon.h"
@@ -122,6 +123,7 @@ void AsyncRequests::HandleEvent(const AsyncRequests::Event& e)
   {
   case Event::EFB_POKE_COLOR:
   {
+    INCSTAT(stats.thisFrame.numEFBPokes);
     EfbPokeData poke = {e.efb_poke.x, e.efb_poke.y, e.efb_poke.data};
     g_renderer->PokeEFB(EFBAccessType::PokeColor, &poke, 1);
   }
@@ -129,17 +131,20 @@ void AsyncRequests::HandleEvent(const AsyncRequests::Event& e)
 
   case Event::EFB_POKE_Z:
   {
+    INCSTAT(stats.thisFrame.numEFBPokes);
     EfbPokeData poke = {e.efb_poke.x, e.efb_poke.y, e.efb_poke.data};
     g_renderer->PokeEFB(EFBAccessType::PokeZ, &poke, 1);
   }
   break;
 
   case Event::EFB_PEEK_COLOR:
+    INCSTAT(stats.thisFrame.numEFBPeeks);
     *e.efb_peek.data =
         g_renderer->AccessEFB(EFBAccessType::PeekColor, e.efb_peek.x, e.efb_peek.y, 0);
     break;
 
   case Event::EFB_PEEK_Z:
+    INCSTAT(stats.thisFrame.numEFBPeeks);
     *e.efb_peek.data = g_renderer->AccessEFB(EFBAccessType::PeekZ, e.efb_peek.x, e.efb_peek.y, 0);
     break;
 
