@@ -282,6 +282,8 @@ static QString UpdateTrackFromIndex(int index)
 
 void GeneralPane::OnSaveConfig()
 {
+  Config::ConfigChangeCallbackGuard config_guard;
+
   auto& settings = SConfig::GetInstance();
   if (AutoUpdateChecker::SystemSupportsAutoUpdates())
   {
@@ -324,6 +326,7 @@ void GeneralPane::GenerateNewIdentity()
   DolphinAnalytics::Instance()->ReloadConfig();
   QMessageBox message_box(this);
   message_box.setIcon(QMessageBox::Information);
+  message_box.setWindowModality(Qt::WindowModal);
   message_box.setWindowTitle(tr("Identity Generation"));
   message_box.setText(tr("New identity generated."));
   message_box.exec();
