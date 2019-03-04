@@ -173,7 +173,13 @@ PixelShaderUid GetPixelShaderUid()
   uid_data->rgba6_format =
       bpmem.zcontrol.pixel_format == PEControl::RGBA6_Z24 && !g_ActiveConfig.bForceTrueColor;
   uid_data->dither = bpmem.blendmode.dither && uid_data->rgba6_format;
-  uid_data->uint_output = bpmem.blendmode.UseLogicOp();
+
+  // OpenGL and Vulkan convert implicitly normalized color outputs to their uint representation.
+  // Therefore, it is not necessary to use a uint output on these backends. We also disable the
+  // uint output when logic op is not supported (i.e. driver/device does not support D3D11.1).
+  if (g_ActiveConfig.backend_info.api_type == APIType::D3D &&
+      g_ActiveConfig.backend_info.bSupportsLogicOp)
+    uid_data->uint_output = bpmem.blendmode.UseLogicOp();
 
   u32 numStages = uid_data->genMode_numtevstages + 1;
 
@@ -401,7 +407,7 @@ void ClearUnusedPixelShaderUidBits(APIType ApiType, const ShaderHostConfig& host
     uid_data->blend_subtract_alpha = 0;
 
     // don't use shader logic ops before hardware blend
-    if (uid_data->useDstAlpha)
+    if (uid_data->dualSrcBlend)
     {
       uid_data->logic_op_enable = 0;
       uid_data->logic_mode = 0;
@@ -409,7 +415,7 @@ void ClearUnusedPixelShaderUidBits(APIType ApiType, const ShaderHostConfig& host
   }
   else
   {
-    uid_data->dualSrcBlend = false;
+    uid_data->dualSrcBlend = 0;
   }
 
   if (host_config.backend_logic_op)
@@ -439,6 +445,11 @@ void ClearUnusedPixelShaderUidBits(APIType ApiType, const ShaderHostConfig& host
       uid_data->logic_op_enable = 0;
       uid_data->logic_mode = 0;
     }
+  }
+
+  if (!g_ActiveConfig.backend_info.bSupportsEarlyZ)
+  {
+    uid_data->forced_early_z = 0;
   }
 }
 
@@ -561,7 +572,7 @@ ShaderCode GeneratePixelShaderCode(APIType ApiType, const ShaderHostConfig& host
   WritePixelShaderCommonHeader(out, ApiType, uid_data->genMode_numtexgens, host_config,
                                uid_data->bounding_box);
 
-  if (uid_data->forced_early_z && g_ActiveConfig.backend_info.bSupportsEarlyZ)
+  if (uid_data->forced_early_z)
   {
     // Zcomploc (aka early_ztest) is a way to control whether depth test is done before
     // or after texturing and alpha test. PC graphics APIs used to provide no way to emulate

@@ -24,8 +24,6 @@
 
 constexpr int EFB_SCALE_AUTO_INTEGRAL = 0;
 
-enum class AbstractTextureFormat : u32;
-
 enum class AspectMode : int
 {
   Auto,
