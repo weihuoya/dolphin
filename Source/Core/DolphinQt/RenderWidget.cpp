@@ -10,7 +10,6 @@
 #include <QGuiApplication>
 #include <QIcon>
 #include <QKeyEvent>
-#include <QMessageBox>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPalette>
@@ -22,6 +21,7 @@
 #include "Core/State.h"
 
 #include "DolphinQt/Host.h"
+#include "DolphinQt/QtUtils/ModalMessageBox.h"
 #include "DolphinQt/RenderWidget.h"
 #include "DolphinQt/Resources.h"
 #include "DolphinQt/Settings.h"
@@ -108,7 +108,7 @@ void RenderWidget::dropEvent(QDropEvent* event)
 
   if (!file_info.exists() || !file_info.isReadable())
   {
-    QMessageBox::critical(this, tr("Error"), tr("Failed to open '%1'").arg(path));
+    ModalMessageBox::critical(this, tr("Error"), tr("Failed to open '%1'").arg(path));
     return;
   }
 
