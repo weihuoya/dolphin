@@ -48,7 +48,6 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
-
         // Signed by debug key disallowing distribution on Play Store.
         // Attaches 'debug' suffix to version and package name, allowing installation alongside the release build.
         debug {
@@ -56,6 +55,7 @@ android {
             applicationIdSuffix ".debug"
             versionNameSuffix '-debug'
             jniDebuggable true
+            signingConfig signingConfigs.release
         }
     }
 
