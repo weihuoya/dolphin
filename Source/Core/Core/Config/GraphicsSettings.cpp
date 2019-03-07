@@ -8,7 +8,6 @@
 
 #include "Common/Config/Config.h"
 #include "VideoCommon/VideoConfig.h"
-#include "VideoCommon/TextureConfig.h"
 
 namespace Config
 {

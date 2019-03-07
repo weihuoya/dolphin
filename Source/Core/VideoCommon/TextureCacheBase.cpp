@@ -46,6 +46,7 @@
 #include "VideoCommon/VertexManagerBase.h"
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
+#include "VideoCommon/OnScreenDisplay.h"
 
 static const u64 TEXHASH_INVALID = 0;
 // Sonic the Fighters (inside Sonic Gems Collection) loops a 64 frames animation
@@ -397,6 +398,7 @@ TextureCacheBase::DoPartialTextureUpdates(TCacheEntry* entry_to_update, u8* pale
             static_cast<u32>(dst_x) >= entry_to_update->native_width ||
             static_cast<u32>(dst_y) >= entry_to_update->native_height)
         {
+          OSD::AddTypedMessage(OSD::MessageType::OutOfRangeNotice, "Skip out of range copy0!");
           continue;
         }
 
@@ -1461,6 +1463,7 @@ TextureCacheBase::GetTextureFromOverlappingTextures(const TextureLookupInformati
         static_cast<u32>(dst_x) >= stitched_entry->native_width ||
         static_cast<u32>(dst_y) >= stitched_entry->native_height)
     {
+      OSD::AddTypedMessage(OSD::MessageType::OutOfRangeNotice, "Skip out of range copy1!");
       continue;
     }
 

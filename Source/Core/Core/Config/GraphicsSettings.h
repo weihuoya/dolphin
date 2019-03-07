@@ -11,7 +11,6 @@
 enum class AspectMode : int;
 enum class ShaderCompilationMode : int;
 enum class StereoMode : int;
-enum class AbstractTextureFormat : u32;
 
 namespace Config
 {
