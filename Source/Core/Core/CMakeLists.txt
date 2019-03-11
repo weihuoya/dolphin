@@ -293,9 +293,7 @@ PUBLIC
   ${MBEDTLS_LIBRARIES}
   sfml-network
   sfml-system
-  videonull
   videoogl
-  videosoftware
   videovulkan
 
 PRIVATE
@@ -328,6 +326,9 @@ endif()
 
 if(NOT ANDROID)
   target_link_libraries(core
+  PUBLIC
+    videonull
+    videosoftware
   PRIVATE
     pugixml
   )

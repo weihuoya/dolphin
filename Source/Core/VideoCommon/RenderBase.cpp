@@ -317,11 +317,17 @@ bool Renderer::CalculateTargetSize()
 
   if (new_efb_width != m_target_width || new_efb_height != m_target_height)
   {
-    OSD::AddTypedMessage(OSD::MessageType::EFBScale,
-                         StringFromFormat("Backend: %s - Scale: %.02f",
-                                          SConfig::GetInstance().m_strVideoBackend.c_str(),
-                                          m_efb_scale / 100.0f),
-                         4000);
+    std::string msg;
+    const char* backend = SConfig::GetInstance().m_strVideoBackend.c_str();
+    if (SConfig::GetInstance().bMMU)
+    {
+      msg = StringFromFormat("Backend: %s - MMU: On - Scale: %.02f", backend, m_efb_scale / 100.0f);
+    }
+    else
+    {
+      msg = StringFromFormat("Backend: %s - Scale: %.02f", backend, m_efb_scale / 100.0f);
+    }
+    OSD::AddTypedMessage(OSD::MessageType::EFBScale, msg, 4000);
     m_target_width = new_efb_width;
     m_target_height = new_efb_height;
     PixelShaderManager::SetEfbScaleChanged(EFBToScaledXf(1), EFBToScaledYf(1));
@@ -364,6 +370,9 @@ void Renderer::CheckForConfigChanges()
   // the post-processor. Note that options are applied every frame, so no need to check those.
   if (m_post_processor->GetConfig()->GetShader() != g_ActiveConfig.sPostProcessingShader)
   {
+    OSD::AddMessage(StringFromFormat("Reload post processing shader: %s",
+                                     g_ActiveConfig.sPostProcessingShader.c_str()));
+
     // The existing shader must not be in use when it's destroyed
     WaitForGPUIdle();
 

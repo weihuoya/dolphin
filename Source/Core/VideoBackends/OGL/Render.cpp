@@ -708,17 +708,12 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
   g_Config.VerifyValidity();
   UpdateActiveConfig();
 
-  OSD::AddMessage(StringFromFormat("Video Info: %s, %s, %s", g_ogl_config.gl_vendor,
-                                   g_ogl_config.gl_renderer, g_ogl_config.gl_version),
-                  5000);
-
   if (!g_ogl_config.bSupportsGLBufferStorage && !g_ogl_config.bSupportsGLPinnedMemory)
   {
-    OSD::AddMessage(StringFromFormat("Your OpenGL driver does not support %s_buffer_storage.",
+    OSD::AddMessage(StringFromFormat("OpenGL driver does not support %s_buffer_storage.",
                                      m_main_gl_context->IsGLES() ? "EXT" : "ARB"),
                     60000);
     OSD::AddMessage("This device's performance will be terrible.", 60000);
-    OSD::AddMessage("Please ask your device vendor for an updated OpenGL driver.", 60000);
   }
 
   WARN_LOG(VIDEO, "Missing OGL Extensions: %s%s%s%s%s%s%s%s%s%s%s%s%s",

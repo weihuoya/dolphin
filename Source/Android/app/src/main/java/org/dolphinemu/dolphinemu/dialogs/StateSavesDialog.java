@@ -53,6 +53,11 @@ public class StateSavesDialog extends DialogFragment
       return "";
     }
 
+    public String getFilename()
+    {
+      return mFilename;
+    }
+
     public long getLastModified()
     {
       return mLastModified;
@@ -66,6 +71,7 @@ public class StateSavesDialog extends DialogFragment
     private TextView mDate;
     private Button mBtnLoad;
     private Button mBtnSave;
+    private Button mBtnDelete;
 
     public StateSaveViewHolder(DialogFragment dialog, View itemView)
     {
@@ -76,6 +82,7 @@ public class StateSavesDialog extends DialogFragment
       mDate = itemView.findViewById(R.id.state_time);
       mBtnLoad = itemView.findViewById(R.id.button_load_state);
       mBtnSave = itemView.findViewById(R.id.button_save_state);
+      mBtnDelete = itemView.findViewById(R.id.button_delete);
     }
 
     public void bind(StateSaveModel item)
@@ -85,11 +92,13 @@ public class StateSavesDialog extends DialogFragment
       {
         mName.setText(item.getName());
         mDate.setText(SimpleDateFormat.getDateTimeInstance().format(new Date(lastModified)));
+        mBtnDelete.setVisibility(View.VISIBLE);
       }
       else
       {
         mName.setText("");
         mDate.setText("");
+        mBtnDelete.setVisibility(View.INVISIBLE);
       }
       mBtnLoad.setEnabled(!item.getName().isEmpty());
       mBtnLoad.setOnClickListener(view ->
@@ -101,6 +110,16 @@ public class StateSavesDialog extends DialogFragment
       {
         NativeLibrary.SaveState(item.getIndex(), false);
         mDialog.dismiss();
+      });
+      mBtnDelete.setOnClickListener(view ->
+      {
+        File file = new File(item.getFilename());
+        if(file.delete())
+        {
+          mName.setText("");
+          mDate.setText("");
+          mBtnDelete.setVisibility(View.INVISIBLE);
+        }
       });
     }
   }

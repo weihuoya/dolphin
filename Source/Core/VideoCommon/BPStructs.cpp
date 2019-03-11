@@ -38,6 +38,271 @@ using namespace BPFunctions;
 
 static const float s_gammaLUT[] = {1.0f, 1.7f, 2.2f, 1.0f};
 
+enum
+{
+  BPFLAG_FORCE_FLUSH = 0x1,
+};
+
+static u8 BPCmdFlags[] =
+{
+  0, //BPMEM_GENMODE = 0x00,
+  0, //BPMEM_DISPLAYCOPYFILTER = 0x01,  // 0x01 + 4
+  0, // 0x02
+  0, // 0x03
+  0, // 0x04
+  0, // 0x05
+  0, //BPMEM_IND_MTXA = 0x06,           // 0x06 + (3 * 3)
+  0, //BPMEM_IND_MTXB = 0x07,           // 0x07 + (3 * 3)
+  0, //BPMEM_IND_MTXC = 0x08,           // 0x08 + (3 * 3)
+  0, // 0x09
+  0, // 0x0A
+  0, // 0x0B
+  0, // 0x0C
+  0, // 0x0D
+  0, // 0x0E
+  0, //BPMEM_IND_IMASK = 0x0F,
+  0, //BPMEM_IND_CMD = 0x10,  // 0x10 + 16
+  0, // 0x11
+  0, // 0x12
+  0, // 0x13
+  0, // 0x14
+  0, // 0x15
+  0, // 0x16
+  0, // 0x17
+  0, // 0x18
+  0, // 0x19
+  0, // 0x1A
+  0, // 0x1B
+  0, // 0x1C
+  0, // 0x1D
+  0, // 0x1E
+  0, // 0x1F
+  0, //BPMEM_SCISSORTL = 0x20,
+  0, //BPMEM_SCISSORBR = 0x21,
+  0, //BPMEM_LINEPTWIDTH = 0x22,
+  0, //BPMEM_PERF0_TRI = 0x23,
+  0, //BPMEM_PERF0_QUAD = 0x24,
+  0, //BPMEM_RAS1_SS0 = 0x25,
+  0, //BPMEM_RAS1_SS1 = 0x26,
+  0, //BPMEM_IREF = 0x27,
+  0, //BPMEM_TREF = 0x28,      // 0x28 + 8
+  0, // 0x29
+  0, // 0x2A
+  0, // 0x2B
+  0, // 0x2C
+  0, // 0x2D
+  0, // 0x2E
+  0, // 0x2F
+  0, //BPMEM_SU_SSIZE = 0x30,  // 0x30 + (2 * 8)
+  0, //BPMEM_SU_TSIZE = 0x31,  // 0x31 + (2 * 8)
+  0, // 0x32
+  0, // 0x33
+  0, // 0x34
+  0, // 0x35
+  0, // 0x36
+  0, // 0x37
+  0, // 0x38
+  0, // 0x39
+  0, // 0x3A
+  0, // 0x3B
+  0, // 0x3C
+  0, // 0x3D
+  0, // 0x3E
+  0, // 0x3F
+  0, //BPMEM_ZMODE = 0x40,
+  0, //BPMEM_BLENDMODE = 0x41,
+  0, //BPMEM_CONSTANTALPHA = 0x42,
+  0, //BPMEM_ZCOMPARE = 0x43,
+  0, //BPMEM_FIELDMASK = 0x44,
+  BPFLAG_FORCE_FLUSH, //BPMEM_SETDRAWDONE = 0x45,
+  0, //BPMEM_BUSCLOCK0 = 0x46,
+  BPFLAG_FORCE_FLUSH, //BPMEM_PE_TOKEN_ID = 0x47,
+  BPFLAG_FORCE_FLUSH, //BPMEM_PE_TOKEN_INT_ID = 0x48,
+  0, //BPMEM_EFB_TL = 0x49,
+  0, //BPMEM_EFB_BR = 0x4A,
+  0, //BPMEM_EFB_ADDR = 0x4B,
+  0, // 0x4C
+  0, //BPMEM_MIPMAP_STRIDE = 0x4D,
+  0, //BPMEM_COPYYSCALE = 0x4E,
+  0, //BPMEM_CLEAR_AR = 0x4F,
+  0, //BPMEM_CLEAR_GB = 0x50,
+  0, //BPMEM_CLEAR_Z = 0x51,
+  BPFLAG_FORCE_FLUSH, //BPMEM_TRIGGER_EFB_COPY = 0x52,
+  0, //BPMEM_COPYFILTER0 = 0x53,
+  0, //BPMEM_COPYFILTER1 = 0x54,
+  BPFLAG_FORCE_FLUSH, //BPMEM_CLEARBBOX1 = 0x55,
+  BPFLAG_FORCE_FLUSH, //BPMEM_CLEARBBOX2 = 0x56,
+  BPFLAG_FORCE_FLUSH, //BPMEM_CLEAR_PIXEL_PERF = 0x57,
+  0, //BPMEM_REVBITS = 0x58,
+  0, //BPMEM_SCISSOROFFSET = 0x59,
+  0, // 0x5A
+  0, // 0x5B
+  0, // 0x5C
+  0, // 0x5D
+  0, // 0x5E
+  0, // 0x5F
+  0, //BPMEM_PRELOAD_ADDR = 0x60,
+  0, //BPMEM_PRELOAD_TMEMEVEN = 0x61,
+  0, //BPMEM_PRELOAD_TMEMODD = 0x62,
+  BPFLAG_FORCE_FLUSH, //BPMEM_PRELOAD_MODE = 0x63,
+  BPFLAG_FORCE_FLUSH, //BPMEM_LOADTLUT0 = 0x64,
+  BPFLAG_FORCE_FLUSH, //BPMEM_LOADTLUT1 = 0x65,
+  BPFLAG_FORCE_FLUSH, //BPMEM_TEXINVALIDATE = 0x66,
+  0, //BPMEM_PERF1 = 0x67,
+  0, //BPMEM_FIELDMODE = 0x68,
+  0, //BPMEM_BUSCLOCK1 = 0x69,
+  0, // 0x6A
+  0, // 0x6B
+  0, // 0x6C
+  0, // 0x6D
+  0, // 0x6E
+  0, // 0x6F
+  0, // 0x70
+  0, // 0x71
+  0, // 0x72
+  0, // 0x73
+  0, // 0x74
+  0, // 0x75
+  0, // 0x76
+  0, // 0x77
+  0, // 0x78
+  0, // 0x79
+  0, // 0x7A
+  0, // 0x7B
+  0, // 0x7C
+  0, // 0x7D
+  0, // 0x7E
+  0, // 0x7F
+  0, //BPMEM_TX_SETMODE0 = 0x80,     // 0x80 + 4
+  0, // 0x81
+  0, // 0x82
+  0, // 0x83
+  0, //BPMEM_TX_SETMODE1 = 0x84,     // 0x84 + 4
+  0, // 0x85
+  0, // 0x86
+  0, // 0x87
+  0, //BPMEM_TX_SETIMAGE0 = 0x88,    // 0x88 + 4
+  0, // 0x89
+  0, // 0x8A
+  0, // 0x8B
+  0, //BPMEM_TX_SETIMAGE1 = 0x8C,    // 0x8C + 4
+  0, // 0x8D
+  0, // 0x8E
+  0, // 0x8F
+  0, //BPMEM_TX_SETIMAGE2 = 0x90,    // 0x90 + 4
+  0, // 0x91
+  0, // 0x92
+  0, // 0x93
+  0, //BPMEM_TX_SETIMAGE3 = 0x94,    // 0x94 + 4
+  0, // 0x95
+  0, // 0x96
+  0, // 0x97
+  0, //BPMEM_TX_SETTLUT = 0x98,      // 0x98 + 4
+  0, // 0x99
+  0, // 0x9A
+  0, // 0x9B
+  0, // 0x9C
+  0, // 0x9D
+  0, // 0x9E
+  0, // 0x9F
+  0, //BPMEM_TX_SETMODE0_4 = 0xA0,   // 0xA0 + 4
+  0, // 0xA1
+  0, // 0xA2
+  0, // 0xA3
+  0, //BPMEM_TX_SETMODE1_4 = 0xA4,   // 0xA4 + 4
+  0, // 0xA5
+  0, // 0xA6
+  0, // 0xA7
+  0, //BPMEM_TX_SETIMAGE0_4 = 0xA8,  // 0xA8 + 4
+  0, // 0xA9
+  0, // 0xAA
+  0, // 0xAB
+  0, //BPMEM_TX_SETIMAGE1_4 = 0xAC,  // 0xA4 + 4
+  0, // 0xAD
+  0, // 0xAE
+  0, // 0xAF
+  0, //BPMEM_TX_SETIMAGE2_4 = 0xB0,  // 0xB0 + 4
+  0, // 0xB1
+  0, // 0xB2
+  0, // 0xB3
+  0, //BPMEM_TX_SETIMAGE3_4 = 0xB4,  // 0xB4 + 4
+  0, // 0xB5
+  0, // 0xB6
+  0, // 0xB7
+  0, //BPMEM_TX_SETTLUT_4 = 0xB8,    // 0xB8 + 4
+  0, // 0xB9
+  0, // 0xBA
+  0, // 0xBB
+  0, // 0xBC
+  0, // 0xBD
+  0, // 0xBE
+  0, // 0xBF
+  0, //BPMEM_TEV_COLOR_ENV = 0xC0,   // 0xC0 + (2 * 16)
+  0, //BPMEM_TEV_ALPHA_ENV = 0xC1,   // 0xC1 + (2 * 16)
+  0, // 0xC2
+  0, // 0xC3
+  0, // 0xC4
+  0, // 0xC5
+  0, // 0xC6
+  0, // 0xC7
+  0, // 0xC8
+  0, // 0xC9
+  0, // 0xCA
+  0, // 0xCB
+  0, // 0xCC
+  0, // 0xCD
+  0, // 0xCE
+  0, // 0xCF
+  0, // 0xD0
+  0, // 0xD1
+  0, // 0xD2
+  0, // 0xD3
+  0, // 0xD4
+  0, // 0xD5
+  0, // 0xD6
+  0, // 0xD7
+  0, // 0xD8
+  0, // 0xD9
+  0, // 0xDA
+  0, // 0xDB
+  0, // 0xDC
+  0, // 0xDD
+  0, // 0xDE
+  0, // 0xDF
+  0, //BPMEM_TEV_COLOR_RA = 0xE0,    // 0xE0 + (2 * 4)
+  0, //BPMEM_TEV_COLOR_BG = 0xE1,    // 0xE1 + (2 * 4)
+  0, // 0xE2
+  0, // 0xE3
+  0, // 0xE4
+  0, // 0xE5
+  0, // 0xE6
+  0, // 0xE7
+  0, //BPMEM_FOGRANGE = 0xE8,        // 0xE8 + 6
+  0, // 0xE9
+  0, // 0xEA
+  0, // 0xEB
+  0, // 0xEC
+  0, // 0xED
+  0, //BPMEM_FOGPARAM0 = 0xEE,
+  0, //BPMEM_FOGBMAGNITUDE = 0xEF,
+  0, //BPMEM_FOGBEXPONENT = 0xF0,
+  0, //BPMEM_FOGPARAM3 = 0xF1,
+  0, //BPMEM_FOGCOLOR = 0xF2,
+  0, //BPMEM_ALPHACOMPARE = 0xF3,
+  0, //BPMEM_BIAS = 0xF4,
+  0, //BPMEM_ZTEX2 = 0xF5,
+  0, //BPMEM_TEV_KSEL = 0xF6,  // 0xF6 + 8
+  0, // 0xF7
+  0, // 0xF8
+  0, // 0xF9
+  0, // 0xFA
+  0, // 0xFB
+  0, // 0xFC
+  0, // 0xFD
+  0, //BPMEM_BP_MASK = 0xFE,
+  0, // 0xFF
+};
+
 void BPInit()
 {
   memset(&bpmem, 0, sizeof(bpmem));
@@ -67,17 +332,9 @@ static void BPWritten(const BPCmd& bp)
   ----------------------------------------------------------------------------------------------------------------
   */
 
-  if (((u32*)&bpmem)[bp.address] == bp.newvalue)
+  if (((u32*)&bpmem)[bp.address] == bp.newvalue && !(BPCmdFlags[bp.address] & BPFLAG_FORCE_FLUSH))
   {
-    if (!(bp.address == BPMEM_TRIGGER_EFB_COPY || bp.address == BPMEM_CLEARBBOX1 ||
-          bp.address == BPMEM_CLEARBBOX2 || bp.address == BPMEM_SETDRAWDONE ||
-          bp.address == BPMEM_PE_TOKEN_ID || bp.address == BPMEM_PE_TOKEN_INT_ID ||
-          bp.address == BPMEM_LOADTLUT0 || bp.address == BPMEM_LOADTLUT1 ||
-          bp.address == BPMEM_TEXINVALIDATE || bp.address == BPMEM_PRELOAD_MODE ||
-          bp.address == BPMEM_CLEAR_PIXEL_PERF))
-    {
-      return;
-    }
+    return;
   }
 
   // check for invalid state, else unneeded configuration are built

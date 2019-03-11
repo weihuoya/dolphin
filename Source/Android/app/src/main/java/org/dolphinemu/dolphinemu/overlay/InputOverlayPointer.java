@@ -168,8 +168,8 @@ public class InputOverlayPointer
     else if(mType == TYPE_STICK)
     {
       // stick
-      axises[0] = axises[1] = (y - mCenterY) / mGameHeightHalf * mScaledDensity;
-      axises[2] = axises[3] = (x - mCenterX) / mGameWidthHalf * mScaledDensity;
+      axises[0] = axises[1] = (y - mCenterY) / mGameHeightHalf * mScaledDensity / 2.0f;
+      axises[2] = axises[3] = (x - mCenterX) / mGameWidthHalf * mScaledDensity / 2.0f;
     }
 
     for (int i = 0; i < mAxisIDs.length; ++i)

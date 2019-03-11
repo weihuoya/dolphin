@@ -149,11 +149,7 @@ static void DoState(PointerWrap& p)
   std::string version_created_by;
   if (!DoStateVersion(p, &version_created_by))
   {
-    const std::string message =
-        version_created_by.empty() ?
-            "This savestate was created using an incompatible version of Dolphin" :
-            "This savestate was created using the incompatible version " + version_created_by;
-    Core::DisplayMessage(message, OSD::Duration::NORMAL);
+    Core::DisplayMessage("This savestate was incompatible with current version!", OSD::Duration::NORMAL);
     p.SetMode(PointerWrap::MODE_MEASURE);
     return;
   }
@@ -400,8 +396,6 @@ void SaveAs(const std::string& filename, bool wait)
 
     if (p.GetMode() == PointerWrap::MODE_WRITE)
     {
-      Core::DisplayMessage("Saving State...", 2000);
-
       CompressAndDumpState_args save_args;
       save_args.buffer_vector = &g_current_buffer;
       save_args.buffer_mutex = &g_cs_current_buffer;

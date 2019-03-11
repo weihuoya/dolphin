@@ -22,9 +22,11 @@
 #ifdef _WIN32
 #include "VideoBackends/D3D/VideoBackend.h"
 #endif
+#ifndef ANDROID
 #include "VideoBackends/Null/VideoBackend.h"
-#include "VideoBackends/OGL/VideoBackend.h"
 #include "VideoBackends/Software/VideoBackend.h"
+#endif
+#include "VideoBackends/OGL/VideoBackend.h"
 #include "VideoBackends/Vulkan/VideoBackend.h"
 
 #include "VideoCommon/AsyncRequests.h"
@@ -186,8 +188,10 @@ void VideoBackendBase::PopulateList()
   g_available_video_backends.push_back(std::make_unique<DX11::VideoBackend>());
 #endif
   g_available_video_backends.push_back(std::make_unique<Vulkan::VideoBackend>());
+#ifndef ANDROID
   g_available_video_backends.push_back(std::make_unique<SW::VideoSoftware>());
   g_available_video_backends.push_back(std::make_unique<Null::VideoBackend>());
+#endif
 
   const auto iter =
       std::find_if(g_available_video_backends.begin(), g_available_video_backends.end(),
