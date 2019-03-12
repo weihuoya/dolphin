@@ -183,16 +183,15 @@ bool CommandBufferManager::CreateSubmitThread()
   m_submit_loop = std::make_unique<Common::BlockingLoop>();
   m_submit_thread = std::thread([this]() {
     m_submit_loop->Run([this]() {
-      PendingCommandBufferSubmit submit;
+      if (m_pending_submits.empty())
+      {
+        m_submit_loop->AllowSleep();
+        return;
+      }
+
+      const PendingCommandBufferSubmit& submit = m_pending_submits.front();
       {
         std::lock_guard<std::mutex> guard(m_pending_submit_lock);
-        if (m_pending_submits.empty())
-        {
-          m_submit_loop->AllowSleep();
-          return;
-        }
-
-        submit = m_pending_submits.front();
         m_pending_submits.pop_front();
       }
 

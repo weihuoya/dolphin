@@ -659,6 +659,12 @@ Java_org_dolphinemu_dolphinemu_NativeLibrary_GetGameAspectRatio(JNIEnv* env, job
   return g_renderer->CalculateDrawAspectRatio();
 }
 
+JNIEXPORT jfloat JNICALL
+Java_org_dolphinemu_dolphinemu_NativeLibrary_GetGameDisplayScale(JNIEnv* env, jobject obj)
+{
+  return Config::Get(Config::GFX_DISPLAY_SCALE);
+}
+
 JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_RefreshWiimotes(JNIEnv* env,
                                                                                     jobject obj)
 {

@@ -813,19 +813,7 @@ void UpdateTitle()
 
   std::string SFPS;
 
-  if (Movie::IsPlayingInput())
-  {
-    SFPS = StringFromFormat("Input: %u/%u - VI: %u - FPS: %.0f - VPS: %.0f - %.0f%%",
-      (u32)Movie::GetCurrentInputCount(), (u32)Movie::GetTotalInputCount(),
-      (u32)Movie::GetCurrentFrame(), FPS, VPS, Speed);
-  }
-  else if (Movie::IsRecordingInput())
-  {
-    SFPS = StringFromFormat("Input: %u - VI: %u - FPS: %.0f - VPS: %.0f - %.0f%%",
-      (u32)Movie::GetCurrentInputCount(), (u32)Movie::GetCurrentFrame(), FPS,
-      VPS, Speed);
-  }
-  else if(g_ActiveConfig.bShowFPS)
+  if(g_ActiveConfig.bShowFPS)
   {
     SFPS = StringFromFormat("FPS: %.0f - VPS:%.0f - %.0f%%", FPS, VPS, Speed);
   }

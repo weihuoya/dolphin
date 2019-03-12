@@ -11,6 +11,7 @@ public class InputOverlayPointer
   private int mType;
   private int mTrackId;
 
+  private float mDisplayScale;
   private float mScaledDensity;
   private int mMaxWidth;
   private int mMaxHeight;
@@ -39,6 +40,7 @@ public class InputOverlayPointer
     mAxisIDs[2] = 0;
     mAxisIDs[3] = 0;
 
+    mDisplayScale = 1.0f;
     mScaledDensity = scaledDensity;
     mMaxWidth = width;
     mMaxHeight = height;
@@ -63,6 +65,7 @@ public class InputOverlayPointer
   {
     float deviceAR = (float)mMaxWidth / (float)mMaxHeight;
     float gameAR = NativeLibrary.GetGameAspectRatio();
+    mDisplayScale = NativeLibrary.GetGameDisplayScale();
 
     if(gameAR <= deviceAR)
     {
@@ -158,18 +161,19 @@ public class InputOverlayPointer
   private void setPointerState(float x, float y)
   {
     float[] axises = new float[4];
+    float scale = mDisplayScale;
 
     if(mType == TYPE_CLICK)
     {
       // click
-      axises[0] = axises[1] = ((y * mAdjustY) - mGameHeightHalf) / mGameHeightHalf;
-      axises[2] = axises[3] = ((x * mAdjustX) - mGameWidthHalf) / mGameWidthHalf;
+      axises[0] = axises[1] = ((y * mAdjustY) - mGameHeightHalf) / mGameHeightHalf / scale;
+      axises[2] = axises[3] = ((x * mAdjustX) - mGameWidthHalf) / mGameWidthHalf / scale;
     }
     else if(mType == TYPE_STICK)
     {
       // stick
-      axises[0] = axises[1] = (y - mCenterY) / mGameHeightHalf * mScaledDensity / 2.0f;
-      axises[2] = axises[3] = (x - mCenterX) / mGameWidthHalf * mScaledDensity / 2.0f;
+      axises[0] = axises[1] = (y - mCenterY) / mGameHeightHalf * mScaledDensity / scale / 2.0f;
+      axises[2] = axises[3] = (x - mCenterX) / mGameWidthHalf * mScaledDensity / scale / 2.0f;
     }
 
     for (int i = 0; i < mAxisIDs.length; ++i)

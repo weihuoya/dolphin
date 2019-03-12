@@ -498,6 +498,8 @@ public class RunningSettingDialog extends DialogFragment
       if (isChanged)
       {
         NativeLibrary.setRunningSettings(newSettings);
+        // update display scale
+        EmulationActivity.get().updateTouchPointer();
       }
     }
   }
