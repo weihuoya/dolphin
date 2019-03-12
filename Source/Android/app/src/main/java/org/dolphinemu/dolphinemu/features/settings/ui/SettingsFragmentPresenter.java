@@ -547,6 +547,7 @@ public final class SettingsFragmentPresenter
     Setting ignoreFormat = hacksSection.getSetting(SettingsFile.KEY_IGNORE_FORMAT);
     Setting efbToTexture = hacksSection.getSetting(SettingsFile.KEY_EFB_TEXTURE);
     Setting deferEfbCopies = hacksSection.getSetting(SettingsFile.KEY_DEFER_EFB_COPIES);
+    Setting deferEfbInvalid = hacksSection.getSetting(SettingsFile.KEY_EFB_DEFER_INVALIDATION);
     Setting texCacheAccuracy = gfxSection.getSetting(SettingsFile.KEY_TEXCACHE_ACCURACY);
     Setting gpuTextureDecoding = gfxSection.getSetting(SettingsFile.KEY_GPU_TEXTURE_DECODING);
     Setting xfbToTexture = hacksSection.getSetting(SettingsFile.KEY_XFB_TEXTURE);
@@ -564,6 +565,8 @@ public final class SettingsFragmentPresenter
       R.string.efb_copy_method, R.string.efb_copy_method_description, true, efbToTexture));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_DEFER_EFB_COPIES, Settings.SECTION_GFX_HACKS,
             R.string.defer_efb_copies, R.string.defer_efb_copies_description, true, deferEfbCopies));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_EFB_DEFER_INVALIDATION, Settings.SECTION_GFX_HACKS,
+            R.string.efb_defer_invalidation, R.string.efb_defer_invalidation_description, false, deferEfbInvalid));
 
     sl.add(new HeaderSetting(null, null, R.string.texture_cache, 0));
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_TEXCACHE_ACCURACY,
