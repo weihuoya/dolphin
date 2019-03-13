@@ -526,7 +526,6 @@ if(NOT ANDROID)
   add_subdirectory(Externals/cpp-optparse)
 endif()
 add_subdirectory(Externals/glslang)
-add_subdirectory(Externals/imgui)
 
 if(USE_SHARED_ENET)
   check_lib(ENET libenet enet enet/enet.h QUIET)
@@ -567,9 +566,6 @@ else()
   message(STATUS "Shared zlib not found, falling back to the static library")
   add_subdirectory(Externals/zlib)
 endif()
-
-add_subdirectory(Externals/minizip)
-include_directories(External/minizip)
 
 if(NOT APPLE)
   check_lib(LZO "(no .pc for lzo2)" lzo2 lzo/lzo1x.h QUIET)

@@ -1138,61 +1138,42 @@ void Renderer::ApplyBlendingState(const BlendingState state)
   if (m_current_blend_state == state)
     return;
 
-  bool useDualSource = false;
-  // Only use shader blend if we need to and we don't support dual-source blending directly
-  bool useShaderBlend = false;
-  if (state.IsDualSourceBlend())
-  {
-    if (g_ActiveConfig.backend_info.bSupportsDualSourceBlend)
-    {
-      useDualSource = true;
-    }
-    else if (g_ActiveConfig.backend_info.bSupportsFramebufferFetch)
-    {
-      useShaderBlend = true;
-    }
-  }
+  bool useDualSource =
+      g_ActiveConfig.backend_info.bSupportsDualSourceBlend && state.IsDualSourceBlend();
 
-  if (useShaderBlend)
-  {
-    glDisable(GL_BLEND);
-  }
+  const GLenum src_factors[8] = {GL_ZERO,
+                                  GL_ONE,
+                                  GL_DST_COLOR,
+                                  GL_ONE_MINUS_DST_COLOR,
+                                  useDualSource ? GL_SRC1_ALPHA : (GLenum)GL_SRC_ALPHA,
+                                  useDualSource ? GL_ONE_MINUS_SRC1_ALPHA :
+                                                  (GLenum)GL_ONE_MINUS_SRC_ALPHA,
+                                  GL_DST_ALPHA,
+                                  GL_ONE_MINUS_DST_ALPHA};
+  const GLenum dst_factors[8] = {GL_ZERO,
+                                  GL_ONE,
+                                  GL_SRC_COLOR,
+                                  GL_ONE_MINUS_SRC_COLOR,
+                                  useDualSource ? GL_SRC1_ALPHA : (GLenum)GL_SRC_ALPHA,
+                                  useDualSource ? GL_ONE_MINUS_SRC1_ALPHA :
+                                                  (GLenum)GL_ONE_MINUS_SRC_ALPHA,
+                                  GL_DST_ALPHA,
+                                  GL_ONE_MINUS_DST_ALPHA};
+
+  if (state.blendenable)
+    glEnable(GL_BLEND);
   else
-  {
-    const GLenum src_factors[8] = {GL_ZERO,
-                                   GL_ONE,
-                                   GL_DST_COLOR,
-                                   GL_ONE_MINUS_DST_COLOR,
-                                   useDualSource ? GL_SRC1_ALPHA : (GLenum)GL_SRC_ALPHA,
-                                   useDualSource ? GL_ONE_MINUS_SRC1_ALPHA :
-                                                   (GLenum)GL_ONE_MINUS_SRC_ALPHA,
-                                   GL_DST_ALPHA,
-                                   GL_ONE_MINUS_DST_ALPHA};
-    const GLenum dst_factors[8] = {GL_ZERO,
-                                   GL_ONE,
-                                   GL_SRC_COLOR,
-                                   GL_ONE_MINUS_SRC_COLOR,
-                                   useDualSource ? GL_SRC1_ALPHA : (GLenum)GL_SRC_ALPHA,
-                                   useDualSource ? GL_ONE_MINUS_SRC1_ALPHA :
-                                                   (GLenum)GL_ONE_MINUS_SRC_ALPHA,
-                                   GL_DST_ALPHA,
-                                   GL_ONE_MINUS_DST_ALPHA};
+    glDisable(GL_BLEND);
 
-    if (state.blendenable)
-      glEnable(GL_BLEND);
-    else
-      glDisable(GL_BLEND);
-
-    // Always call glBlendEquationSeparate and glBlendFuncSeparate, even when
-    // GL_BLEND is disabled, as a workaround for some bugs (possibly graphics
-    // driver issues?). See https://bugs.dolphin-emu.org/issues/10120 : "Sonic
-    // Adventure 2 Battle: graphics crash when loading first Dark level"
-    GLenum equation = state.subtract ? GL_FUNC_REVERSE_SUBTRACT : GL_FUNC_ADD;
-    GLenum equationAlpha = state.subtractAlpha ? GL_FUNC_REVERSE_SUBTRACT : GL_FUNC_ADD;
-    glBlendEquationSeparate(equation, equationAlpha);
-    glBlendFuncSeparate(src_factors[state.srcfactor], dst_factors[state.dstfactor],
-                        src_factors[state.srcfactoralpha], dst_factors[state.dstfactoralpha]);
-  }
+  // Always call glBlendEquationSeparate and glBlendFuncSeparate, even when
+  // GL_BLEND is disabled, as a workaround for some bugs (possibly graphics
+  // driver issues?). See https://bugs.dolphin-emu.org/issues/10120 : "Sonic
+  // Adventure 2 Battle: graphics crash when loading first Dark level"
+  GLenum equation = state.subtract ? GL_FUNC_REVERSE_SUBTRACT : GL_FUNC_ADD;
+  GLenum equationAlpha = state.subtractAlpha ? GL_FUNC_REVERSE_SUBTRACT : GL_FUNC_ADD;
+  glBlendEquationSeparate(equation, equationAlpha);
+  glBlendFuncSeparate(src_factors[state.srcfactor], dst_factors[state.dstfactor],
+                      src_factors[state.srcfactoralpha], dst_factors[state.dstfactoralpha]);
 
   // Logic ops aren't available in GLES3
   if (g_Config.backend_info.bSupportsLogicOp)
