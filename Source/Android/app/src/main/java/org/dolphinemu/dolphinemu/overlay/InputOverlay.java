@@ -41,7 +41,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
   public static final String CONTROL_ALPHA_PREF_KEY = "ControlAlpha";
   public static int sControllerAlpha;
 
-  public static final String POINTER_PREF_KEY = "TouchPointer";
+  public static final String POINTER_PREF_KEY = "TouchPointer1";
   public static final String RECENTER_PREF_KEY = "IRRecenter";
   public static boolean sIRRecenter;
   public static final String RELATIVE_PREF_KEY = "JoystickRelative";
