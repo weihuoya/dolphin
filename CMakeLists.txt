@@ -524,6 +524,8 @@ endif()
 
 if(NOT ANDROID)
   add_subdirectory(Externals/cpp-optparse)
+  add_subdirectory(Externals/minizip)
+  include_directories(External/minizip)
 endif()
 add_subdirectory(Externals/glslang)
 

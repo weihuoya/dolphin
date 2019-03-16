@@ -146,7 +146,6 @@ PRIVATE
   core
   Qt5::Widgets
   uicommon
-  imgui
 )
 
 if(WIN32)

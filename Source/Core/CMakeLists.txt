@@ -7,15 +7,6 @@ add_subdirectory(UICommon)
 add_subdirectory(VideoCommon)
 add_subdirectory(VideoBackends)
 
-if(ENABLE_NOGUI)
-  add_subdirectory(DolphinNoGUI)
-endif()
-
 if(ENABLE_QT)
   add_subdirectory(DolphinQt)
-endif()
-
-if (APPLE)
-  add_subdirectory(UpdaterCommon)
-  add_subdirectory(MacUpdater)
 endif()
