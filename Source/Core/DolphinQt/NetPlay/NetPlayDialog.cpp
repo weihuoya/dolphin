@@ -210,6 +210,8 @@ void NetPlayDialog::CreateChatLayout()
   m_chat_type_edit = new QLineEdit;
   m_chat_send_button = new QPushButton(tr("Send"));
 
+  // This button will get re-enabled when something gets entered into the chat box
+  m_chat_send_button->setEnabled(false);
   m_chat_send_button->setDefault(false);
   m_chat_send_button->setAutoDefault(false);
 
@@ -238,6 +240,7 @@ void NetPlayDialog::CreatePlayersLayout()
   m_players_list->verticalHeader()->hide();
   m_players_list->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_players_list->horizontalHeader()->setStretchLastSection(true);
+  m_players_list->horizontalHeader()->setHighlightSections(false);
 
   for (int i = 0; i < 4; i++)
     m_players_list->horizontalHeader()->setSectionResizeMode(i, QHeaderView::ResizeToContents);
@@ -284,6 +287,8 @@ void NetPlayDialog::ConnectWidgets()
   // Chat
   connect(m_chat_send_button, &QPushButton::clicked, this, &NetPlayDialog::OnChat);
   connect(m_chat_type_edit, &QLineEdit::returnPressed, this, &NetPlayDialog::OnChat);
+  connect(m_chat_type_edit, &QLineEdit::textChanged, this,
+          [this] { m_chat_send_button->setEnabled(!m_chat_type_edit->text().isEmpty()); });
 
   // Other
   connect(m_buffer_size_box, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
@@ -354,6 +359,10 @@ void NetPlayDialog::OnChat()
 {
   QueueOnObject(this, [this] {
     auto msg = m_chat_type_edit->text().toStdString();
+
+    if (msg.empty())
+      return;
+
     Settings::Instance().GetNetPlayClient()->SendChatMessage(msg);
     m_chat_type_edit->clear();
 
