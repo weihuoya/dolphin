@@ -35,6 +35,7 @@
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
+#include "VideoCommon/OnScreenDisplay.h"
 
 std::unique_ptr<VertexManagerBase> g_vertex_manager;
 
@@ -392,6 +393,19 @@ void VertexManagerBase::Flush()
     // Update the pipeline, or compile one if needed.
     UpdatePipelineConfig();
     UpdatePipelineObject();
+
+    // logic ops draw hack
+    if (m_current_pipeline_config.blending_state.logicopenable && g_ActiveConfig.bLogicOpsDrawHack)
+    {
+      BlendMode::LogicOp logicmode = m_current_pipeline_config.blending_state.logicmode;
+      if (!(logicmode == BlendMode::LogicOp::CLEAR || logicmode == BlendMode::LogicOp::COPY ||
+            logicmode == BlendMode::LogicOp::COPY_INVERTED || logicmode == BlendMode::LogicOp::SET))
+      {
+        OnDraw();
+        return;
+      }
+    }
+
     if (m_current_pipeline_object)
     {
       g_renderer->SetPipeline(m_current_pipeline_object);
@@ -424,9 +438,8 @@ void VertexManagerBase::Flush()
 
   if (xfmem.numTexGen.numTexGens != bpmem.genMode.numtexgens)
   {
-    ERROR_LOG(VIDEO,
-              "xf.numtexgens (%d) does not match bp.numtexgens (%d). Error in command stream.",
-              xfmem.numTexGen.numTexGens, bpmem.genMode.numtexgens.Value());
+    OSD::AddMessage(StringFromFormat("xf.numtexgens(%d) does not match bp.numtexgens(%d).",
+                                     xfmem.numTexGen.numTexGens, bpmem.genMode.numtexgens.Value()));
   }
 }
 
@@ -618,12 +631,12 @@ const AbstractPipeline* VertexManagerBase::GetPipelineForAlphaPass()
     pipeline_config.blending_state.hex = 0;
     pipeline_config.blending_state.alphaupdate = true;
     // diable fog
-    pixel_shader_uid_data* uid_data = pipeline_config.ps_uid.GetUidData<pixel_shader_uid_data>();
+    auto uid_data = pipeline_config.ps_uid.GetUidData<pixel_shader_uid_data>();
     uid_data->fog_fsel = 0;
     uid_data->fog_proj = 0;
     uid_data->fog_RangeBaseEnabled = 0;
     // alpha pass
-    uid_data->useDstAlpha = true;
+    uid_data->useDstAlpha = 1;
 
     switch (g_ActiveConfig.iShaderCompilationMode)
     {

@@ -109,7 +109,8 @@ struct VideoConfig final
   bool bBBoxEnable;
   bool bForceProgressive;
 
-  bool bAlphaPassShadowHack; // Vulkan-only and need alpha pass
+  bool bAlphaPassShadowHack; // alpha pass hack
+  bool bLogicOpsDrawHack; // logic ops hack
 
   bool bEFBEmulateFormatChanges;
   bool bSkipEFBCopyToRam;

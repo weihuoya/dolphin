@@ -284,6 +284,7 @@ struct SConfig
   bool m_PauseOnFocusLost;
 
   bool m_AlphaPassShadowHack;
+  bool m_LogicOpsDrawHack;
 
   // DSP settings
   bool m_DSPEnableJIT;
