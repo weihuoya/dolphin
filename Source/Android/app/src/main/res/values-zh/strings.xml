@@ -140,6 +140,8 @@
     <string name="wii_sd_card_description">保存在 /Wii/sd.raw (默认大小是 128mb)。</string>
     <string name="audio_stretch">音频拉伸</string>
     <string name="audio_stretch_description">拉伸音频以减少声音不流畅的问题，增加延迟。</string>
+    <string name="audio_stretch_max_latency">拉伸缓存</string>
+    <string name="audio_stretch_max_latency_description">设置音频拉伸缓存大小，数值太小可能出现破音，但降低延迟。</string>
 
     <string name="sync_on_skip_idle">Sync On Skip Idle</string>
     <string name="sync_on_skip_idle_description">保证CPU和GPU同步执行。取消可以提升性能，但部分游戏会有问题。</string>
@@ -302,8 +304,6 @@
     <string name="emulation_control_joystick_rel_center">摇杆点击居中</string>
     <string name="emulation_control_rumble">振动反馈</string>
     <string name="emulation_choose_controller">选择手柄</string>
-    <string name="emulation_controller_changed">You may have to reload the game after changing extensions.</string>
-    <string name="emulation_touch_button_help">Swipe down from the top of the screen to access the menu.</string>
     <string name="emulation_touch_overlay_reset">Reset Overlay</string>
 
     <!-- GC Adapter Menu-->

@@ -140,6 +140,8 @@
     <string name="wii_sd_card_description">Saved to /Wii/sd.raw (default size is 128mb).</string>
     <string name="audio_stretch">Audio Stretching</string>
     <string name="audio_stretch_description">Stretches audio to reduce stuttering. Increases latency.</string>
+    <string name="audio_stretch_max_latency">Stretching Buffer Size</string>
+    <string name="audio_stretch_max_latency_description">Size of audio stretch buffer in milliseconds. Values too low may cause audio crackling.</string>
 
     <string name="sync_on_skip_idle">Sync On Skip Idle</string>
     <string name="sync_on_skip_idle_description">Wait to process events until the GPU thread finished.</string>
@@ -302,8 +304,6 @@
     <string name="emulation_control_joystick_rel_center">Relative Stick Center</string>
     <string name="emulation_control_rumble">Rumble</string>
     <string name="emulation_choose_controller">Choose Controller</string>
-    <string name="emulation_controller_changed">You may have to reload the game after changing extensions.</string>
-    <string name="emulation_touch_button_help">Swipe down from the top of the screen to access the menu.</string>
     <string name="emulation_touch_overlay_reset">Reset Overlay</string>
 
     <!-- GC Adapter Menu-->

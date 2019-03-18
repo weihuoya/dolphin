@@ -674,6 +674,7 @@ public final class EmulationActivity extends AppCompatActivity
       NativeLibrary.SetConfig("WiimoteNew.ini", "Wiimote1", "Extension",
         getResources().getStringArray(R.array.controllersValues)[InputOverlay.sControllerType]);
       mEmulationFragment.refreshInputOverlay();
+      NativeLibrary.ReloadWiimoteConfig();
     });
 
     AlertDialog alertDialog = builder.create();

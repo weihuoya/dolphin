@@ -174,6 +174,7 @@ public final class SettingsFragmentPresenter
     Setting followBranch = coreSection.getSetting(SettingsFile.KEY_JIT_FOLLOW_BRANCH);
     Setting autoDiscChange = coreSection.getSetting(SettingsFile.KEY_AUTO_DISC_CHANGE);
     Setting audioStretch = coreSection.getSetting(SettingsFile.KEY_AUDIO_STRETCH);
+    Setting stretchLatency = coreSection.getSetting(SettingsFile.KEY_AUDIO_STRETCH_MAX_LATENCY);
     Setting audioBackend = mSettings.getSection(Settings.SECTION_INI_DSP)
       .getSetting(SettingsFile.KEY_AUDIO_BACKEND);
     Setting enableCheats = coreSection.getSetting(SettingsFile.KEY_ENABLE_CHEATS);
@@ -220,6 +221,8 @@ public final class SettingsFragmentPresenter
       R.string.auto_disc_change, 0, false, autoDiscChange));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_AUDIO_STRETCH, Settings.SECTION_INI_CORE,
       R.string.audio_stretch, R.string.audio_stretch_description, false, audioStretch));
+    sl.add(new SliderSetting(SettingsFile.KEY_AUDIO_STRETCH_MAX_LATENCY, Settings.SECTION_INI_CORE,
+      R.string.audio_stretch_max_latency, R.string.audio_stretch_max_latency_description, 300, "", 80, stretchLatency));
 
     String defaultAudioBackend = NativeLibrary.DefaultAudioBackend();
     String[] audioListEntries = NativeLibrary.GetAudioBackendList();
