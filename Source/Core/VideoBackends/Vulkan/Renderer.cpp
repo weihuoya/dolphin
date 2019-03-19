@@ -589,7 +589,7 @@ void Renderer::ResetSamplerStates()
 {
   // Ensure none of the sampler objects are in use.
   // This assumes that none of the samplers are in use on the command list currently being recorded.
-  g_command_buffer_mgr->WaitForGPUIdle();
+  // g_command_buffer_mgr->WaitForGPUIdle();
 
   // Invalidate all sampler states, next draw will re-initialize them.
   for (u32 i = 0; i < m_sampler_states.size(); i++)
