@@ -91,9 +91,9 @@ public class InputOverlayPointer
     if(type == TYPE_CLICK)
     {
       // click
-      mAxisIDs[0] = 0;
+      mAxisIDs[0] = NativeLibrary.ButtonType.WIIMOTE_IR + 1;
       mAxisIDs[1] = NativeLibrary.ButtonType.WIIMOTE_IR + 2;
-      mAxisIDs[2] = 0;
+      mAxisIDs[2] = NativeLibrary.ButtonType.WIIMOTE_IR + 3;
       mAxisIDs[3] = NativeLibrary.ButtonType.WIIMOTE_IR + 4;
     }
     else if(type == TYPE_STICK)
