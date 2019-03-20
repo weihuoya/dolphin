@@ -113,6 +113,7 @@ struct VideoConfig final
   bool bLogicOpsDrawHack; // logic ops hack
 
   bool bEFBEmulateFormatChanges;
+  bool bTMEMCacheEmulation;
   bool bSkipEFBCopyToRam;
   bool bSkipXFBCopyToRam;
   bool bDisableCopyToVRAM;

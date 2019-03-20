@@ -139,6 +139,7 @@ void VideoConfig::Refresh()
   bImmediateXFB = Config::Get(Config::GFX_HACK_IMMEDIATE_XFB);
   bCopyEFBScaled = Config::Get(Config::GFX_HACK_COPY_EFB_SCALED);
   bEFBEmulateFormatChanges = Config::Get(Config::GFX_HACK_EFB_EMULATE_FORMAT_CHANGES);
+  bTMEMCacheEmulation = Config::Get(Config::GFX_HACK_TMEM_CACHE_EMULATION);
   bVertexRounding = Config::Get(Config::GFX_HACK_VERTEX_ROUDING);
   iEFBAccessTileSize = Config::Get(Config::GFX_HACK_EFB_ACCESS_TILE_SIZE);
 

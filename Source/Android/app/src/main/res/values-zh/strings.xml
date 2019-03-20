@@ -228,7 +228,9 @@
     <string name="immediate_xfb">立即呈现</string>
     <string name="immediate_xfb_description">立即显示XFB而不等待扫描，在少数游戏中会造成显示问题，但减少了延迟。如果不确定，请不要勾选此选项。</string>
     <string name="fast_depth_calculation">快速深度计算</string>
-    <string name="fast_depth_calculation_description">使用不太准确的算法来计算深度值。</string>
+    <string name="fast_depth_calculation_description">使用不太准确的方法来计算深度值。</string>
+    <string name="tmem_cache_emulation">复用纹理模拟</string>
+    <string name="tmem_cache_emulation_description">使用不太准确的方法复用缓存中的纹理。</string>
     <string name="aspect_ratio">画面比例</string>
     <string name="aspect_ratio_description">Select what aspect ratio to use when rendering</string>
     <string name="shader_compilation_mode">着色器编译模式</string>

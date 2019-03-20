@@ -229,6 +229,8 @@
     <string name="immediate_xfb_description">Displays the XFB copies as soon as they are created, without waiting for scanout. Causes graphical defects in some games but reduces latency. If unsure, leave this unchecked.</string>
     <string name="fast_depth_calculation">Fast Depth Calculation</string>
     <string name="fast_depth_calculation_description">Uses a less accurate algorithm to calculate depth values.</string>
+    <string name="tmem_cache_emulation">TMEM Cache Emulation</string>
+    <string name="tmem_cache_emulation_description">Reuse textures from the cache without validation under certain conditions.</string>
     <string name="aspect_ratio">Aspect Ratio</string>
     <string name="aspect_ratio_description">Select what aspect ratio to use when rendering</string>
     <string name="shader_compilation_mode">Shader Compilation Mode</string>
