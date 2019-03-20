@@ -44,7 +44,6 @@
 #include "Core/HW/WiimoteEmu/WiimoteEmu.h"
 #include "InputCommon/ControllerEmu/ControlGroup/ControlGroup.h"
 #include "InputCommon/ControllerEmu/Setting/NumericSetting.h"
-#include "InputCommon/ControllerEmu/ControlGroup/Attachments.h"
 #include "Core/Host.h"
 #include "Core/PowerPC/JitInterface.h"
 #include "Core/PowerPC/PowerPC.h"
