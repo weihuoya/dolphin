@@ -304,7 +304,7 @@
     <string name="emulation_control_joystick_rel_center">Relative Stick Center</string>
     <string name="emulation_control_rumble">Rumble</string>
     <string name="emulation_choose_controller">Choose Controller</string>
-    <string name="emulation_touch_overlay_reset">Reset Overlay</string>
+    <string name="emulation_reload_wiimote_config">Reload Config</string>
 
     <!-- GC Adapter Menu-->
     <string name="gc_adapter_rumble">Enable Vibration</string>

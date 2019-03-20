@@ -304,7 +304,7 @@
     <string name="emulation_control_joystick_rel_center">摇杆点击居中</string>
     <string name="emulation_control_rumble">振动反馈</string>
     <string name="emulation_choose_controller">选择手柄</string>
-    <string name="emulation_touch_overlay_reset">Reset Overlay</string>
+    <string name="emulation_reload_wiimote_config">重载扩展</string>
 
     <!-- GC Adapter Menu-->
     <string name="gc_adapter_rumble">振动反馈</string>

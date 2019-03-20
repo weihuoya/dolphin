@@ -364,25 +364,6 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_SetConfig(
 
   ini.GetOrCreateSection(section)->Set(key, value);
   ini.Save(File::GetUserPath(D_CONFIG_IDX) + std::string(file));
-
-  // change runtime wiimote extension
-  if (Core::IsRunning() && section == "Wiimote1" && key == "Extension")
-  {
-    ControllerEmu::ControlGroup* cg = Wiimote::GetWiimoteGroup(0, WiimoteEmu::WiimoteGroup::Attachments);
-    ControllerEmu::Attachments* attachments = static_cast<ControllerEmu::Attachments*>(cg);
-    if (value == "None")
-    {
-      attachments->SetSelectedAttachment(WiimoteEmu::NONE);
-    }
-    else if (value == "Classic")
-    {
-      attachments->SetSelectedAttachment(WiimoteEmu::CLASSIC);
-    }
-    else if (value == "Nunchuk")
-    {
-      attachments->SetSelectedAttachment(WiimoteEmu::NUNCHUK);
-    }
-  }
 }
 
 JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_SaveState(JNIEnv* env,

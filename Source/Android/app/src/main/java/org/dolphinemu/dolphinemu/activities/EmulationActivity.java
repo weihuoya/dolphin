@@ -669,12 +669,19 @@ public final class EmulationActivity extends AppCompatActivity
       {
         InputOverlay.sControllerType = indexSelected;
       });
+    builder.setNeutralButton(getString(R.string.emulation_reload_wiimote_config),
+      (dialogInterface, i) ->
+      {
+        NativeLibrary.SetConfig("WiimoteNew.ini", "Wiimote1", "Extension",
+          getResources().getStringArray(R.array.controllersValues)[InputOverlay.sControllerType]);
+        mEmulationFragment.refreshInputOverlay();
+        NativeLibrary.ReloadWiimoteConfig();
+      });
     builder.setOnDismissListener((dialogInterface) ->
     {
       NativeLibrary.SetConfig("WiimoteNew.ini", "Wiimote1", "Extension",
         getResources().getStringArray(R.array.controllersValues)[InputOverlay.sControllerType]);
       mEmulationFragment.refreshInputOverlay();
-      NativeLibrary.ReloadWiimoteConfig();
     });
 
     AlertDialog alertDialog = builder.create();
