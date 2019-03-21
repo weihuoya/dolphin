@@ -12,6 +12,7 @@
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
+#include "VideoCommon/OnScreenDisplay.h"
 
 
 static bool s_bFogRangeAdjustChanged;
@@ -491,7 +492,18 @@ void PixelShaderManager::SetBlendModeChanged()
 
 void PixelShaderManager::SetBoundingBoxActive(bool active)
 {
-
+  if (active)
+  {
+    if (!g_ActiveConfig.backend_info.bSupportsBBox)
+    {
+      OSD::AddTypedMessage(OSD::MessageType::BoundingBoxNotice, "Bounding box is not available!",
+                           4000);
+    }
+    else if (g_ActiveConfig.bBBoxEnable)
+    {
+      OSD::AddTypedMessage(OSD::MessageType::BoundingBoxNotice, "Bounding box is active.", 4000);
+    }
+  }
 }
 
 void PixelShaderManager::DoState(PointerWrap& p)

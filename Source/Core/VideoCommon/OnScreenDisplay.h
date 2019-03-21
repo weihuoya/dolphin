@@ -31,6 +31,7 @@ enum class MessageType
   LogicOpsNotice,
   StrideNotice,
   OutOfRangeNotice,
+  BoundingBoxNotice,
 
   // This entry must be kept last so that persistent typed messages are
   // displayed before other messages
