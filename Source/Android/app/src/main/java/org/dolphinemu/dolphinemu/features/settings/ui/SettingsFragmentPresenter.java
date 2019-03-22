@@ -298,7 +298,7 @@ public final class SettingsFragmentPresenter
       Setting screensaver = sysconfSection.getSetting(SettingsFile.KEY_SYSCONF_SCREENSAVER);
       Setting language = sysconfSection.getSetting(SettingsFile.KEY_SYSCONF_LANGUAGE);
       Setting widescreen = sysconfSection.getSetting(SettingsFile.KEY_SYSCONF_WIDESCREEN);
-      //Setting progressiveScan = sysconfSection.getSetting(SettingsFile.KEY_SYSCONF_PROGRESSIVE_SCAN);
+      Setting progressiveScan = sysconfSection.getSetting(SettingsFile.KEY_SYSCONF_PROGRESSIVE_SCAN);
       Setting pal60 = sysconfSection.getSetting(SettingsFile.KEY_SYSCONF_PAL60);
       //Setting sensorBarPosition = sysconfSection.getSetting(SettingsFile.KEY_SYSCONF_SENSOR_BAR_POSITION);
       //Setting sensorBarSensitivity = sysconfSection.getSetting(SettingsFile.KEY_SYSCONF_SENSOR_BAR_SENSITIVITY);
@@ -312,7 +312,8 @@ public final class SettingsFragmentPresenter
         R.array.wiiSystemLanguageValues, 7, language));
       sl.add(new CheckBoxSetting(SettingsFile.KEY_SYSCONF_WIDESCREEN, Settings.SECTION_SYSCONF,
         R.string.sysconf_widescreen, 0, true, widescreen));
-      //sl.add(new CheckBoxSetting(SettingsFile.KEY_SYSCONF_PROGRESSIVE_SCAN, Settings.SECTION_SYSCONF, R.string.sysconf_progressive_scan, 0, true, progressiveScan));
+      sl.add(new CheckBoxSetting(SettingsFile.KEY_SYSCONF_PROGRESSIVE_SCAN, Settings.SECTION_SYSCONF,
+        R.string.sysconf_progressive_scan, 0, true, progressiveScan));
       sl.add(new CheckBoxSetting(SettingsFile.KEY_SYSCONF_PAL60, Settings.SECTION_SYSCONF,
         R.string.sysconf_pal60, 0, true, pal60));
       //sl.add(new SingleChoiceSetting(SettingsFile.KEY_SYSCONF_SENSOR_BAR_POSITION, Settings.SECTION_SYSCONF, R.string.sysconf_sensor_bar_position, 0, R.array.sensorBarPositionEntries, R.array.sensorBarPositionValues, 0, sensorBarPosition));

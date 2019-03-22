@@ -362,7 +362,7 @@
     <string name="sysconf_screensaver">屏幕保护程序</string>
     <string name="sysconf_language">系统语言</string>
     <string name="sysconf_widescreen">宽屏显示</string>
-    <string name="sysconf_progressive_scan">Progressive Scan</string>
+    <string name="sysconf_progressive_scan">逐行扫描</string>
     <string name="sysconf_pal60">PAL60</string>
     <string name="sysconf_sensor_bar_position">Sensor Bar Position</string>
     <string name="sysconf_sensor_bar_sensitivity">Sensor Bar Sensitivity</string>
