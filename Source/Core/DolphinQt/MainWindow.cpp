@@ -323,7 +323,7 @@ void MainWindow::InitCoreCallbacks()
 
 static void InstallHotkeyFilter(QWidget* dialog)
 {
-  auto* filter = new WindowActivationEventFilter();
+  auto* filter = new WindowActivationEventFilter(dialog);
   dialog->installEventFilter(filter);
 
   filter->connect(filter, &WindowActivationEventFilter::windowDeactivated,
@@ -452,7 +452,7 @@ void MainWindow::ConnectMenuBar()
   connect(m_menu_bar, &MenuBar::ShowList, m_game_list, &GameList::SetListView);
   connect(m_menu_bar, &MenuBar::ShowGrid, m_game_list, &GameList::SetGridView);
   connect(m_menu_bar, &MenuBar::PurgeGameListCache, m_game_list, &GameList::PurgeCache);
-  connect(m_menu_bar, &MenuBar::ToggleSearch, m_search_bar, &SearchBar::Toggle);
+  connect(m_menu_bar, &MenuBar::ShowSearch, m_search_bar, &SearchBar::Show);
 
   connect(m_menu_bar, &MenuBar::ColumnVisibilityToggled, m_game_list,
           &GameList::OnColumnVisibilityToggled);
