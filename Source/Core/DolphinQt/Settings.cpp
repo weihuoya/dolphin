@@ -27,6 +27,8 @@
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 #include "InputCommon/InputConfig.h"
 
+#include "VideoCommon/RenderBase.h"
+
 Settings::Settings()
 {
   qRegisterMetaType<Core::State>();

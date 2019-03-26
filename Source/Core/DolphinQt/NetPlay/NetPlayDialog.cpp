@@ -54,6 +54,7 @@
 #include "UICommon/GameFile.h"
 #include "UICommon/UICommon.h"
 
+#include "VideoCommon/RenderBase.h"
 #include "VideoCommon/VideoConfig.h"
 
 NetPlayDialog::NetPlayDialog(QWidget* parent)
@@ -355,6 +356,15 @@ void NetPlayDialog::ConnectWidgets()
   connect(m_sync_all_wii_saves_action, &QAction::toggled, this, &NetPlayDialog::SaveSettings);
 }
 
+void NetPlayDialog::SendMessage(const std::string& msg)
+{
+  Settings::Instance().GetNetPlayClient()->SendChatMessage(msg);
+
+  DisplayMessage(QStringLiteral("%1: %2").arg(QString::fromStdString(m_nickname).toHtmlEscaped(),
+                                              QString::fromStdString(msg).toHtmlEscaped()),
+                 "");
+}
+
 void NetPlayDialog::OnChat()
 {
   QueueOnObject(this, [this] {
@@ -363,12 +373,9 @@ void NetPlayDialog::OnChat()
     if (msg.empty())
       return;
 
-    Settings::Instance().GetNetPlayClient()->SendChatMessage(msg);
     m_chat_type_edit->clear();
 
-    DisplayMessage(QStringLiteral("%1: %2").arg(QString::fromStdString(m_nickname).toHtmlEscaped(),
-                                                QString::fromStdString(msg).toHtmlEscaped()),
-                   "#1d6ed8");
+    SendMessage(msg);
   });
 }
 
@@ -757,28 +764,6 @@ void NetPlayDialog::Update()
 
 void NetPlayDialog::DisplayMessage(const QString& msg, const std::string& color, int duration)
 {
-  QueueOnObject(m_chat_edit, [this, color, msg] {
-    m_chat_edit->append(
-        QStringLiteral("<font color='%1'>%2</font>").arg(QString::fromStdString(color), msg));
-  });
-
-  if (g_ActiveConfig.bShowNetPlayMessages && Core::IsRunning())
-  {
-    u32 osd_color;
-
-    // Convert the color string to a OSD color
-    if (color == "red")
-      osd_color = OSD::Color::RED;
-    else if (color == "cyan")
-      osd_color = OSD::Color::CYAN;
-    else if (color == "green")
-      osd_color = OSD::Color::GREEN;
-    else
-      osd_color = OSD::Color::YELLOW;
-
-    OSD::AddTypedMessage(OSD::MessageType::NetPlayBuffer, msg.toStdString(), OSD::Duration::NORMAL,
-                         osd_color);
-  }
 }
 
 void NetPlayDialog::AppendChat(const std::string& msg)
@@ -829,6 +814,7 @@ void NetPlayDialog::OnMsgStartGame()
 
   QueueOnObject(this, [this] {
     auto client = Settings::Instance().GetNetPlayClient();
+
     if (client)
       client->StartGame(FindGame(m_current_game));
     UpdateDiscordPresence();
@@ -856,7 +842,7 @@ void NetPlayDialog::OnPadBufferChanged(u32 buffer)
   DisplayMessage(m_host_input_authority && !IsHosting() ?
                      tr("Max buffer size changed to %1").arg(buffer) :
                      tr("Buffer size changed to %1").arg(buffer),
-                 "");
+                 "darkcyan");
 
   m_buffer_size = static_cast<int>(buffer);
 }

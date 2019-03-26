@@ -72,7 +72,7 @@ static Common::Event g_compressAndDumpStateSyncEvent;
 static std::thread g_save_thread;
 
 // Don't forget to increase this after doing changes on the savestate system
-static const u32 STATE_VERSION = 104;  // Last changed in PR 7806
+static const u32 STATE_VERSION = 105;  // Last changed in PR 7871
 
 // Maps savestate versions to Dolphin versions.
 // Versions after 42 don't need to be added to this list,
@@ -171,10 +171,6 @@ static void DoState(PointerWrap& p)
   g_video_backend->DoState(p);
   p.DoMarker("video_backend");
 
-  if (SConfig::GetInstance().bWii)
-    Wiimote::DoState(p);
-  p.DoMarker("Wiimote");
-
   PowerPC::DoState(p);
   p.DoMarker("PowerPC");
   // CoreTiming needs to be restored before restoring Hardware because
@@ -183,6 +179,9 @@ static void DoState(PointerWrap& p)
   p.DoMarker("CoreTiming");
   HW::DoState(p);
   p.DoMarker("HW");
+  if (SConfig::GetInstance().bWii)
+    Wiimote::DoState(p);
+  p.DoMarker("Wiimote");
   Movie::DoState(p);
   p.DoMarker("Movie");
   Gecko::DoState(p);

@@ -151,6 +151,12 @@ bool Host_UINeedsControllerState()
 {
   return Settings::Instance().IsControllerStateNeeded();
 }
+
+bool Host_UIBlocksControllerState()
+{
+  return false;
+}
+
 void Host_RefreshDSPDebuggerWindow()
 {
 }
