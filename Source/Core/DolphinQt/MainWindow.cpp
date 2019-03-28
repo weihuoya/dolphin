@@ -106,6 +106,7 @@
 
 #include "UICommon/UICommon.h"
 
+#include "VideoCommon/NetPlayChatUI.h"
 #include "VideoCommon/VideoConfig.h"
 
 #if defined(HAVE_XRANDR) && HAVE_XRANDR
@@ -180,7 +181,9 @@ static std::vector<std::string> StringListToStdVector(QStringList list)
   return result;
 }
 
-MainWindow::MainWindow(std::unique_ptr<BootParameters> boot_parameters) : QMainWindow(nullptr)
+MainWindow::MainWindow(std::unique_ptr<BootParameters> boot_parameters,
+                       const std::string& movie_path)
+    : QMainWindow(nullptr)
 {
   setWindowTitle(QString::fromStdString(Common::scm_rev_str));
   setWindowIcon(Resources::GetAppIcon());
@@ -213,7 +216,15 @@ MainWindow::MainWindow(std::unique_ptr<BootParameters> boot_parameters) : QMainW
 #endif
 
   if (boot_parameters)
+  {
     m_pending_boot = std::move(boot_parameters);
+
+    if (!movie_path.empty())
+    {
+      if (Movie::PlayInput(movie_path, &m_pending_boot->savestate_path))
+        emit RecordingStatusChanged(true);
+    }
+  }
 
   QSettings& settings = Settings::GetQSettings();
 
@@ -482,6 +493,7 @@ void MainWindow::ConnectHotkeys()
   connect(m_hotkey_scheduler, &HotkeyScheduler::EjectDisc, this, &MainWindow::EjectDisc);
   connect(m_hotkey_scheduler, &HotkeyScheduler::ExitHotkey, this, &MainWindow::close);
   connect(m_hotkey_scheduler, &HotkeyScheduler::TogglePauseHotkey, this, &MainWindow::TogglePause);
+  connect(m_hotkey_scheduler, &HotkeyScheduler::ActivateChat, this, &MainWindow::OnActivateChat);
   connect(m_hotkey_scheduler, &HotkeyScheduler::RefreshGameListHotkey, this,
           &MainWindow::RefreshGameList);
   connect(m_hotkey_scheduler, &HotkeyScheduler::StopHotkey, this, &MainWindow::RequestStop);
@@ -1585,6 +1597,12 @@ void MainWindow::OnExportRecording()
 
   if (!was_paused)
     Core::SetState(Core::State::Running);
+}
+
+void MainWindow::OnActivateChat()
+{
+  if (g_netplay_chat_ui)
+    g_netplay_chat_ui->Activate();
 }
 
 void MainWindow::ShowTASInput()
