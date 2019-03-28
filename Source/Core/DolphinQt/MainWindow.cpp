@@ -26,7 +26,7 @@
 #include "QtUtils/SignalDaemon.h"
 #endif
 
-#ifndef WIN32
+#ifndef _WIN32
 #include <qpa/qplatformnativeinterface.h>
 #endif
 
@@ -106,7 +106,6 @@
 
 #include "UICommon/UICommon.h"
 
-#include "VideoCommon/NetPlayChatUI.h"
 #include "VideoCommon/VideoConfig.h"
 
 #if defined(HAVE_XRANDR) && HAVE_XRANDR
@@ -1601,8 +1600,6 @@ void MainWindow::OnExportRecording()
 
 void MainWindow::OnActivateChat()
 {
-  if (g_netplay_chat_ui)
-    g_netplay_chat_ui->Activate();
 }
 
 void MainWindow::ShowTASInput()
