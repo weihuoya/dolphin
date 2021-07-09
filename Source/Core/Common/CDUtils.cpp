@@ -1,6 +1,5 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // Most of the code in this file was shamelessly ripped from libcdio With minor adjustments
 
@@ -26,6 +25,7 @@
 #include <IOKit/storage/IOMedia.h>
 #include <paths.h>
 #else
+#include <climits>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -211,7 +211,7 @@ bool IsCDROMDevice(std::string device)
 #ifndef _WIN32
   // Resolve symbolic links. This allows symbolic links to valid
   // drives to be passed from the command line with the -e flag.
-  char resolved_path[MAX_PATH];
+  char resolved_path[PATH_MAX];
   char* devname = realpath(device.c_str(), resolved_path);
   if (!devname)
     return false;

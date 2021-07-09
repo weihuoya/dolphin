@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // IMPORTANT: UI etc should modify g_Config. Graphics code should read g_ActiveConfig.
 // The reason for this is to get rid of race conditions etc when the configuration
@@ -95,6 +94,8 @@ struct VideoConfig final
 
   // Utility
   bool bDumpTextures;
+  bool bDumpMipmapTextures;
+  bool bDumpBaseTextures;
   bool bHiresTextures;
   bool bCacheHiresTextures;
   bool bDumpEFBTarget;
@@ -106,7 +107,6 @@ struct VideoConfig final
   std::string sDumpFormat;
   std::string sDumpPath;
   bool bInternalResolutionFrameDumps;
-  bool bFreeLook;
   bool bBorderlessFullscreen;
   bool bEnableGPUTextureDecoding;
   int iBitrateKbps;
@@ -124,6 +124,7 @@ struct VideoConfig final
   bool bDisableCopyToVRAM;
   bool bDeferEFBCopies;
   bool bImmediateXFB;
+  bool bSkipPresentingDuplicateXFBs;
   bool bCopyEFBScaled;
   int iSafeTextureCache_ColorSamples;
   float fAspectRatioHackW, fAspectRatioHackH;
@@ -133,6 +134,7 @@ struct VideoConfig final
   int iEFBAccessTileSize;
   int iLog;           // CONF_ bits
   int iSaveTargetId;  // TODO: Should be dropped
+  u32 iMissingColorValue;
 
   // Stereoscopy
   StereoMode stereo_mode;
@@ -220,6 +222,7 @@ struct VideoConfig final
     bool bSupportsBackgroundCompiling;
     bool bSupportsLargePoints;
     bool bSupportsPartialDepthCopies;
+    bool bSupportsDepthReadback;
     bool bSupportsShaderBinaries;
     bool bSupportsPipelineCacheData;
   } backend_info;

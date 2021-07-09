@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -22,6 +21,7 @@ public:
   ~BreakpointWidget();
 
   void AddBP(u32 addr);
+  void AddBP(u32 addr, bool temp, bool break_on_hit, bool log_on_hit);
   void AddAddressMBP(u32 addr, bool on_read = true, bool on_write = true, bool do_log = true,
                      bool do_break = true);
   void AddRangedMBP(u32 from, u32 to, bool do_read = true, bool do_write = true, bool do_log = true,
@@ -45,6 +45,7 @@ private:
   void OnNewBreakpoint();
   void OnLoad();
   void OnSave();
+  void OnContextMenu();
 
   void UpdateIcons();
 

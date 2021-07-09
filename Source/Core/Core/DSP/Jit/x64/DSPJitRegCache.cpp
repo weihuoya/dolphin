@@ -1,6 +1,5 @@
 // Copyright 2011 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/DSP/Jit/x64/DSPJitRegCache.h"
 
@@ -11,7 +10,6 @@
 #include "Common/Logging/Log.h"
 
 #include "Core/DSP/DSPCore.h"
-#include "Core/DSP/DSPMemoryMap.h"
 #include "Core/DSP/Jit/x64/DSPEmitter.h"
 
 using namespace Gen;
@@ -31,25 +29,30 @@ static Gen::OpArg GetRegisterPointer(size_t reg)
   case DSP_REG_AR1:
   case DSP_REG_AR2:
   case DSP_REG_AR3:
-    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ar[reg - DSP_REG_AR0])));
+    return MDisp(
+        R15, static_cast<int>(offsetof(SDSP, r.ar) + sizeof(SDSP::r.ar[0]) * (reg - DSP_REG_AR0)));
   case DSP_REG_IX0:
   case DSP_REG_IX1:
   case DSP_REG_IX2:
   case DSP_REG_IX3:
-    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ix[reg - DSP_REG_IX0])));
+    return MDisp(
+        R15, static_cast<int>(offsetof(SDSP, r.ix) + sizeof(SDSP::r.ix[0]) * (reg - DSP_REG_IX0)));
   case DSP_REG_WR0:
   case DSP_REG_WR1:
   case DSP_REG_WR2:
   case DSP_REG_WR3:
-    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.wr[reg - DSP_REG_WR0])));
+    return MDisp(
+        R15, static_cast<int>(offsetof(SDSP, r.wr) + sizeof(SDSP::r.wr[0]) * (reg - DSP_REG_WR0)));
   case DSP_REG_ST0:
   case DSP_REG_ST1:
   case DSP_REG_ST2:
   case DSP_REG_ST3:
-    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.st[reg - DSP_REG_ST0])));
+    return MDisp(
+        R15, static_cast<int>(offsetof(SDSP, r.st) + sizeof(SDSP::r.st[0]) * (reg - DSP_REG_ST0)));
   case DSP_REG_ACH0:
   case DSP_REG_ACH1:
-    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[reg - DSP_REG_ACH0].h)));
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[0].h) +
+                                       sizeof(SDSP::r.ac[0]) * (reg - DSP_REG_ACH0)));
   case DSP_REG_CR:
     return MDisp(R15, static_cast<int>(offsetof(SDSP, r.cr)));
   case DSP_REG_SR:
@@ -64,22 +67,28 @@ static Gen::OpArg GetRegisterPointer(size_t reg)
     return MDisp(R15, static_cast<int>(offsetof(SDSP, r.prod.m2)));
   case DSP_REG_AXL0:
   case DSP_REG_AXL1:
-    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ax[reg - DSP_REG_AXL0].l)));
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ax[0].l) +
+                                       sizeof(SDSP::r.ax[0]) * (reg - DSP_REG_AXL0)));
   case DSP_REG_AXH0:
   case DSP_REG_AXH1:
-    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ax[reg - DSP_REG_AXH0].h)));
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ax[0].h) +
+                                       sizeof(SDSP::r.ax[0]) * (reg - DSP_REG_AXH0)));
   case DSP_REG_ACL0:
   case DSP_REG_ACL1:
-    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[reg - DSP_REG_ACL0].l)));
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[0].l) +
+                                       sizeof(SDSP::r.ac[0]) * (reg - DSP_REG_ACL0)));
   case DSP_REG_ACM0:
   case DSP_REG_ACM1:
-    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[reg - DSP_REG_ACM0].m)));
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[0].m) +
+                                       sizeof(SDSP::r.ac[0]) * (reg - DSP_REG_ACM0)));
   case DSP_REG_AX0_32:
   case DSP_REG_AX1_32:
-    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ax[reg - DSP_REG_AX0_32].val)));
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ax[0].val) +
+                                       sizeof(SDSP::r.ax[0]) * (reg - DSP_REG_AX0_32)));
   case DSP_REG_ACC0_64:
   case DSP_REG_ACC1_64:
-    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[reg - DSP_REG_ACC0_64].val)));
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[0].val) +
+                                       sizeof(SDSP::r.ac[0]) * (reg - DSP_REG_ACC0_64)));
   case DSP_REG_PROD_64:
     return MDisp(R15, static_cast<int>(offsetof(SDSP, r.prod.val)));
   default:
@@ -835,14 +844,7 @@ void DSPJitRegCache::WriteReg(int dreg, OpArg arg)
       m_emitter.MOV(32, reg, Imm32(arg.Imm32()));
       break;
     case 8:
-      if ((u32)arg.Imm64() == arg.Imm64())
-      {
-        m_emitter.MOV(64, reg, Imm32((u32)arg.Imm64()));
-      }
-      else
-      {
-        m_emitter.MOV(64, reg, Imm64(arg.Imm64()));
-      }
+      m_emitter.MOV(64, reg, Imm64(arg.Imm64()));
       break;
     default:
       ASSERT_MSG(DSPLLE, 0, "unsupported memory size");
@@ -964,7 +966,7 @@ void DSPJitRegCache::GetXReg(X64Reg reg)
 {
   if (m_xregs[reg].guest_reg == DSP_REG_STATIC)
   {
-    ERROR_LOG(DSPLLE, "Trying to get statically used XReg %d", reg);
+    ERROR_LOG_FMT(DSPLLE, "Trying to get statically used XReg {}", reg);
     return;
   }
 
@@ -980,7 +982,7 @@ void DSPJitRegCache::PutXReg(X64Reg reg)
 {
   if (m_xregs[reg].guest_reg == DSP_REG_STATIC)
   {
-    ERROR_LOG(DSPLLE, "Trying to put statically used XReg %d", reg);
+    ERROR_LOG_FMT(DSPLLE, "Trying to put statically used XReg {}", reg);
     return;
   }
 

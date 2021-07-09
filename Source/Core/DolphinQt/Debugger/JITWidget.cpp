@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Debugger/JITWidget.h"
 
@@ -15,6 +14,7 @@
 #include "Core/PowerPC/PPCAnalyst.h"
 #include "UICommon/Disassembler.h"
 
+#include "DolphinQt/Host.h"
 #include "DolphinQt/Settings.h"
 
 JITWidget::JITWidget(QWidget* parent) : QDockWidget(parent)
@@ -40,13 +40,14 @@ JITWidget::JITWidget(QWidget* parent) : QDockWidget(parent)
   m_asm_splitter->restoreState(
       settings.value(QStringLiteral("jitwidget/asmsplitter")).toByteArray());
 
-  connect(&Settings::Instance(), &Settings::JITVisibilityChanged,
+  connect(&Settings::Instance(), &Settings::JITVisibilityChanged, this,
           [this](bool visible) { setHidden(!visible); });
 
-  connect(&Settings::Instance(), &Settings::DebugModeToggled,
+  connect(&Settings::Instance(), &Settings::DebugModeToggled, this,
           [this](bool enabled) { setHidden(!enabled || !Settings::Instance().IsJITVisible()); });
 
   connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, &JITWidget::Update);
+  connect(Host::GetInstance(), &Host::UpdateDisasmDialog, this, &JITWidget::Update);
 
   ConnectWidgets();
 
@@ -73,6 +74,7 @@ void JITWidget::CreateWidgets()
 {
   m_table_widget = new QTableWidget;
 
+  m_table_widget->setTabKeyNavigation(false);
   m_table_widget->setColumnCount(7);
   m_table_widget->setHorizontalHeaderLabels(
       {tr("Address"), tr("PPC Size"), tr("Host Size"),

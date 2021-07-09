@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #ifdef USE_DISCORD_PRESENCE
 
@@ -69,6 +68,8 @@ void DiscordHandler::ShowNewJoinRequest(const std::string& id, const std::string
 
 void DiscordHandler::Run()
 {
+  Common::SetCurrentThreadName("DiscordHandler");
+
   while (!m_stop_requested.IsSet())
   {
     Discord::CallPendingCallbacks();

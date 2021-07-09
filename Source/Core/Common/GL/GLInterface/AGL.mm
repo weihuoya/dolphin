@@ -1,6 +1,5 @@
 // Copyright 2012 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/GL/GLInterface/AGL.h"
 #include "Common/Logging/Log.h"
@@ -30,16 +29,18 @@ static bool AttachContextToView(NSOpenGLContext* context, NSView* view, u32* wid
   NSWindow* window = [view window];
   if (window == nil)
   {
-    ERROR_LOG(VIDEO, "failed to get NSWindow");
+    ERROR_LOG_FMT(VIDEO, "failed to get NSWindow");
     return false;
   }
 
   (void)UpdateCachedDimensions(view, width, height);
 
-  [window makeFirstResponder:view];
-  [context setView:view];
-  [window makeKeyAndOrderFront:nil];
-
+  // the following calls can crash if not called from the main thread on macOS 10.15
+  dispatch_sync(dispatch_get_main_queue(), ^{
+    [window makeFirstResponder:view];
+    [context setView:view];
+    [window makeKeyAndOrderFront:nil];
+  });
   return true;
 }
 
@@ -69,7 +70,7 @@ void GLContextAGL::Swap()
 
 // Create rendering window.
 // Call browser: Core.cpp:EmuThread() > main.cpp:Video_Initialize()
-bool GLContextAGL::Initialize(void* display_handle, void* window_handle, bool stereo, bool core)
+bool GLContextAGL::Initialize(const WindowSystemInfo& wsi, bool stereo, bool core)
 {
   NSOpenGLPixelFormatAttribute attr[] = {
       NSOpenGLPFADoubleBuffer,
@@ -81,21 +82,21 @@ bool GLContextAGL::Initialize(void* display_handle, void* window_handle, bool st
   m_pixel_format = [[NSOpenGLPixelFormat alloc] initWithAttributes:attr];
   if (m_pixel_format == nil)
   {
-    ERROR_LOG(VIDEO, "failed to create pixel format");
+    ERROR_LOG_FMT(VIDEO, "failed to create pixel format");
     return false;
   }
 
   m_context = [[NSOpenGLContext alloc] initWithFormat:m_pixel_format shareContext:nil];
   if (m_context == nil)
   {
-    ERROR_LOG(VIDEO, "failed to create context");
+    ERROR_LOG_FMT(VIDEO, "failed to create context");
     return false;
   }
 
-  if (!window_handle)
+  if (!wsi.render_surface)
     return true;
 
-  m_view = static_cast<NSView*>(window_handle);
+  m_view = static_cast<NSView*>(wsi.render_surface);
   m_opengl_mode = Mode::OpenGL;
   if (!AttachContextToView(m_context, m_view, &m_backbuffer_width, &m_backbuffer_height))
     return false;
@@ -110,7 +111,7 @@ std::unique_ptr<GLContext> GLContextAGL::CreateSharedContext()
                                                                 shareContext:m_context];
   if (new_agl_context == nil)
   {
-    ERROR_LOG(VIDEO, "failed to create shared context");
+    ERROR_LOG_FMT(VIDEO, "failed to create shared context");
     return nullptr;
   }
 
@@ -140,7 +141,10 @@ void GLContextAGL::Update()
     return;
 
   if (UpdateCachedDimensions(m_view, &m_backbuffer_width, &m_backbuffer_height))
-    [m_context update];
+    // the following calls can crash if not called from the main thread on macOS 10.15
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      [m_context update];
+    });
 }
 
 void GLContextAGL::SwapInterval(int interval)

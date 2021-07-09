@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -13,9 +12,9 @@
 #include "Core/HW/SystemTimers.h"
 
 #ifdef _WIN32
-#include <OpenAL/include/al.h>
-#include <OpenAL/include/alc.h>
-#include <OpenAL/include/alext.h>
+#include <al.h>
+#include <alc.h>
+#include <alext.h>
 
 // OpenAL requires a minimum of two buffers, three or more recommended
 #define OAL_BUFFERS 3

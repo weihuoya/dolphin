@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -15,7 +14,7 @@
 #include <utility>
 
 #include "Common/CommonTypes.h"
-#include "Common/File.h"
+#include "Common/IOFile.h"
 #include "Common/LinearDiskCache.h"
 
 #include "VideoCommon/AbstractPipeline.h"
@@ -34,6 +33,7 @@
 
 class NativeVertexFormat;
 enum class AbstractTextureFormat : u32;
+enum class APIType;
 enum class TextureFormat;
 enum class TLUTFormat;
 
@@ -191,7 +191,7 @@ private:
   };
 
   // Configuration bits.
-  APIType m_api_type = APIType::Nothing;
+  APIType m_api_type;
   ShaderHostConfig m_host_config = {};
   std::unique_ptr<AsyncShaderCompiler> m_async_shader_compiler;
 

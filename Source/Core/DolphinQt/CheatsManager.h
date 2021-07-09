@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -11,6 +10,7 @@
 #include <QDialog>
 
 #include "Common/CommonTypes.h"
+#include "DolphinQt/GameList/GameListModel.h"
 
 class ARCodeWidget;
 class QComboBox;
@@ -61,9 +61,12 @@ private:
   void OnMatchContextMenu();
   void OnWatchItemChanged(QTableWidgetItem* item);
 
+  std::string m_game_id;
+  std::string m_game_tdb_id;
+  u16 m_revision = 0;
+
   std::vector<Result> m_results;
   std::vector<Result> m_watch;
-  std::shared_ptr<const UICommon::GameFile> m_game_file;
   QDialogButtonBox* m_button_box;
   QTabWidget* m_tab_widget = nullptr;
 

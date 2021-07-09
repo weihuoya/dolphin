@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <QLabel>
 #include <QTextEdit>
@@ -24,7 +23,7 @@ AboutDialog::AboutDialog(QWidget* parent) : QDialog(parent)
 <p style='font-size:18pt;'>%VERSION_STRING%</p>
 
 <p style='font-size: small;'>
-%BRANCH%:<br>
+%BRANCH%<br>
 %REVISION%<br><br>
 %QT_VERSION%
 </p>

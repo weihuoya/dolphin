@@ -1,9 +1,9 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <map>
 #include <memory>
@@ -16,6 +16,7 @@
 #include "Common/CommonTypes.h"
 #include "Common/FileUtil.h"
 #include "DiscIO/Blob.h"
+#include "DiscIO/WiiEncryptionCache.h"
 
 namespace File
 {
@@ -27,16 +28,23 @@ namespace DiscIO
 {
 enum class PartitionType : u32;
 
+class DirectoryBlobReader;
+
 // Returns true if the path is inside a DirectoryBlob and doesn't represent the DirectoryBlob itself
 bool ShouldHideFromGameList(const std::string& volume_path);
 
 class DiscContent
 {
 public:
-  using ContentSource = std::variant<std::string, const u8*>;
+  using ContentSource =
+      std::variant<std::string,          // File
+                   const u8*,            // Memory
+                   DirectoryBlobReader*  // Partition (which one it is is determined by m_offset)
+                   >;
 
   DiscContent(u64 offset, u64 size, const std::string& path);
   DiscContent(u64 offset, u64 size, const u8* data);
+  DiscContent(u64 offset, u64 size, DirectoryBlobReader* blob);
 
   // Provided because it's convenient when searching for DiscContent in an std::set
   explicit DiscContent(u64 offset);
@@ -69,6 +77,7 @@ public:
   }
   void Add(u64 offset, u64 size, const std::string& path);
   void Add(u64 offset, u64 size, const u8* data);
+  void Add(u64 offset, u64 size, DirectoryBlobReader* blob);
   u64 CheckSizeAndAdd(u64 offset, const std::string& path);
   u64 CheckSizeAndAdd(u64 offset, u64 max_size, const std::string& path);
 
@@ -96,6 +105,9 @@ public:
   const std::vector<u8>& GetHeader() const { return m_disc_header; }
   const DiscContentContainer& GetContents() const { return m_contents; }
 
+  const std::array<u8, VolumeWii::AES_KEY_SIZE>& GetKey() const { return m_key; }
+  void SetKey(std::array<u8, VolumeWii::AES_KEY_SIZE> key) { m_key = key; }
+
 private:
   void SetDiscHeaderAndDiscType(std::optional<bool> is_wii);
   void SetBI2();
@@ -120,6 +132,8 @@ private:
   std::vector<u8> m_apploader;
   std::vector<u8> m_fst_data;
 
+  std::array<u8, VolumeWii::AES_KEY_SIZE> m_key;
+
   std::string m_root_directory;
   bool m_is_wii = false;
   // GameCube has no shift, Wii has 2 bit shift
@@ -130,6 +144,8 @@ private:
 
 class DirectoryBlobReader : public BlobReader
 {
+  friend DiscContent;
+
 public:
   static std::unique_ptr<DirectoryBlobReader> Create(const std::string& dol_path);
 
@@ -140,13 +156,18 @@ public:
   DirectoryBlobReader& operator=(DirectoryBlobReader&&) = default;
 
   bool Read(u64 offset, u64 length, u8* buffer) override;
-  bool SupportsReadWiiDecrypted() const override;
-  bool ReadWiiDecrypted(u64 offset, u64 size, u8* buffer, u64 partition_offset) override;
+  bool SupportsReadWiiDecrypted(u64 offset, u64 size, u64 partition_data_offset) const override;
+  bool ReadWiiDecrypted(u64 offset, u64 size, u8* buffer, u64 partition_data_offset) override;
 
   BlobType GetBlobType() const override;
+
   u64 GetRawSize() const override;
   u64 GetDataSize() const override;
   bool IsDataSizeAccurate() const override { return true; }
+
+  u64 GetBlockSize() const override { return 0; }
+  bool HasFastRandomAccessInBlock() const override { return true; }
+  std::string GetCompressionMethod() const override { return {}; }
 
 private:
   struct PartitionWithType
@@ -163,11 +184,16 @@ private:
   explicit DirectoryBlobReader(const std::string& game_partition_root,
                                const std::string& true_root);
 
+  const DirectoryBlobPartition* GetPartition(u64 offset, u64 size, u64 partition_data_offset) const;
+
+  bool EncryptPartitionData(u64 offset, u64 size, u8* buffer, u64 partition_data_offset,
+                            u64 partition_data_decrypted_size);
+
   void SetNonpartitionDiscHeader(const std::vector<u8>& partition_header,
                                  const std::string& game_partition_root);
   void SetWiiRegionData(const std::string& game_partition_root);
   void SetPartitions(std::vector<PartitionWithType>&& partitions);
-  void SetPartitionHeader(const DirectoryBlobPartition& partition, u64 partition_address);
+  void SetPartitionHeader(DirectoryBlobPartition* partition, u64 partition_address);
 
   // For GameCube:
   DirectoryBlobPartition m_gamecube_pseudopartition;
@@ -175,8 +201,10 @@ private:
   // For Wii:
   DiscContentContainer m_nonpartition_contents;
   std::map<u64, DirectoryBlobPartition> m_partitions;
+  WiiEncryptionCache m_encryption_cache;
 
   bool m_is_wii;
+  bool m_encrypted;
 
   std::vector<u8> m_disc_header_nonpartition;
   std::vector<u8> m_partition_table;

@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <memory>
 
@@ -20,7 +19,7 @@ std::unique_ptr<SWOGLWindow> SWOGLWindow::Create(const WindowSystemInfo& wsi)
   std::unique_ptr<SWOGLWindow> window = std::unique_ptr<SWOGLWindow>(new SWOGLWindow());
   if (!window->Initialize(wsi))
   {
-    PanicAlert("Failed to create OpenGL window");
+    PanicAlertFmt("Failed to create OpenGL window");
     return nullptr;
   }
 
@@ -41,13 +40,13 @@ bool SWOGLWindow::Initialize(const WindowSystemInfo& wsi)
   // Init extension support.
   if (!GLExtensions::Init(m_gl_context.get()))
   {
-    ERROR_LOG(VIDEO, "GLExtensions::Init failed!Does your video card support OpenGL 2.0?");
+    ERROR_LOG_FMT(VIDEO, "GLExtensions::Init failed!Does your video card support OpenGL 2.0?");
     return false;
   }
   else if (GLExtensions::Version() < 310)
   {
-    ERROR_LOG(VIDEO, "OpenGL Version %d detected, but at least 3.1 is required.",
-              GLExtensions::Version());
+    ERROR_LOG_FMT(VIDEO, "OpenGL Version {} detected, but at least 3.1 is required.",
+                  GLExtensions::Version());
     return false;
   }
 

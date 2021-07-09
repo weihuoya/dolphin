@@ -1,7 +1,6 @@
-/**
+/*
  * Copyright 2013 Dolphin Emulator Project
- * Licensed under GPLv2+
- * Refer to the license.txt file included.
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 package org.dolphinemu.dolphinemu.overlay;
@@ -70,7 +69,7 @@ public final class InputOverlayDrawableButton
     return mTrackId;
   }
 
-  public boolean onConfigureTouch(MotionEvent event)
+  public void onConfigureTouch(MotionEvent event)
   {
     int pointerIndex = event.getActionIndex();
     int fingerPositionX = (int) event.getX(pointerIndex);
@@ -89,9 +88,7 @@ public final class InputOverlayDrawableButton
         mPreviousTouchX = fingerPositionX;
         mPreviousTouchY = fingerPositionY;
         break;
-
     }
-    return true;
   }
 
   public void setPosition(int x, int y)
@@ -114,6 +111,12 @@ public final class InputOverlayDrawableButton
   {
     mDefaultStateBitmap.setBounds(left, top, right, bottom);
     mPressedStateBitmap.setBounds(left, top, right, bottom);
+  }
+
+  public void setOpacity(int value)
+  {
+    mDefaultStateBitmap.setAlpha(value);
+    mPressedStateBitmap.setAlpha(value);
   }
 
   public Rect getBounds()

@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "InputCommon/ControllerInterface/Quartz/QuartzKeyboardAndMouse.h"
 
@@ -8,6 +7,8 @@
 
 #include <Carbon/Carbon.h>
 #include <Cocoa/Cocoa.h>
+
+#include "InputCommon/ControllerInterface/ControllerInterface.h"
 
 namespace ciface::Quartz
 {
@@ -141,6 +142,11 @@ KeyboardAndMouse::KeyboardAndMouse(void* window)
   for (int keycode = 0; keycode < 0x80; ++keycode)
     AddInput(new Key(keycode));
 
+  // Add combined left/right modifiers with consistent naming across platforms.
+  AddCombinedInput("Alt", {"Left Alt", "Right Alt"});
+  AddCombinedInput("Shift", {"Left Shift", "Right Shift"});
+  AddCombinedInput("Ctrl", {"Left Control", "Right Control"});
+
   m_windowid = [[reinterpret_cast<NSView*>(window) window] windowNumber];
 
   // cursor, with a hax for-loop
@@ -177,10 +183,12 @@ void KeyboardAndMouse::UpdateInput()
   CGPoint loc = CGEventGetLocation(event);
   CFRelease(event);
 
+  const auto window_scale = g_controller_interface.GetWindowInputScale();
+
   loc.x -= bounds.origin.x;
   loc.y -= bounds.origin.y;
-  m_cursor.x = loc.x / bounds.size.width * 2 - 1.0;
-  m_cursor.y = loc.y / bounds.size.height * 2 - 1.0;
+  m_cursor.x = (loc.x / std::max(bounds.size.width, 1.0) * 2 - 1.0) * window_scale.x;
+  m_cursor.y = (loc.y / std::max(bounds.size.height, 1.0) * 2 - 1.0) * window_scale.y;
 }
 
 std::string KeyboardAndMouse::GetName() const

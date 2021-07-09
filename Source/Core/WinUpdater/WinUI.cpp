@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "UpdaterCommon/UI.h"
 
@@ -180,7 +179,7 @@ void ResetCurrentProgress()
 
 void Error(const std::string& text)
 {
-  auto wide_text = UTF8ToUTF16(text);
+  auto wide_text = UTF8ToWString(text);
 
   MessageBox(nullptr,
              (L"A fatal error occured and the updater cannot continue:\n " + wide_text).c_str(),
@@ -200,7 +199,7 @@ void SetCurrentProgress(int current, int total)
 
 void SetDescription(const std::string& text)
 {
-  SetWindowText(label_handle, UTF8ToUTF16(text).c_str());
+  SetWindowText(label_handle, UTF8ToWString(text).c_str());
 }
 
 void MessageLoop()
@@ -256,7 +255,7 @@ void LaunchApplication(std::string path)
 {
   // Hack: Launching the updater over the explorer ensures that admin priviliges are dropped. Why?
   // Ask Microsoft.
-  ShellExecuteW(nullptr, nullptr, L"explorer.exe", UTF8ToUTF16(path).c_str(), nullptr, SW_SHOW);
+  ShellExecuteW(nullptr, nullptr, L"explorer.exe", UTF8ToWString(path).c_str(), nullptr, SW_SHOW);
 }
 
 void Sleep(int sleep)

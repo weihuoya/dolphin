@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // See CPP file for comments.
 
@@ -24,7 +23,11 @@ bool IsPlaying();
 void RegisterMMIO(MMIO::Mapping* mmio, u32 base);
 
 // Get the audio rates (48000 or 32000 only)
-unsigned int GetAIDSampleRate();
+u32 GetAIDSampleRate();
+u32 GetAISSampleRate();
+
+u32 Get32KHzSampleRate();
+u32 Get48KHzSampleRate();
 
 void GenerateAISInterrupt();
 

@@ -1,22 +1,21 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoBackends/Software/DebugUtil.h"
 
 #include <cstring>
+#include <memory>
 
 #include "Common/CommonTypes.h"
 #include "Common/FileUtil.h"
+#include "Common/Image.h"
 #include "Common/StringUtil.h"
 #include "Common/Swap.h"
 
 #include "VideoBackends/Software/EfbInterface.h"
-#include "VideoBackends/Software/SWRenderer.h"
 #include "VideoBackends/Software/TextureSampler.h"
 
 #include "VideoCommon/BPMemory.h"
-#include "VideoCommon/ImageWrite.h"
 #include "VideoCommon/Statistics.h"
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
@@ -45,9 +44,9 @@ void Init()
 
 void Shutdown()
 {
-  for (int i = 0; i < NUM_OBJECT_BUFFERS; i++)
+  for (auto& slot : ObjectBuffer)
   {
-    delete[] ObjectBuffer[i];
+    delete[] slot;
   }
 }
 
@@ -61,12 +60,10 @@ static void SaveTexture(const std::string& filename, u32 texmap, s32 mip)
   u32 width = ti0.width + 1;
   u32 height = ti0.height + 1;
 
-  u8* data = new u8[width * height * 4];
+  auto data = std::make_unique<u8[]>(width * height * 4);
 
-  GetTextureRGBA(data, texmap, mip, width, height);
-
-  TextureToPng(data, width * 4, filename, width, height, true);
-  delete[] data;
+  GetTextureRGBA(data.get(), texmap, mip, width, height);
+  Common::SavePNG(filename, data.get(), Common::ImageByteFormat::RGBA, width, height, width * 4);
 }
 
 void GetTextureRGBA(u8* dst, u32 texmap, s32 mip, u32 width, u32 height)
@@ -133,12 +130,12 @@ void DumpActiveTextures()
 
 static void DumpEfb(const std::string& filename)
 {
-  u8* data = new u8[EFB_WIDTH * EFB_HEIGHT * 4];
-  u8* writePtr = data;
+  auto data = std::make_unique<u8[]>(EFB_WIDTH * EFB_HEIGHT * 4);
+  u8* writePtr = data.get();
 
-  for (int y = 0; y < EFB_HEIGHT; y++)
+  for (u32 y = 0; y < EFB_HEIGHT; y++)
   {
-    for (int x = 0; x < EFB_WIDTH; x++)
+    for (u32 x = 0; x < EFB_WIDTH; x++)
     {
       // ABGR to RGBA
       const u32 sample = Common::swap32(EfbInterface::GetColor(x, y));
@@ -148,8 +145,8 @@ static void DumpEfb(const std::string& filename)
     }
   }
 
-  TextureToPng(data, EFB_WIDTH * 4, filename, EFB_WIDTH, EFB_HEIGHT, true);
-  delete[] data;
+  Common::SavePNG(filename, data.get(), Common::ImageByteFormat::RGBA, EFB_WIDTH, EFB_HEIGHT,
+                  EFB_WIDTH * 4);
 }
 
 void DrawObjectBuffer(s16 x, s16 y, const u8* color, int bufferBase, int subBuffer,
@@ -219,7 +216,8 @@ void OnObjectEnd()
           "%sobject%i_%s(%i).png", File::GetUserPath(D_DUMPOBJECTS_IDX).c_str(),
           g_stats.this_frame.num_drawn_objects, ObjectBufferName[i], i - BufferBase[i]);
 
-      TextureToPng((u8*)ObjectBuffer[i], EFB_WIDTH * 4, filename, EFB_WIDTH, EFB_HEIGHT, true);
+      Common::SavePNG(filename, reinterpret_cast<u8*>(ObjectBuffer[i]),
+                      Common::ImageByteFormat::RGBA, EFB_WIDTH, EFB_HEIGHT, EFB_WIDTH * 4);
       memset(ObjectBuffer[i], 0, EFB_WIDTH * EFB_HEIGHT * sizeof(u32));
     }
   }

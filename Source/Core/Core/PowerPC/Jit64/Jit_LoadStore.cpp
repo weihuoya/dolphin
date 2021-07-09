@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // TODO(ector): Tons of pshufb optimization of the loads/stores, for SSSE3+, possibly SSE4, only.
 // Should give a very noticable speed boost to paired single heavy code.
@@ -74,6 +73,7 @@ void Jit64::lXXx(UGeckoInstruction inst)
     {
     case 534:  // lwbrx
       byte_reversed = true;
+      [[fallthrough]];
     case 23:  // lwzx
     case 55:  // lwzux
       accessSize = 32;
@@ -87,6 +87,7 @@ void Jit64::lXXx(UGeckoInstruction inst)
       break;
     case 790:  // lhbrx
       byte_reversed = true;
+      [[fallthrough]];
     case 279:  // lhzx
     case 311:  // lhzux
       accessSize = 16;
@@ -100,12 +101,12 @@ void Jit64::lXXx(UGeckoInstruction inst)
       break;
 
     default:
-      PanicAlert("Invalid instruction");
+      PanicAlertFmt("Invalid instruction");
     }
     break;
 
   default:
-    PanicAlert("Invalid instruction");
+    PanicAlertFmt("Invalid instruction");
   }
 
   // PowerPC has no 8-bit sign extended load, but x86 does, so merge extsb with the load if we find
@@ -150,7 +151,7 @@ void Jit64::lXXx(UGeckoInstruction inst)
   }
   else if (update && ((a == 0) || (d == a)))
   {
-    PanicAlert("Invalid instruction");
+    PanicAlertFmt("Invalid instruction");
   }
   else
   {
@@ -233,37 +234,21 @@ void Jit64::dcbx(UGeckoInstruction inst)
   JITDISABLE(bJITLoadStoreOff);
 
   X64Reg addr = RSCRATCH;
-  X64Reg value = RSCRATCH2;
   RCOpArg Ra = inst.RA ? gpr.Use(inst.RA, RCMode::Read) : RCOpArg::Imm32(0);
   RCOpArg Rb = gpr.Use(inst.RB, RCMode::Read);
-  RCX64Reg tmp = gpr.Scratch();
-  RegCache::Realize(Ra, Rb, tmp);
+  RegCache::Realize(Ra, Rb);
 
   MOV_sum(32, addr, Ra, Rb);
+  AND(32, R(addr), Imm8(~31));
 
-  // Check whether a JIT cache line needs to be invalidated.
-  LEA(32, value, MScaled(addr, SCALE_8, 0));  // addr << 3 (masks the first 3 bits)
-  SHR(32, R(value), Imm8(3 + 5 + 5));         // >> 5 for cache line size, >> 5 for width of bitset
-  MOV(64, R(tmp), ImmPtr(GetBlockCache()->GetBlockBitSet()));
-  MOV(32, R(value), MComplex(tmp, value, SCALE_4, 0));
-  SHR(32, R(addr), Imm8(5));
-  BT(32, R(value), R(addr));
-
-  FixupBranch c = J_CC(CC_C, true);
-  SwitchToFarCode();
-  SetJumpTarget(c);
   BitSet32 registersInUse = CallerSavedRegistersInUse();
   ABI_PushRegistersAndAdjustStack(registersInUse, 0);
   MOV(32, R(ABI_PARAM1), R(addr));
-  SHL(32, R(ABI_PARAM1), Imm8(5));
   MOV(32, R(ABI_PARAM2), Imm32(32));
   XOR(32, R(ABI_PARAM3), R(ABI_PARAM3));
   ABI_CallFunction(JitInterface::InvalidateICache);
   ABI_PopRegistersAndAdjustStack(registersInUse, 0);
   asm_routines.ResetStack(*this);
-  c = J(true);
-  SwitchToNearCode();
-  SetJumpTarget(c);
 }
 
 void Jit64::dcbt(UGeckoInstruction inst)
@@ -290,7 +275,6 @@ void Jit64::dcbz(UGeckoInstruction inst)
 {
   INSTRUCTION_START
   JITDISABLE(bJITLoadStoreOff);
-  FALLBACK_IF(SConfig::GetInstance().bLowDCBZHack);
 
   int a = inst.RA;
   int b = inst.RB;
@@ -304,7 +288,17 @@ void Jit64::dcbz(UGeckoInstruction inst)
     AND(32, R(RSCRATCH), Imm32(~31));
   }
 
-  if (MSR.DR)
+  FixupBranch end_dcbz_hack;
+  if (SConfig::GetInstance().bLowDCBZHack)
+  {
+    // HACK: Don't clear any memory in the [0x8000'0000, 0x8000'8000) region.
+    CMP(32, R(RSCRATCH), Imm32(0x8000'8000));
+    end_dcbz_hack = J_CC(CC_L);
+  }
+
+  bool emit_fast_path = MSR.DR && m_jit.jo.fastmem_arena;
+
+  if (emit_fast_path)
   {
     // Perform lookup to see if we can use fast path.
     MOV(64, R(RSCRATCH2), ImmPtr(&PowerPC::dbat_table[0]));
@@ -329,12 +323,15 @@ void Jit64::dcbz(UGeckoInstruction inst)
   ABI_CallFunctionR(PowerPC::ClearCacheLine, RSCRATCH);
   ABI_PopRegistersAndAdjustStack(registersInUse, 0);
 
-  if (MSR.DR)
+  if (emit_fast_path)
   {
-    FixupBranch end = J(true);
+    FixupBranch end_far_code = J(true);
     SwitchToNearCode();
-    SetJumpTarget(end);
+    SetJumpTarget(end_far_code);
   }
+
+  if (SConfig::GetInstance().bLowDCBZHack)
+    SetJumpTarget(end_dcbz_hack);
 }
 
 void Jit64::stX(UGeckoInstruction inst)
@@ -348,7 +345,7 @@ void Jit64::stX(UGeckoInstruction inst)
   bool update = (inst.OPCD & 1) && offset;
 
   if (!a && update)
-    PanicAlert("Invalid stX");
+    PanicAlertFmt("Invalid stX");
 
   int accessSize;
   switch (inst.OPCD & ~1)
@@ -440,7 +437,7 @@ void Jit64::stXx(UGeckoInstruction inst)
     accessSize = 8;
     break;
   default:
-    PanicAlert("stXx: invalid access size");
+    PanicAlertFmt("stXx: invalid access size");
     accessSize = 0;
     break;
   }

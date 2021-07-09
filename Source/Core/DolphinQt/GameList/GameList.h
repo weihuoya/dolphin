@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,7 +7,8 @@
 
 #include <QStackedWidget>
 
-class GameListModel;
+#include "DolphinQt/GameList/GameListModel.h"
+
 class QLabel;
 class QListView;
 class QSortFilterProxyModel;
@@ -32,6 +32,7 @@ public:
   bool HasMultipleSelected() const;
   std::shared_ptr<const UICommon::GameFile> FindGame(const std::string& path) const;
   std::shared_ptr<const UICommon::GameFile> FindSecondDisc(const UICommon::GameFile& game) const;
+  std::string GetNetPlayName(const UICommon::GameFile& game) const;
 
   void SetListView() { SetPreferredView(true); }
   void SetGridView() { SetPreferredView(false); }
@@ -45,9 +46,11 @@ public:
 
   void PurgeCache();
 
+  const GameListModel& GetGameListModel() const { return m_model; }
+
 signals:
   void GameSelected();
-  void NetPlayHost(const QString& game_id);
+  void NetPlayHost(const UICommon::GameFile& game);
   void SelectionChanged(std::shared_ptr<const UICommon::GameFile> game_file);
   void OpenGeneralSettings();
 
@@ -61,10 +64,13 @@ private:
   void OpenWiki();
   void SetDefaultISO();
   void DeleteFile();
+#ifdef _WIN32
+  bool AddShortcutToDesktop();
+#endif
   void InstallWAD();
   void UninstallWAD();
   void ExportWiiSave();
-  void CompressISO(bool decompress);
+  void ConvertFile();
   void ChangeDisc();
   void NewTag();
   void DeleteTag();
@@ -84,7 +90,7 @@ private:
   void ConsiderViewChange();
   void UpdateFont();
 
-  GameListModel* m_model;
+  GameListModel m_model;
   QSortFilterProxyModel* m_list_proxy;
   QSortFilterProxyModel* m_grid_proxy;
 
@@ -94,5 +100,5 @@ private:
   bool m_prefer_list;
 
 protected:
-  void keyReleaseEvent(QKeyEvent* event) override;
+  void keyPressEvent(QKeyEvent* event) override;
 };

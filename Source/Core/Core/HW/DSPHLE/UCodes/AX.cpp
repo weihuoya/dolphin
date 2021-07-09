@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/DSPHLE/UCodes/AX.h"
 
@@ -10,8 +9,8 @@
 
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
-#include "Common/File.h"
 #include "Common/FileUtil.h"
+#include "Common/IOFile.h"
 #include "Common/Logging/Log.h"
 #include "Common/Swap.h"
 #include "Core/HW/DSP.h"
@@ -26,7 +25,7 @@ namespace DSP::HLE
 {
 AXUCode::AXUCode(DSPHLE* dsphle, u32 crc) : UCodeInterface(dsphle, crc), m_cmdlist_size(0)
 {
-  INFO_LOG(DSPHLE, "Instantiating AXUCode: crc=%08x", crc);
+  INFO_LOG_FMT(DSPHLE, "Instantiating AXUCode: crc={:08x}", crc);
 }
 
 AXUCode::~AXUCode()
@@ -64,7 +63,7 @@ void AXUCode::LoadResamplingCoefficients()
   if (fidx >= filenames.size())
     return;
 
-  INFO_LOG(DSPHLE, "Loading polyphase resampling coeffs from %s", filename.c_str());
+  INFO_LOG_FMT(DSPHLE, "Loading polyphase resampling coeffs from {}", filename);
 
   File::IOFile fp(filename, "rb");
   fp.ReadBytes(m_coeffs, 0x1000);
@@ -106,10 +105,10 @@ void AXUCode::HandleCommandList()
   u32 pb_addr = 0;
 
 #if 0
-	INFO_LOG(DSPHLE, "Command list:");
+	INFO_LOG_FMT(DSPHLE, "Command list:");
 	for (u32 i = 0; m_cmdlist[i] != CMD_END; ++i)
-		INFO_LOG(DSPHLE, "%04x", m_cmdlist[i]);
-	INFO_LOG(DSPHLE, "-------------");
+		INFO_LOG_FMT(DSPHLE, "{:04x}", m_cmdlist[i]);
+	INFO_LOG_FMT(DSPHLE, "-------------");
 #endif
 
   u32 curr_idx = 0;
@@ -272,25 +271,10 @@ void AXUCode::HandleCommandList()
     }
 
     default:
-      ERROR_LOG(DSPHLE, "Unknown command in AX command list: %04x", cmd);
+      ERROR_LOG_FMT(DSPHLE, "Unknown command in AX command list: {:04x}", cmd);
       end = true;
       break;
     }
-  }
-}
-
-void AXUCode::ApplyUpdatesForMs(int curr_ms, u16* pb, u16* num_updates, u16* updates)
-{
-  u32 start_idx = 0;
-  for (int i = 0; i < curr_ms; ++i)
-    start_idx += num_updates[i];
-
-  for (u32 i = start_idx; i < start_idx + num_updates[curr_ms]; ++i)
-  {
-    u16 update_off = Common::swap16(updates[2 * i]);
-    u16 update_val = Common::swap16(updates[2 * i + 1]);
-
-    pb[update_off] = update_val;
   }
 }
 
@@ -428,7 +412,7 @@ void AXUCode::ProcessPBList(u32 pb_addr)
 {
   // Samples per millisecond. In theory DSP sampling rate can be changed from
   // 32KHz to 48KHz, but AX always process at 32KHz.
-  const u32 spms = 32;
+  constexpr u32 spms = 32;
 
   AXPB pb;
 
@@ -445,7 +429,7 @@ void AXUCode::ProcessPBList(u32 pb_addr)
 
     for (int curr_ms = 0; curr_ms < 5; ++curr_ms)
     {
-      ApplyUpdatesForMs(curr_ms, (u16*)&pb, pb.updates.num_updates, updates);
+      ApplyUpdatesForMs(curr_ms, pb, pb.updates.num_updates, updates);
 
       ProcessVoice(pb, buffers, spms, ConvertMixerControl(pb.mixer_control),
                    m_coeffs_available ? m_coeffs : nullptr);
@@ -676,7 +660,7 @@ void AXUCode::HandleMail(u32 mail)
   }
   else
   {
-    ERROR_LOG(DSPHLE, "Unknown mail sent to AX::HandleMail: %08x", mail);
+    ERROR_LOG_FMT(DSPHLE, "Unknown mail sent to AX::HandleMail: {:08x}", mail);
   }
 
   next_is_cmdlist = set_next_is_cmdlist;
@@ -686,7 +670,7 @@ void AXUCode::CopyCmdList(u32 addr, u16 size)
 {
   if (size >= std::size(m_cmdlist))
   {
-    ERROR_LOG(DSPHLE, "Command list at %08x is too large: size=%d", addr, size);
+    ERROR_LOG_FMT(DSPHLE, "Command list at {:08x} is too large: size={}", addr, size);
     return;
   }
 

@@ -1,13 +1,14 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <array>
+#include <cstring>
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "Common/CommonTypes.h"
 
@@ -63,6 +64,11 @@ static_assert(sizeof(ControllerState) == 8, "ControllerState should be 8 bytes")
 #pragma pack(push, 1)
 struct DTMHeader
 {
+  std::string_view GetGameID() const
+  {
+    return {gameID.data(), strnlen(gameID.data(), gameID.size())};
+  }
+
   std::array<u8, 4> filetype;  // Unique Identifier (always "DTM"0x1A)
 
   std::array<char, 6> gameID;  // The Game ID
@@ -109,7 +115,8 @@ struct DTMHeader
   u8 language;
   u8 reserved3;
   bool bFollowBranch;
-  std::array<u8, 9> reserved;       // Padding for any new config options
+  bool bUseFMA;
+  std::array<u8, 8> reserved;       // Padding for any new config options
   std::array<char, 40> discChange;  // Name of iso file to switch to, for two disc games.
   std::array<u8, 20> revision;      // Git hash
   u32 DSPiromHash;

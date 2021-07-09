@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // Additional copyrights go to Duddie (c) 2005 (duddie@walla.com)
 
@@ -9,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdio>
 
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
@@ -20,7 +20,7 @@ namespace DSP
 // clang-format off
 const std::array<DSPOPCTemplate, 214> s_opcodes =
 {{
-  //                                     # of parameters----+   {type, size, loc, lshift, mask}                                        branch        reads PC       // instruction approximation
+  //              # of parameters----+   {type, size, loc, lshift, mask}                                                               branch        reads PC       // instruction approximation
   // name      opcode  mask  size-V  V   param 1                       param 2                       param 3                    extendable    uncond.       updates SR
   {"NOP",      0x0000, 0xfffc,    1, 0, {},                                                                                     false, false, false, false, false}, // no operation
 
@@ -450,7 +450,7 @@ const std::array<pdlabel_t, 36> regnames =
   {0x0c, "ST0",       "Call stack",},
   {0x0d, "ST1",       "Data stack",},
   {0x0e, "ST2",       "Loop addr stack",},
-  {0x0f, "ST3",       "Loop counter",},
+  {0x0f, "ST3",       "Loop counter stack",},
   {0x10, "AC0.H",     "Accu High 0",},
   {0x11, "AC1.H",     "Accu High 1",},
   {0x12, "CR",        "Config Register",},
@@ -475,9 +475,6 @@ const std::array<pdlabel_t, 36> regnames =
   {0x23, "AX1",       "Extra Accu 1",},
 }};
 // clang-format on
-
-std::array<u16, WRITEBACK_LOG_SIZE> writeBackLog;
-std::array<int, WRITEBACK_LOG_SIZE> writeBackLogIdx;
 
 const char* pdname(u16 val)
 {
@@ -591,8 +588,8 @@ void InitInstructionTable()
       // If the entry already in the table is a strict subset, allow it
       if ((s_ext_op_table[i]->opcode_mask | iter->opcode_mask) != s_ext_op_table[i]->opcode_mask)
       {
-        ERROR_LOG(DSPLLE, "opcode ext table place %zu already in use by %s when inserting %s", i,
-                  s_ext_op_table[i]->name, iter->name);
+        ERROR_LOG_FMT(DSPLLE, "opcode ext table place {} already in use by {} when inserting {}", i,
+                      s_ext_op_table[i]->name, iter->name);
       }
     }
   }
@@ -609,12 +606,7 @@ void InitInstructionTable()
     if (s_op_table[i] == &cw)
       s_op_table[i] = &*iter;
     else
-      ERROR_LOG(DSPLLE, "opcode table place %zu already in use for %s", i, iter->name);
+      ERROR_LOG_FMT(DSPLLE, "opcode table place {} already in use for {}", i, iter->name);
   }
-
-  writeBackLogIdx.fill(-1);
-
-  // Ensure the interpreter tables are all set up, as JITs also rely on them.
-  Interpreter::InitInstructionTables();
 }
 }  // namespace DSP

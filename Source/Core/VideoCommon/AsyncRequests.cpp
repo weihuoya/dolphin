@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <mutex>
 
@@ -95,6 +94,12 @@ void AsyncRequests::PushEvent(const AsyncRequests::Event& event, bool blocking)
   {
     m_cond.wait(lock, [this] { return m_queue.empty(); });
   }
+}
+
+void AsyncRequests::WaitForEmptyQueue()
+{
+  std::unique_lock<std::mutex> lock(m_mutex);
+  m_cond.wait(lock, [this] { return m_queue.empty(); });
 }
 
 void AsyncRequests::SetEnable(bool enable)

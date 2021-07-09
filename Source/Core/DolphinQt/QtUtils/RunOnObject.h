@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -26,7 +25,7 @@ class QObject;
 template <typename F>
 auto RunOnObject(QObject* object, F&& functor)
 {
-  using OptionalResultT = std::optional<std::result_of_t<F()>>;
+  using OptionalResultT = std::optional<std::invoke_result_t<F>>;
 
   // If we queue up a functor on the current thread, it won't run until we return to the event loop,
   // which means waiting for it to finish will never complete. Instead, run it immediately.

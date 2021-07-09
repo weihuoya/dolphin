@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -10,6 +9,9 @@ class DataReader;
 
 namespace OpcodeDecoder
 {
+// Global flag to signal if FifoRecorder is active.
+extern bool g_record_fifo_data;
+
 enum
 {
   GX_NOP = 0x00,

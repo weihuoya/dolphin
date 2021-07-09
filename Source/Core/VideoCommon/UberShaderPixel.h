@@ -1,11 +1,13 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <functional>
-#include "VideoCommon/PixelShaderGen.h"
+#include "Common/CommonTypes.h"
+#include "VideoCommon/ShaderGenCommon.h"
+
+enum class APIType;
 
 namespace UberShader
 {

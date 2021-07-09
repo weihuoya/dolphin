@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,6 +7,7 @@
 
 #include <QObject>
 
+#include "Common/CommonTypes.h"
 #include "Common/Flag.h"
 #include "InputCommon/InputProfile.h"
 
@@ -26,6 +26,7 @@ signals:
   void ChangeDisc();
 
   void ExitHotkey();
+  void UnlockCursor();
   void ActivateChat();
   void RequestGolfControl();
   void FullScreenHotkey();

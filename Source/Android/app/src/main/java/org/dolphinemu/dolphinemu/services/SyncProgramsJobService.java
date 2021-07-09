@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.services;
 
 import android.app.job.JobParameters;
@@ -6,10 +8,11 @@ import android.content.Context;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.PersistableBundle;
-import android.support.media.tv.Channel;
-import android.support.media.tv.PreviewProgram;
-import android.support.media.tv.TvContractCompat;
 import android.util.Log;
+
+import androidx.tvprovider.media.tv.Channel;
+import androidx.tvprovider.media.tv.PreviewProgram;
+import androidx.tvprovider.media.tv.TvContractCompat;
 
 import org.dolphinemu.dolphinemu.R;
 import org.dolphinemu.dolphinemu.model.GameFile;
@@ -95,7 +98,7 @@ public class SyncProgramsJobService extends JobService
           Channel channel = TvUtil.getChannelById(context, channelId);
           for (Platform platform : Platform.values())
           {
-            if (channel != null && channel.getDisplayName().equals(platform.getHeaderName()))
+            if (channel != null && channel.getDisplayName().equals(platform.getIdString()))
             {
               getGamesByPlatform(platform);
               syncPrograms(channelId);

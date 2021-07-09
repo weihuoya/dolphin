@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.features.settings.ui;
 
 import android.content.Context;
@@ -9,8 +11,6 @@ import android.widget.FrameLayout;
  */
 public final class SettingsFrameLayout extends FrameLayout
 {
-  private float mVisibleness = 1.0f;
-
   public SettingsFrameLayout(Context context)
   {
     super(context);
@@ -44,7 +44,7 @@ public final class SettingsFrameLayout extends FrameLayout
 
   public float getVisibleness()
   {
-    return mVisibleness;
+    return 1.0f;
   }
 
   public void setVisibleness(float visibleness)

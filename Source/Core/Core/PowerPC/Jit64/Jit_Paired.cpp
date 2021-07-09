@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/CPUDetect.h"
 #include "Common/CommonTypes.h"
@@ -74,11 +73,10 @@ void Jit64::ps_sum(UGeckoInstruction inst)
     }
     break;
   default:
-    PanicAlert("ps_sum WTF!!!");
+    PanicAlertFmt("ps_sum WTF!!!");
   }
   HandleNaNs(inst, Rd, tmp, tmp == XMM1 ? XMM0 : XMM1);
-  ForceSinglePrecision(Rd, Rd);
-  SetFPRFIfNeeded(Rd);
+  FinalizeSingleResult(Rd, Rd);
 }
 
 void Jit64::ps_muls(UGeckoInstruction inst)
@@ -106,14 +104,13 @@ void Jit64::ps_muls(UGeckoInstruction inst)
     avx_op(&XEmitter::VSHUFPD, &XEmitter::SHUFPD, XMM1, Rc, Rc, 3);
     break;
   default:
-    PanicAlert("ps_muls WTF!!!");
+    PanicAlertFmt("ps_muls WTF!!!");
   }
   if (round_input)
     Force25BitPrecision(XMM1, R(XMM1), XMM0);
   MULPD(XMM1, Ra);
   HandleNaNs(inst, Rd, XMM1);
-  ForceSinglePrecision(Rd, Rd);
-  SetFPRFIfNeeded(Rd);
+  FinalizeSingleResult(Rd, Rd);
 }
 
 void Jit64::ps_mergeXX(UGeckoInstruction inst)
@@ -171,8 +168,7 @@ void Jit64::ps_rsqrte(UGeckoInstruction inst)
   CALL(asm_routines.frsqrte);
   MOVLHPS(Rd, XMM0);
 
-  ForceSinglePrecision(Rd, Rd);
-  SetFPRFIfNeeded(Rd);
+  FinalizeSingleResult(Rd, Rd);
 }
 
 void Jit64::ps_res(UGeckoInstruction inst)
@@ -196,8 +192,7 @@ void Jit64::ps_res(UGeckoInstruction inst)
   CALL(asm_routines.fres);
   MOVLHPS(Rd, XMM0);
 
-  ForceSinglePrecision(Rd, Rd);
-  SetFPRFIfNeeded(Rd);
+  FinalizeSingleResult(Rd, Rd);
 }
 
 void Jit64::ps_cmpXX(UGeckoInstruction inst)

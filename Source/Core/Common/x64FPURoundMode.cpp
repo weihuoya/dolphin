@@ -1,6 +1,5 @@
 // Copyright 2013 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <cfenv>
 
@@ -20,11 +19,6 @@ void SetRoundMode(int mode)
   // Convert PowerPC to native rounding mode.
   static const int rounding_mode_lut[] = {FE_TONEAREST, FE_TOWARDZERO, FE_UPWARD, FE_DOWNWARD};
   fesetround(rounding_mode_lut[mode]);
-}
-
-void SetPrecisionMode(PrecisionMode /* mode */)
-{
-  // x64 doesn't need this - fpu is done with SSE
 }
 
 void SetSIMDMode(int rounding_mode, bool non_ieee_mode)

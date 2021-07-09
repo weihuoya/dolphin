@@ -1,15 +1,19 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/ConfigManager.h"
 
+#include <algorithm>
 #include <cinttypes>
 #include <climits>
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <string>
+#include <string_view>
 #include <variant>
+
+#include <fmt/format.h>
 
 #include "AudioCommon/AudioCommon.h"
 
@@ -24,14 +28,16 @@
 #include "Common/MsgHandler.h"
 #include "Common/NandPaths.h"
 #include "Common/StringUtil.h"
-#include "Common/scmrev.h"
+#include "Common/Version.h"
 
-#include "Core/Analytics.h"
 #include "Core/Boot/Boot.h"
 #include "Core/CommonTitles.h"
+#include "Core/Config/DefaultLocale.h"
+#include "Core/Config/MainSettings.h"
 #include "Core/Config/SYSCONFSettings.h"
 #include "Core/ConfigLoaders/GameConfigLoader.h"
 #include "Core/Core.h"
+#include "Core/DolphinAnalytics.h"
 #include "Core/FifoPlayer/FifoDataFile.h"
 #include "Core/HLE/HLE.h"
 #include "Core/HW/DVD/DVDInterface.h"
@@ -78,7 +84,7 @@ SConfig::~SConfig()
 
 void SConfig::SaveSettings()
 {
-  NOTICE_LOG(BOOT, "Saving settings to %s", File::GetUserPath(F_DOLPHINCONFIG_IDX).c_str());
+  NOTICE_LOG_FMT(BOOT, "Saving settings to {}", File::GetUserPath(F_DOLPHINCONFIG_IDX));
   IniFile ini;
   ini.Load(File::GetUserPath(F_DOLPHINCONFIG_IDX));  // load first to not kill unknown stuff
 
@@ -90,8 +96,6 @@ void SConfig::SaveSettings()
   SaveDSPSettings(ini);
   SaveInputSettings(ini);
   SaveFifoPlayerSettings(ini);
-  SaveAnalyticsSettings(ini);
-  SaveNetworkSettings(ini);
   SaveBluetoothPassthroughSettings(ini);
   SaveUSBPassthroughSettings(ini);
   SaveAutoUpdateSettings(ini);
@@ -117,16 +121,15 @@ void SConfig::SaveGeneralSettings(IniFile& ini)
   general->Get("ISOPaths", &oldPaths, 0);
   for (int i = numPaths; i < oldPaths; i++)
   {
-    ini.DeleteKey("General", StringFromFormat("ISOPath%i", i));
+    ini.DeleteKey("General", fmt::format("ISOPath{}", i));
   }
 
   general->Set("ISOPaths", numPaths);
   for (int i = 0; i < numPaths; i++)
   {
-    general->Set(StringFromFormat("ISOPath%i", i), m_ISOFolder[i]);
+    general->Set(fmt::format("ISOPath{}", i), m_ISOFolder[i]);
   }
 
-  general->Set("RecursiveISOPaths", m_RecursiveISOFolder);
   general->Set("WirelessMac", m_WirelessMac);
 
 #ifdef USE_GDBSTUB
@@ -142,9 +145,8 @@ void SConfig::SaveInterfaceSettings(IniFile& ini)
   IniFile::Section* interface = ini.GetOrCreateSection("Interface");
 
   interface->Set("ConfirmStop", bConfirmStop);
-  interface->Set("UsePanicHandlers", bUsePanicHandlers);
-  interface->Set("OnScreenDisplayMessages", bOnScreenDisplayMessages);
   interface->Set("HideCursor", bHideCursor);
+  interface->Set("LockCursor", bLockCursor);
   interface->Set("LanguageCode", m_InterfaceLanguage);
   interface->Set("ExtendedFPSInfo", m_InterfaceExtendedFPSInfo);
   interface->Set("ShowActiveTitle", m_show_active_title);
@@ -186,9 +188,13 @@ void SConfig::SaveGameListSettings(IniFile& ini)
   gamelist->Set("ColumnTitle", m_showTitleColumn);
   gamelist->Set("ColumnNotes", m_showMakerColumn);
   gamelist->Set("ColumnFileName", m_showFileNameColumn);
+  gamelist->Set("ColumnFilePath", m_showFilePathColumn);
   gamelist->Set("ColumnID", m_showIDColumn);
   gamelist->Set("ColumnRegion", m_showRegionColumn);
   gamelist->Set("ColumnSize", m_showSizeColumn);
+  gamelist->Set("ColumnFileFormat", m_showFileFormatColumn);
+  gamelist->Set("ColumnBlockSize", m_showBlockSizeColumn);
+  gamelist->Set("ColumnCompression", m_showCompressionColumn);
   gamelist->Set("ColumnTags", m_showTagsColumn);
 }
 
@@ -222,22 +228,25 @@ void SConfig::SaveCoreSettings(IniFile& ini)
   core->Set("SlotB", m_EXIDevice[1]);
   core->Set("SerialPort1", m_EXIDevice[2]);
   core->Set("BBA_MAC", m_bba_mac);
+  core->Set("BBA_XLINK_IP", m_bba_xlink_ip);
+  core->Set("BBA_XLINK_CHAT_OSD", m_bba_xlink_chat_osd);
   for (int i = 0; i < SerialInterface::MAX_SI_CHANNELS; ++i)
   {
-    core->Set(StringFromFormat("SIDevice%i", i), m_SIDevice[i]);
-    core->Set(StringFromFormat("AdapterRumble%i", i), m_AdapterRumble[i]);
-    core->Set(StringFromFormat("SimulateKonga%i", i), m_AdapterKonga[i]);
+    core->Set(fmt::format("SIDevice{}", i), m_SIDevice[i]);
+    core->Set(fmt::format("AdapterRumble{}", i), m_AdapterRumble[i]);
+    core->Set(fmt::format("SimulateKonga{}", i), m_AdapterKonga[i]);
   }
   core->Set("WiiSDCard", m_WiiSDCard);
   core->Set("WiiKeyboard", m_WiiKeyboard);
   core->Set("WiimoteContinuousScanning", m_WiimoteContinuousScanning);
   core->Set("WiimoteEnableSpeaker", m_WiimoteEnableSpeaker);
+  core->Set("WiimoteControllerInterface", connect_wiimotes_for_ciface);
   core->Set("RunCompareServer", bRunCompareServer);
   core->Set("RunCompareClient", bRunCompareClient);
+  core->Set("MMU", bMMU);
   core->Set("EmulationSpeed", m_EmulationSpeed);
   core->Set("Overclock", m_OCFactor);
   core->Set("OverclockEnable", m_OCEnable);
-  core->Set("GFXBackend", m_strVideoBackend);
   core->Set("GPUDeterminismMode", m_strGPUDeterminismMode);
   core->Set("PerfMapDir", m_perfDir);
   core->Set("EnableCustomRTC", bEnableCustomRTC);
@@ -287,26 +296,6 @@ void SConfig::SaveFifoPlayerSettings(IniFile& ini)
   fifoplayer->Set("LoopReplay", bLoopFifoReplay);
 }
 
-void SConfig::SaveNetworkSettings(IniFile& ini)
-{
-  IniFile::Section* network = ini.GetOrCreateSection("Network");
-
-  network->Set("SSLDumpRead", m_SSLDumpRead);
-  network->Set("SSLDumpWrite", m_SSLDumpWrite);
-  network->Set("SSLVerifyCertificates", m_SSLVerifyCert);
-  network->Set("SSLDumpRootCA", m_SSLDumpRootCA);
-  network->Set("SSLDumpPeerCert", m_SSLDumpPeerCert);
-}
-
-void SConfig::SaveAnalyticsSettings(IniFile& ini)
-{
-  IniFile::Section* analytics = ini.GetOrCreateSection("Analytics");
-
-  analytics->Set("ID", m_analytics_id);
-  analytics->Set("Enabled", m_analytics_enabled);
-  analytics->Set("PermissionAsked", m_analytics_permission_asked);
-}
-
 void SConfig::SaveBluetoothPassthroughSettings(IniFile& ini)
 {
   IniFile::Section* section = ini.GetOrCreateSection("BluetoothPassthrough");
@@ -323,7 +312,7 @@ void SConfig::SaveUSBPassthroughSettings(IniFile& ini)
 
   std::ostringstream oss;
   for (const auto& device : m_usb_passthrough_devices)
-    oss << StringFromFormat("%04x:%04x", device.first, device.second) << ',';
+    oss << fmt::format("{:04x}:{:04x}", device.first, device.second) << ',';
   std::string devices_string = oss.str();
   if (!devices_string.empty())
     devices_string.pop_back();
@@ -352,13 +341,14 @@ void SConfig::SaveJitDebugSettings(IniFile& ini)
   section->Set("JitPairedOff", bJITPairedOff);
   section->Set("JitSystemRegistersOff", bJITSystemRegistersOff);
   section->Set("JitBranchOff", bJITBranchOff);
+  section->Set("JitRegisterCacheOff", bJITRegisterCacheOff);
 }
 
 void SConfig::LoadSettings()
 {
   Config::Load();
 
-  INFO_LOG(BOOT, "Loading Settings from %s", File::GetUserPath(F_DOLPHINCONFIG_IDX).c_str());
+  INFO_LOG_FMT(BOOT, "Loading Settings from {}", File::GetUserPath(F_DOLPHINCONFIG_IDX));
   IniFile ini;
   ini.Load(File::GetUserPath(F_DOLPHINCONFIG_IDX));
 
@@ -370,8 +360,6 @@ void SConfig::LoadSettings()
   LoadDSPSettings(ini);
   LoadInputSettings(ini);
   LoadFifoPlayerSettings(ini);
-  LoadNetworkSettings(ini);
-  LoadAnalyticsSettings(ini);
   LoadBluetoothPassthroughSettings(ini);
   LoadUSBPassthroughSettings(ini);
   LoadAutoUpdateSettings(ini);
@@ -399,12 +387,11 @@ void SConfig::LoadGeneralSettings(IniFile& ini)
     for (int i = 0; i < numISOPaths; i++)
     {
       std::string tmpPath;
-      general->Get(StringFromFormat("ISOPath%i", i), &tmpPath, "");
+      general->Get(fmt::format("ISOPath{}", i), &tmpPath, "");
       m_ISOFolder.push_back(std::move(tmpPath));
     }
   }
 
-  general->Get("RecursiveISOPaths", &m_RecursiveISOFolder, false);
   general->Get("WirelessMac", &m_WirelessMac);
 }
 
@@ -413,9 +400,8 @@ void SConfig::LoadInterfaceSettings(IniFile& ini)
   IniFile::Section* interface = ini.GetOrCreateSection("Interface");
 
   interface->Get("ConfirmStop", &bConfirmStop, true);
-  interface->Get("UsePanicHandlers", &bUsePanicHandlers, true);
-  interface->Get("OnScreenDisplayMessages", &bOnScreenDisplayMessages, true);
   interface->Get("HideCursor", &bHideCursor, false);
+  interface->Get("LockCursor", &bLockCursor, false);
   interface->Get("LanguageCode", &m_InterfaceLanguage, "");
   interface->Get("ExtendedFPSInfo", &m_InterfaceExtendedFPSInfo, false);
   interface->Get("ShowActiveTitle", &m_show_active_title, true);
@@ -459,9 +445,13 @@ void SConfig::LoadGameListSettings(IniFile& ini)
   gamelist->Get("ColumnTitle", &m_showTitleColumn, true);
   gamelist->Get("ColumnNotes", &m_showMakerColumn, true);
   gamelist->Get("ColumnFileName", &m_showFileNameColumn, false);
+  gamelist->Get("ColumnFilePath", &m_showFilePathColumn, false);
   gamelist->Get("ColumnID", &m_showIDColumn, false);
   gamelist->Get("ColumnRegion", &m_showRegionColumn, true);
   gamelist->Get("ColumnSize", &m_showSizeColumn, true);
+  gamelist->Get("ColumnFileFormat", &m_showFileFormatColumn, false);
+  gamelist->Get("ColumnBlockSize", &m_showBlockSizeColumn, false);
+  gamelist->Get("ColumnCompression", &m_showCompressionColumn, false);
   gamelist->Get("ColumnTags", &m_showTagsColumn, false);
 }
 
@@ -484,7 +474,8 @@ void SConfig::LoadCoreSettings(IniFile& ini)
   core->Get("CPUThread", &bCPUThread, true);
   core->Get("SyncOnSkipIdle", &bSyncGPUOnSkipIdleHack, true);
   core->Get("EnableCheats", &bEnableCheats, false);
-  core->Get("SelectedLanguage", &SelectedLanguage, 0);
+  core->Get("SelectedLanguage", &SelectedLanguage,
+            DiscIO::ToGameCubeLanguage(Config::GetDefaultLanguage()));
   core->Get("OverrideRegionSettings", &bOverrideRegionSettings, false);
   core->Get("DPL2Decoder", &bDPL2Decoder, false);
   core->Get("AudioLatency", &iLatency, 20);
@@ -496,17 +487,20 @@ void SConfig::LoadCoreSettings(IniFile& ini)
   core->Get("SlotB", (int*)&m_EXIDevice[1], ExpansionInterface::EXIDEVICE_NONE);
   core->Get("SerialPort1", (int*)&m_EXIDevice[2], ExpansionInterface::EXIDEVICE_NONE);
   core->Get("BBA_MAC", &m_bba_mac);
-  for (int i = 0; i < SerialInterface::MAX_SI_CHANNELS; ++i)
+  core->Get("BBA_XLINK_IP", &m_bba_xlink_ip, "127.0.0.1");
+  core->Get("BBA_XLINK_CHAT_OSD", &m_bba_xlink_chat_osd, true);
+  for (size_t i = 0; i < std::size(m_SIDevice); ++i)
   {
-    core->Get(StringFromFormat("SIDevice%i", i), (u32*)&m_SIDevice[i],
+    core->Get(fmt::format("SIDevice{}", i), &m_SIDevice[i],
               (i == 0) ? SerialInterface::SIDEVICE_GC_CONTROLLER : SerialInterface::SIDEVICE_NONE);
-    core->Get(StringFromFormat("AdapterRumble%i", i), &m_AdapterRumble[i], true);
-    core->Get(StringFromFormat("SimulateKonga%i", i), &m_AdapterKonga[i], false);
+    core->Get(fmt::format("AdapterRumble{}", i), &m_AdapterRumble[i], true);
+    core->Get(fmt::format("SimulateKonga{}", i), &m_AdapterKonga[i], false);
   }
-  core->Get("WiiSDCard", &m_WiiSDCard, false);
+  core->Get("WiiSDCard", &m_WiiSDCard, true);
   core->Get("WiiKeyboard", &m_WiiKeyboard, false);
   core->Get("WiimoteContinuousScanning", &m_WiimoteContinuousScanning, false);
   core->Get("WiimoteEnableSpeaker", &m_WiimoteEnableSpeaker, false);
+  core->Get("WiimoteControllerInterface", &connect_wiimotes_for_ciface, false);
   core->Get("RunCompareServer", &bRunCompareServer, false);
   core->Get("RunCompareClient", &bRunCompareClient, false);
   core->Get("MMU", &bMMU, bMMU);
@@ -519,10 +513,10 @@ void SConfig::LoadCoreSettings(IniFile& ini)
   core->Get("LowDCBZHack", &bLowDCBZHack, false);
   core->Get("FPRF", &bFPRF, false);
   core->Get("AccurateNaNs", &bAccurateNaNs, false);
+  core->Get("DisableICache", &bDisableICache, false);
   core->Get("EmulationSpeed", &m_EmulationSpeed, 1.0f);
   core->Get("Overclock", &m_OCFactor, 1.0f);
   core->Get("OverclockEnable", &m_OCEnable, false);
-  core->Get("GFXBackend", &m_strVideoBackend, "");
   core->Get("GPUDeterminismMode", &m_strGPUDeterminismMode, "auto");
   core->Get("PerfMapDir", &m_perfDir, "");
   core->Get("EnableCustomRTC", &bEnableCustomRTC, false);
@@ -575,26 +569,6 @@ void SConfig::LoadFifoPlayerSettings(IniFile& ini)
   fifoplayer->Get("LoopReplay", &bLoopFifoReplay, true);
 }
 
-void SConfig::LoadNetworkSettings(IniFile& ini)
-{
-  IniFile::Section* network = ini.GetOrCreateSection("Network");
-
-  network->Get("SSLDumpRead", &m_SSLDumpRead, false);
-  network->Get("SSLDumpWrite", &m_SSLDumpWrite, false);
-  network->Get("SSLVerifyCertificates", &m_SSLVerifyCert, true);
-  network->Get("SSLDumpRootCA", &m_SSLDumpRootCA, false);
-  network->Get("SSLDumpPeerCert", &m_SSLDumpPeerCert, false);
-}
-
-void SConfig::LoadAnalyticsSettings(IniFile& ini)
-{
-  IniFile::Section* analytics = ini.GetOrCreateSection("Analytics");
-
-  analytics->Get("ID", &m_analytics_id, "");
-  analytics->Get("Enabled", &m_analytics_enabled, false);
-  analytics->Get("PermissionAsked", &m_analytics_permission_asked, false);
-}
-
 void SConfig::LoadBluetoothPassthroughSettings(IniFile& ini)
 {
   IniFile::Section* section = ini.GetOrCreateSection("BluetoothPassthrough");
@@ -628,7 +602,7 @@ void SConfig::LoadAutoUpdateSettings(IniFile& ini)
 {
   IniFile::Section* section = ini.GetOrCreateSection("AutoUpdate");
 
-  section->Get("UpdateTrack", &m_auto_update_track, SCM_UPDATE_TRACK_STR);
+  section->Get("UpdateTrack", &m_auto_update_track, Common::scm_update_track_str);
   section->Get("HashOverride", &m_auto_update_hash_override, "");
 }
 
@@ -644,6 +618,7 @@ void SConfig::LoadJitDebugSettings(IniFile& ini)
   section->Get("JitPairedOff", &bJITPairedOff, false);
   section->Get("JitSystemRegistersOff", &bJITSystemRegistersOff, false);
   section->Get("JitBranchOff", &bJITBranchOff, false);
+  section->Get("JitRegisterCacheOff", &bJITRegisterCacheOff, false);
 }
 
 void SConfig::ResetRunningGameMetadata()
@@ -685,6 +660,11 @@ void SConfig::SetRunningGameMetadata(const IOS::ES::TMDReader& tmd, DiscIO::Plat
   }
 }
 
+void SConfig::SetRunningGameMetadata(const std::string& game_id)
+{
+  SetRunningGameMetadata(game_id, "", 0, 0, DiscIO::Region::Unknown);
+}
+
 void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::string& gametdb_id,
                                      u64 title_id, u16 revision, DiscIO::Region region)
 {
@@ -702,7 +682,7 @@ void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::stri
   else if (title_id != 0)
   {
     m_debugger_game_id =
-        StringFromFormat("%08X_%08X", static_cast<u32>(title_id >> 32), static_cast<u32>(title_id));
+        fmt::format("{:08X}_{:08X}", static_cast<u32>(title_id >> 32), static_cast<u32>(title_id));
   }
   else
   {
@@ -714,33 +694,39 @@ void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::stri
 
   if (game_id == "00000000")
   {
+    m_title_name.clear();
     m_title_description.clear();
     return;
   }
 
   const Core::TitleDatabase title_database;
   const DiscIO::Language language = GetLanguageAdjustedForRegion(bWii, region);
+  m_title_name = title_database.GetTitleName(m_gametdb_id, language);
   m_title_description = title_database.Describe(m_gametdb_id, language);
-  NOTICE_LOG(CORE, "Active title: %s", m_title_description.c_str());
+  NOTICE_LOG_FMT(CORE, "Active title: {}", m_title_description);
   Host_TitleChanged();
 
   Config::AddLayer(ConfigLoaders::GenerateGlobalGameConfigLoader(game_id, revision));
   Config::AddLayer(ConfigLoaders::GenerateLocalGameConfigLoader(game_id, revision));
 
   if (Core::IsRunning())
-  {
-    // TODO: have a callback mechanism for title changes?
-    if (!g_symbolDB.IsEmpty())
-    {
-      g_symbolDB.Clear();
-      Host_NotifyMapLoaded();
-    }
-    CBoot::LoadMapFromFilename();
-    HLE::Reload();
-    PatchEngine::Reload();
-    HiresTexture::Update();
     DolphinAnalytics::Instance().ReportGameStart();
+}
+
+void SConfig::OnNewTitleLoad()
+{
+  if (!Core::IsRunning())
+    return;
+
+  if (!g_symbolDB.IsEmpty())
+  {
+    g_symbolDB.Clear();
+    Host_NotifyMapLoaded();
   }
+  CBoot::LoadMapFromFilename();
+  HLE::Reload();
+  PatchEngine::Reload();
+  HiresTexture::Update();
 }
 
 void SConfig::LoadDefaults()
@@ -765,11 +751,8 @@ void SConfig::LoadDefaults()
   bFastmem = true;
   bFPRF = false;
   bAccurateNaNs = false;
-#ifdef _M_X86_64
-  bMMU = true;
-#else
+  bDisableICache = false;
   bMMU = false;
-#endif
   bLowDCBZHack = false;
   iBBDumpPort = -1;
   bSyncGPU = false;
@@ -782,12 +765,6 @@ void SConfig::LoadDefaults()
   iLatency = 20;
   m_audio_stretch = false;
   m_audio_stretch_max_latency = 80;
-  bUsePanicHandlers = true;
-  bOnScreenDisplayMessages = true;
-
-  m_analytics_id = "";
-  m_analytics_enabled = false;
-  m_analytics_permission_asked = false;
 
   bLoopFifoReplay = true;
 
@@ -800,6 +777,7 @@ void SConfig::LoadDefaults()
   bJITPairedOff = false;
   bJITSystemRegistersOff = false;
   bJITBranchOff = false;
+  bJITRegisterCacheOff = false;
 
   ResetRunningGameMetadata();
 }
@@ -807,6 +785,15 @@ void SConfig::LoadDefaults()
 bool SConfig::IsUSBDeviceWhitelisted(const std::pair<u16, u16> vid_pid) const
 {
   return m_usb_passthrough_devices.find(vid_pid) != m_usb_passthrough_devices.end();
+}
+
+// Static method to make a simple game ID for elf/dol files
+std::string SConfig::MakeGameID(std::string_view file_name)
+{
+  size_t lastdot = file_name.find_last_of(".");
+  if (lastdot == std::string::npos)
+    return "ID-" + std::string(file_name);
+  return "ID-" + std::string(file_name.substr(0, lastdot));
 }
 
 // The reason we need this function is because some memory card code
@@ -861,10 +848,10 @@ struct SetGameMetadata
   SetGameMetadata(SConfig* config_, DiscIO::Region* region_) : config(config_), region(region_) {}
   bool operator()(const BootParameters::Disc& disc) const
   {
-    config->SetRunningGameMetadata(*disc.volume, disc.volume->GetGamePartition());
+    *region = disc.volume->GetRegion();
     config->bWii = disc.volume->GetVolumeType() == DiscIO::Platform::WiiDisc;
     config->m_disc_booted_from_game_list = true;
-    *region = disc.volume->GetRegion();
+    config->SetRunningGameMetadata(*disc.volume, disc.volume->GetGamePartition());
     return true;
   }
 
@@ -873,12 +860,21 @@ struct SetGameMetadata
     if (!executable.reader->IsValid())
       return false;
 
-    config->bWii = executable.reader->IsWii();
-
     *region = DiscIO::Region::Unknown;
+    config->bWii = executable.reader->IsWii();
 
     // Strip the .elf/.dol file extension and directories before the name
     SplitPath(executable.path, nullptr, &config->m_debugger_game_id, nullptr);
+
+    // Set DOL/ELF game ID appropriately
+    std::string executable_path = executable.path;
+    constexpr char BACKSLASH = '\\';
+    constexpr char FORWARDSLASH = '/';
+    std::replace(executable_path.begin(), executable_path.end(), BACKSLASH, FORWARDSLASH);
+    config->SetRunningGameMetadata(SConfig::MakeGameID(PathToFileName(executable_path)));
+
+    Host_TitleChanged();
+
     return true;
   }
 
@@ -886,19 +882,20 @@ struct SetGameMetadata
   {
     if (!wad.GetTMD().IsValid())
     {
-      PanicAlertT("This WAD is not valid.");
+      PanicAlertFmtT("This WAD is not valid.");
       return false;
     }
     if (!IOS::ES::IsChannel(wad.GetTMD().GetTitleId()))
     {
-      PanicAlertT("This WAD is not bootable.");
+      PanicAlertFmtT("This WAD is not bootable.");
       return false;
     }
 
     const IOS::ES::TMDReader& tmd = wad.GetTMD();
-    config->SetRunningGameMetadata(tmd, DiscIO::Platform::WiiWAD);
-    config->bWii = true;
     *region = tmd.GetRegion();
+    config->bWii = true;
+    config->SetRunningGameMetadata(tmd, DiscIO::Platform::WiiWAD);
+
     return true;
   }
 
@@ -908,19 +905,23 @@ struct SetGameMetadata
     const IOS::ES::TMDReader tmd = ios.GetES()->FindInstalledTMD(nand_title.id);
     if (!tmd.IsValid() || !IOS::ES::IsChannel(nand_title.id))
     {
-      PanicAlertT("This title cannot be booted.");
+      PanicAlertFmtT("This title cannot be booted.");
       return false;
     }
-    config->SetRunningGameMetadata(tmd, DiscIO::Platform::WiiWAD);
-    config->bWii = true;
+
     *region = tmd.GetRegion();
+    config->bWii = true;
+    config->SetRunningGameMetadata(tmd, DiscIO::Platform::WiiWAD);
+
     return true;
   }
 
   bool operator()(const BootParameters::IPL& ipl) const
   {
-    config->bWii = false;
     *region = ipl.region;
+    config->bWii = false;
+    Host_TitleChanged();
+
     return true;
   }
 
@@ -930,8 +931,10 @@ struct SetGameMetadata
     if (!dff_file)
       return false;
 
-    config->bWii = dff_file->GetIsWii();
     *region = DiscIO::Region::NTSC_U;
+    config->bWii = dff_file->GetIsWii();
+    Host_TitleChanged();
+
     return true;
   }
 
@@ -960,28 +963,16 @@ bool SConfig::SetPathsAndGameMetadata(const BootParameters& boot)
 
 DiscIO::Region SConfig::GetFallbackRegion()
 {
-  // Fall back to the system menu region, if possible.
-  IOS::HLE::Kernel ios;
-  const IOS::ES::TMDReader system_menu_tmd = ios.GetES()->FindInstalledTMD(Titles::SYSTEM_MENU);
-  if (system_menu_tmd.IsValid())
-  {
-    const DiscIO::Region region = system_menu_tmd.GetRegion();
-    if (region != DiscIO::Region::Unknown)
-      return region;
-  }
-
-  // Fall back to PAL.
-  return DiscIO::Region::PAL;
+  return Config::Get(Config::MAIN_FALLBACK_REGION);
 }
 
 DiscIO::Language SConfig::GetCurrentLanguage(bool wii) const
 {
-  int language_value;
+  DiscIO::Language language;
   if (wii)
-    language_value = Config::Get(Config::SYSCONF_LANGUAGE);
+    language = static_cast<DiscIO::Language>(Config::Get(Config::SYSCONF_LANGUAGE));
   else
-    language_value = SConfig::GetInstance().SelectedLanguage + 1;
-  DiscIO::Language language = static_cast<DiscIO::Language>(language_value);
+    language = DiscIO::FromGameCubeLanguage(SConfig::GetInstance().SelectedLanguage);
 
   // Get rid of invalid values (probably doesn't matter, but might as well do it)
   if (language > DiscIO::Language::Unknown || language < DiscIO::Language::Japanese)
@@ -1062,4 +1053,9 @@ IniFile SConfig::LoadGameIni(const std::string& id, std::optional<u16> revision)
   for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(id, revision))
     game_ini.Load(File::GetUserPath(D_GAMESETTINGS_IDX) + filename, true);
   return game_ini;
+}
+
+bool SConfig::ShouldUseDPL2Decoder() const
+{
+  return bDPL2Decoder && !bDSPHLE;
 }

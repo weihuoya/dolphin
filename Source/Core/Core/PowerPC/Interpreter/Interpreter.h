@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -291,6 +290,8 @@ private:
   // flag helper
   static void Helper_UpdateCR0(u32 value);
 
+  template <typename T>
+  static void Helper_IntCompare(UGeckoInstruction inst, T a, T b);
   static void Helper_FloatCompareOrdered(UGeckoInstruction inst, double a, double b);
   static void Helper_FloatCompareUnordered(UGeckoInstruction inst, double a, double b);
 

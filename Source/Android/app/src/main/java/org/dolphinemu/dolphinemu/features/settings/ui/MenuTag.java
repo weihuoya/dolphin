@@ -1,12 +1,21 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.features.settings.ui;
+
+import androidx.annotation.NonNull;
 
 public enum MenuTag
 {
+  SETTINGS("settings"),
   CONFIG("config"),
   CONFIG_GENERAL("config_general"),
   CONFIG_INTERFACE("config_interface"),
+  CONFIG_AUDIO("config_audio"),
+  CONFIG_PATHS("config_paths"),
   CONFIG_GAME_CUBE("config_gamecube"),
   CONFIG_WII("config_wii"),
+  CONFIG_ADVANCED("config_advanced"),
+  CONFIG_LOG("config_log"),
   WIIMOTE("wiimote"),
   WIIMOTE_EXTENSION("wiimote_extension"),
   GCPAD_TYPE("gc_pad_type"),
@@ -42,6 +51,7 @@ public enum MenuTag
     this.subType = subtype;
   }
 
+  @NonNull
   @Override
   public String toString()
   {

@@ -1,9 +1,9 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <iosfwd>
 #include <memory>
 #include "Common/CommonTypes.h"
 
@@ -62,6 +62,9 @@ enum SIDevices : int
   // Not a valid device. Used for checking whether enum values are valid.
   SIDEVICE_COUNT,
 };
+
+std::ostream& operator<<(std::ostream& stream, SIDevices device);
+std::istream& operator>>(std::istream& stream, SIDevices& device);
 
 class ISIDevice
 {

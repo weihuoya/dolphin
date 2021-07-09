@@ -1,62 +1,99 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.model;
 
-import android.content.Context;
-import android.content.SharedPreferences;
-import android.preference.PreferenceManager;
+import androidx.annotation.Keep;
+
+import org.dolphinemu.dolphinemu.NativeLibrary;
+import org.dolphinemu.dolphinemu.features.settings.model.BooleanSetting;
+import org.dolphinemu.dolphinemu.features.settings.model.Settings;
+import org.dolphinemu.dolphinemu.features.settings.utils.SettingsFile;
+import org.dolphinemu.dolphinemu.utils.ContentHandler;
+import org.dolphinemu.dolphinemu.utils.IniFile;
 
 import java.io.File;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.LinkedHashSet;
 
 public class GameFileCache
 {
-  private static final String GAME_FOLDER_PATHS_PREFERENCE = "gameFolderPaths";
-  private static final Set<String> EMPTY_SET = new HashSet<>();
+  @Keep
+  private long mPointer;
 
-  private long mPointer;  // Do not rename or move without editing the native code
-
-  public GameFileCache(String path)
+  public GameFileCache()
   {
-    mPointer = newGameFileCache(path);
+    mPointer = newGameFileCache();
   }
 
-  private static native long newGameFileCache(String path);
+  private static native long newGameFileCache();
 
   @Override
   public native void finalize();
 
-  public static void addGameFolder(String path, Context context)
+  public static void addGameFolder(String path)
   {
-    SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
-    Set<String> folderPaths = preferences.getStringSet(GAME_FOLDER_PATHS_PREFERENCE, EMPTY_SET);
-    Set<String> newFolderPaths = new HashSet<>(folderPaths);
-    newFolderPaths.add(path);
-    SharedPreferences.Editor editor = preferences.edit();
-    editor.putStringSet(GAME_FOLDER_PATHS_PREFERENCE, newFolderPaths);
-    editor.apply();
+    File dolphinFile = SettingsFile.getSettingsFile(Settings.FILE_DOLPHIN);
+    IniFile dolphinIni = new IniFile(dolphinFile);
+    LinkedHashSet<String> pathSet = getPathSet(false);
+    int totalISOPaths =
+            dolphinIni.getInt(Settings.SECTION_INI_GENERAL, SettingsFile.KEY_ISO_PATHS, 0);
+
+    if (!pathSet.contains(path))
+    {
+      dolphinIni.setInt(Settings.SECTION_INI_GENERAL, SettingsFile.KEY_ISO_PATHS,
+              totalISOPaths + 1);
+      dolphinIni.setString(Settings.SECTION_INI_GENERAL, SettingsFile.KEY_ISO_PATH_BASE +
+              totalISOPaths, path);
+      dolphinIni.save(dolphinFile);
+      NativeLibrary.ReloadConfig();
+    }
   }
 
-  private void removeNonExistentGameFolders(Context context)
+  private static LinkedHashSet<String> getPathSet(boolean removeNonExistentFolders)
   {
-    SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
-    Set<String> folderPaths = preferences.getStringSet(GAME_FOLDER_PATHS_PREFERENCE, EMPTY_SET);
-    Set<String> newFolderPaths = new HashSet<>();
-    for (String folderPath : folderPaths)
+    File dolphinFile = SettingsFile.getSettingsFile(Settings.FILE_DOLPHIN);
+    IniFile dolphinIni = new IniFile(dolphinFile);
+    LinkedHashSet<String> pathSet = new LinkedHashSet<>();
+    int totalISOPaths =
+            dolphinIni.getInt(Settings.SECTION_INI_GENERAL, SettingsFile.KEY_ISO_PATHS, 0);
+
+    for (int i = 0; i < totalISOPaths; i++)
     {
-      File folder = new File(folderPath);
-      if (folder.exists())
+      String path = dolphinIni.getString(Settings.SECTION_INI_GENERAL,
+              SettingsFile.KEY_ISO_PATH_BASE + i, "");
+
+      if (path.startsWith("content://") ? ContentHandler.exists(path) : new File(path).exists())
       {
-        newFolderPaths.add(folderPath);
+        pathSet.add(path);
       }
     }
 
-    if (folderPaths.size() != newFolderPaths.size())
+    if (removeNonExistentFolders && totalISOPaths > pathSet.size())
     {
-      // One or more folders are being deleted
-      SharedPreferences.Editor editor = preferences.edit();
-      editor.putStringSet(GAME_FOLDER_PATHS_PREFERENCE, newFolderPaths);
-      editor.apply();
+      int setIndex = 0;
+
+      dolphinIni.setInt(Settings.SECTION_INI_GENERAL, SettingsFile.KEY_ISO_PATHS,
+              pathSet.size());
+
+      // One or more folders have been removed.
+      for (String entry : pathSet)
+      {
+        dolphinIni.setString(Settings.SECTION_INI_GENERAL, SettingsFile.KEY_ISO_PATH_BASE +
+                setIndex, entry);
+
+        setIndex++;
+      }
+
+      // Delete known unnecessary keys. Ignore i values beyond totalISOPaths.
+      for (int i = setIndex; i < totalISOPaths; i++)
+      {
+        dolphinIni.deleteKey(Settings.SECTION_INI_GENERAL, SettingsFile.KEY_ISO_PATH_BASE + i);
+      }
+
+      dolphinIni.save(dolphinFile);
+      NativeLibrary.ReloadConfig();
     }
+
+    return pathSet;
   }
 
   /**
@@ -64,32 +101,28 @@ public class GameFileCache
    *
    * @return true if the cache was modified
    */
-  public boolean scanLibrary(Context context)
+  public boolean update()
   {
-    removeNonExistentGameFolders(context);
+    boolean recursiveScan = BooleanSetting.MAIN_RECURSIVE_ISO_PATHS.getBooleanGlobal();
 
-    SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
-    Set<String> folderPathsSet = preferences.getStringSet(GAME_FOLDER_PATHS_PREFERENCE, EMPTY_SET);
-    String[] folderPaths = folderPathsSet.toArray(new String[folderPathsSet.size()]);
+    LinkedHashSet<String> folderPathsSet = getPathSet(true);
 
-    boolean cacheChanged = update(folderPaths);
-    cacheChanged |= updateAdditionalMetadata();
-    if (cacheChanged)
-    {
-      save();
-    }
-    return cacheChanged;
+    String[] folderPaths = folderPathsSet.toArray(new String[0]);
+
+    return update(folderPaths, recursiveScan);
   }
+
+  public native int getSize();
 
   public native GameFile[] getAllGames();
 
   public native GameFile addOrGet(String gamePath);
 
-  private native boolean update(String[] folderPaths);
+  public native boolean update(String[] folderPaths, boolean recursiveScan);
 
-  private native boolean updateAdditionalMetadata();
+  public native boolean updateAdditionalMetadata();
 
   public native boolean load();
 
-  private native boolean save();
+  public native boolean save();
 }

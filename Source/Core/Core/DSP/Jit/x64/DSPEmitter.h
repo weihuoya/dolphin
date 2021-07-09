@@ -1,6 +1,5 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -28,7 +27,7 @@ namespace JIT::x64
 class DSPEmitter final : public JIT::DSPEmitter, public Gen::X64CodeBlock
 {
 public:
-  DSPEmitter();
+  explicit DSPEmitter(DSPCore& dsp);
   ~DSPEmitter() override;
 
   u16 RunCycles(u16 cycles) override;
@@ -197,6 +196,9 @@ private:
   // within the class itself to allow access to member variables.
   static void CompileCurrent(DSPEmitter& emitter);
 
+  static u16 ReadIFXRegisterHelper(DSPEmitter& emitter, u16 address);
+  static void WriteIFXRegisterHelper(DSPEmitter& emitter, u16 address, u16 value);
+
   void EmitInstruction(UDSPInstruction inst);
   void ClearIRAMandDSPJITCodespaceReset();
 
@@ -283,7 +285,7 @@ private:
   Gen::OpArg M_SDSP_cr();
   Gen::OpArg M_SDSP_external_interrupt_waiting();
   Gen::OpArg M_SDSP_r_st(size_t index);
-  Gen::OpArg M_SDSP_reg_stack_ptr(size_t index);
+  Gen::OpArg M_SDSP_reg_stack_ptrs(size_t index);
 
   // Ext command helpers
   void popExtValueToReg();
@@ -321,6 +323,8 @@ private:
   const u8* m_enter_dispatcher;
   const u8* m_return_dispatcher;
   const u8* m_stub_entry_point;
+
+  DSPCore& m_dsp_core;
 };
 
 }  // namespace JIT::x64

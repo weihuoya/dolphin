@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -48,9 +47,11 @@ private:
   QRadioButton* m_memory_on_read;
   QRadioButton* m_memory_on_read_and_write;
   QRadioButton* m_memory_on_write;
-  QRadioButton* m_memory_do_log;
-  QRadioButton* m_memory_do_break;
-  QRadioButton* m_memory_do_log_and_break;
+
+  // Action
+  QRadioButton* m_do_log;
+  QRadioButton* m_do_break;
+  QRadioButton* m_do_log_and_break;
 
   QDialogButtonBox* m_buttons;
   BreakpointWidget* m_parent;

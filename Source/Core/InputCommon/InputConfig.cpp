@@ -1,9 +1,9 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <vector>
 
+#include "Common/Config/Config.h"
 #include "Common/FileUtil.h"
 #include "Common/IniFile.h"
 #include "Common/MsgHandler.h"
@@ -30,7 +30,7 @@ bool InputConfig::LoadConfig(bool isGC)
 {
   IniFile inifile;
   bool useProfile[MAX_BBMOTES] = {false, false, false, false, false};
-  std::string num[MAX_BBMOTES] = {"1", "2", "3", "4", "BB"};
+  static constexpr std::array<std::string_view, MAX_BBMOTES> num = {"1", "2", "3", "4", "BB"};
   std::string profile[MAX_BBMOTES];
   std::string path;
 
@@ -38,6 +38,8 @@ bool InputConfig::LoadConfig(bool isGC)
   bool use_ir_config = false;
   std::string ir_values[3];
 #endif
+
+  m_dynamic_input_tex_config_manager.Load();
 
   if (SConfig::GetInstance().GetGameID() != "00000000")
   {
@@ -58,10 +60,12 @@ bool InputConfig::LoadConfig(bool isGC)
 
     for (int i = 0; i < 4; i++)
     {
-      if (control_section->Exists(type + "Profile" + num[i]))
+      const auto profile_name = fmt::format("{}Profile{}", type, num[i]);
+
+      if (control_section->Exists(profile_name))
       {
         std::string profile_setting;
-        if (control_section->Get(type + "Profile" + num[i], &profile_setting))
+        if (control_section->Get(profile_name, &profile_setting))
         {
           auto profiles = InputProfile::GetProfilesFromSetting(
               profile_setting, File::GetUserPath(D_CONFIG_IDX) + path);
@@ -69,7 +73,7 @@ bool InputConfig::LoadConfig(bool isGC)
           if (profiles.empty())
           {
             // TODO: PanicAlert shouldn't be used for this.
-            PanicAlertT("No profiles found for game setting '%s'", profile_setting.c_str());
+            PanicAlertFmtT("No profiles found for game setting '{0}'", profile_setting);
             continue;
           }
 
@@ -93,9 +97,12 @@ bool InputConfig::LoadConfig(bool isGC)
 #endif
   }
 
-  if (inifile.Load(File::GetUserPath(D_CONFIG_IDX) + m_ini_name + ".ini"))
+  if (inifile.Load(File::GetUserPath(D_CONFIG_IDX) + m_ini_name + ".ini") &&
+      !inifile.GetSections().empty())
   {
     int n = 0;
+
+    std::vector<std::string> controller_names;
     for (auto& controller : m_controllers)
     {
       IniFile::Section config;
@@ -108,9 +115,8 @@ bool InputConfig::LoadConfig(bool isGC)
                                  controller->GetName() + "'",
                              6000);
 
-        IniFile profile_ini;
-        profile_ini.Load(profile[n]);
-        config = *profile_ini.GetOrCreateSection("Profile");
+        inifile.Load(profile[n]);
+        config = *inifile.GetOrCreateSection("Profile");
       }
       else
       {
@@ -126,18 +132,35 @@ bool InputConfig::LoadConfig(bool isGC)
       }
 #endif
       controller->LoadConfig(&config);
-      // Update refs
       controller->UpdateReferences(g_controller_interface);
+      controller_names.push_back(controller->GetName());
 
       // Next profile
       n++;
     }
+
+    m_dynamic_input_tex_config_manager.GenerateTextures(inifile, controller_names);
     return true;
   }
   else
   {
-    m_controllers[0]->LoadDefaults(g_controller_interface);
-    m_controllers[0]->UpdateReferences(g_controller_interface);
+    // Only load the default profile for the first controller,
+    // otherwise they would all share the same mappings and default device
+    if (m_controllers.size() > 0)
+    {
+      m_controllers[0]->LoadDefaults(g_controller_interface);
+      m_controllers[0]->UpdateReferences(g_controller_interface);
+    }
+    // Set the "default" default device for all other controllers, or they would end up
+    // having no default device (which is fine, but might be confusing for some users)
+    const std::string& default_device_string = g_controller_interface.GetDefaultDeviceString();
+    if (!default_device_string.empty())
+    {
+      for (size_t i = 1; i < m_controllers.size(); ++i)
+      {
+        m_controllers[i]->SetDefaultDevice(default_device_string);
+      }
+    }
     return false;
   }
 }
@@ -149,13 +172,19 @@ void InputConfig::SaveConfig()
   IniFile inifile;
   inifile.Load(ini_filename);
 
+  std::vector<std::string> controller_names;
   for (auto& controller : m_controllers)
+  {
     controller->SaveConfig(inifile.GetOrCreateSection(controller->GetName()));
+    controller_names.push_back(controller->GetName());
+  }
+
+  m_dynamic_input_tex_config_manager.GenerateTextures(inifile, controller_names);
 
   inifile.Save(ini_filename);
 }
 
-ControllerEmu::EmulatedController* InputConfig::GetController(int index)
+ControllerEmu::EmulatedController* InputConfig::GetController(int index) const
 {
   return m_controllers.at(index).get();
 }
@@ -170,9 +199,9 @@ bool InputConfig::ControllersNeedToBeCreated() const
   return m_controllers.empty();
 }
 
-std::size_t InputConfig::GetControllerCount() const
+int InputConfig::GetControllerCount() const
 {
-  return m_controllers.size();
+  return static_cast<int>(m_controllers.size());
 }
 
 void InputConfig::RegisterHotplugCallback()
@@ -204,4 +233,15 @@ bool InputConfig::IsControllerControlledByGamepadDevice(int index) const
                controller.name == "Touchscreen")  // Android Touchscreen
            || (controller.source == "DInput" &&
                controller.name == "Keyboard Mouse"));  // Windows Keyboard/Mouse
+}
+
+void InputConfig::GenerateControllerTextures(const IniFile& file)
+{
+  std::vector<std::string> controller_names;
+  for (auto& controller : m_controllers)
+  {
+    controller_names.push_back(controller->GetName());
+  }
+
+  m_dynamic_input_tex_config_manager.GenerateTextures(file, controller_names);
 }

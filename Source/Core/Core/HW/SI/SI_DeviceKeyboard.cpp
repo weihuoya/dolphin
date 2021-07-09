@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/SI/SI_DeviceKeyboard.h"
 
@@ -27,7 +26,7 @@ int CSIDevice_Keyboard::RunBuffer(u8* buffer, int request_length)
   ISIDevice::RunBuffer(buffer, request_length);
 
   // Read the command
-  EBufferCommands command = static_cast<EBufferCommands>(buffer[0]);
+  const auto command = static_cast<EBufferCommands>(buffer[0]);
 
   // Handle it
   switch (command)
@@ -42,7 +41,7 @@ int CSIDevice_Keyboard::RunBuffer(u8* buffer, int request_length)
 
   case CMD_DIRECT:
   {
-    INFO_LOG(SERIALINTERFACE, "Keyboard - Direct (Request Length: %d)", request_length);
+    INFO_LOG_FMT(SERIALINTERFACE, "Keyboard - Direct (Request Length: {})", request_length);
     u32 high, low;
     GetData(high, low);
     for (int i = 0; i < 4; i++)
@@ -55,7 +54,7 @@ int CSIDevice_Keyboard::RunBuffer(u8* buffer, int request_length)
 
   default:
   {
-    ERROR_LOG(SERIALINTERFACE, "Unknown SI command     (0x%x)", command);
+    ERROR_LOG_FMT(SERIALINTERFACE, "Unknown SI command     ({:#x})", command);
   }
   break;
   }
@@ -98,7 +97,7 @@ void CSIDevice_Keyboard::SendCommand(u32 command, u8 poll)
   break;
   default:
   {
-    ERROR_LOG(SERIALINTERFACE, "Unknown direct command     (0x%x)", command);
+    ERROR_LOG_FMT(SERIALINTERFACE, "Unknown direct command     ({:#x})", command);
   }
   break;
   }

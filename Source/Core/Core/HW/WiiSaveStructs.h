@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // Based off of tachtig/twintig http://git.infradead.org/?p=users/segher/wii.git
 // Copyright 2007,2008  Segher Boessenkool  <segher@kernel.crashing.org>
@@ -101,7 +100,8 @@ public:
   };
 
   virtual ~Storage() = default;
-  virtual bool SaveExists() { return true; }
+  virtual bool SaveExists() const = 0;
+  virtual bool EraseSave() = 0;
   virtual std::optional<Header> ReadHeader() = 0;
   virtual std::optional<BkHeader> ReadBkHeader() = 0;
   virtual std::optional<std::vector<SaveFile>> ReadFiles() = 0;

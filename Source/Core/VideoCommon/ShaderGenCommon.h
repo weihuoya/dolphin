@@ -1,20 +1,20 @@
 // Copyright 2012 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
-#include <cstdarg>
 #include <cstring>
-#include <map>
+#include <iterator>
 #include <string>
 #include <type_traits>
 #include <vector>
 
+#include <fmt/format.h>
+
 #include "Common/CommonTypes.h"
 #include "Common/StringUtil.h"
-#include "VideoCommon/VideoCommon.h"
-#include "VideoCommon/VideoConfig.h"
+
+enum class APIType;
 
 /**
  * Common interface for classes that need to go through the shader generation path
@@ -101,15 +101,12 @@ class ShaderCode : public ShaderGeneratorInterface
 public:
   ShaderCode() { m_buffer.reserve(16384); }
   const std::string& GetBuffer() const { return m_buffer; }
-  void Write(const char* fmt, ...)
-#ifdef __GNUC__
-      __attribute__((format(printf, 2, 3)))
-#endif
+
+  // Writes format strings using fmtlib format strings.
+  template <typename... Args>
+  void Write(std::string_view format, Args&&... args)
   {
-    va_list arglist;
-    va_start(arglist, fmt);
-    m_buffer += StringFromFormatV(fmt, arglist);
-    va_end(arglist);
+    fmt::format_to(std::back_inserter(m_buffer), format, std::forward<Args>(args)...);
   }
 
 protected:
@@ -181,82 +178,11 @@ union ShaderHostConfig
 std::string GetDiskShaderCacheFileName(APIType api_type, const char* type, bool include_gameid,
                                        bool include_host_config, bool include_api = true);
 
-template <class T>
-inline void DefineOutputMember(T& object, APIType api_type, const char* qualifier, const char* type,
-                               const char* name, int var_index, const char* semantic = "",
-                               int semantic_index = -1)
-{
-  object.Write("\t%s %s %s", qualifier, type, name);
+void GenerateVSOutputMembers(ShaderCode& object, APIType api_type, u32 texgens,
+                             const ShaderHostConfig& host_config, std::string_view qualifier);
 
-  if (var_index != -1)
-    object.Write("%d", var_index);
-
-  if (api_type == APIType::D3D && strlen(semantic) > 0)
-  {
-    if (semantic_index != -1)
-      object.Write(" : %s%d", semantic, semantic_index);
-    else
-      object.Write(" : %s", semantic);
-  }
-
-  object.Write(";\n");
-}
-
-template <class T>
-inline void GenerateVSOutputMembers(T& object, APIType api_type, u32 texgens,
-                                    const ShaderHostConfig& host_config, const char* qualifier)
-{
-  DefineOutputMember(object, api_type, qualifier, "float4", "pos", -1, "SV_Position");
-  DefineOutputMember(object, api_type, qualifier, "float4", "colors_", 0, "COLOR", 0);
-  DefineOutputMember(object, api_type, qualifier, "float4", "colors_", 1, "COLOR", 1);
-
-  for (unsigned int i = 0; i < texgens; ++i)
-    DefineOutputMember(object, api_type, qualifier, "float3", "tex", i, "TEXCOORD", i);
-
-  if (!host_config.fast_depth_calc)
-    DefineOutputMember(object, api_type, qualifier, "float4", "clipPos", -1, "TEXCOORD", texgens);
-
-  if (host_config.per_pixel_lighting)
-  {
-    DefineOutputMember(object, api_type, qualifier, "float3", "Normal", -1, "TEXCOORD",
-                       texgens + 1);
-    DefineOutputMember(object, api_type, qualifier, "float3", "WorldPos", -1, "TEXCOORD",
-                       texgens + 2);
-  }
-
-  if (host_config.backend_geometry_shaders)
-  {
-    DefineOutputMember(object, api_type, qualifier, "float", "clipDist", 0, "SV_ClipDistance", 0);
-    DefineOutputMember(object, api_type, qualifier, "float", "clipDist", 1, "SV_ClipDistance", 1);
-  }
-}
-
-template <class T>
-inline void AssignVSOutputMembers(T& object, const char* a, const char* b, u32 texgens,
-                                  const ShaderHostConfig& host_config)
-{
-  object.Write("\t%s.pos = %s.pos;\n", a, b);
-  object.Write("\t%s.colors_0 = %s.colors_0;\n", a, b);
-  object.Write("\t%s.colors_1 = %s.colors_1;\n", a, b);
-
-  for (unsigned int i = 0; i < texgens; ++i)
-    object.Write("\t%s.tex%d = %s.tex%d;\n", a, i, b, i);
-
-  if (!host_config.fast_depth_calc)
-    object.Write("\t%s.clipPos = %s.clipPos;\n", a, b);
-
-  if (host_config.per_pixel_lighting)
-  {
-    object.Write("\t%s.Normal = %s.Normal;\n", a, b);
-    object.Write("\t%s.WorldPos = %s.WorldPos;\n", a, b);
-  }
-
-  if (host_config.backend_geometry_shaders)
-  {
-    object.Write("\t%s.clipDist0 = %s.clipDist0;\n", a, b);
-    object.Write("\t%s.clipDist1 = %s.clipDist1;\n", a, b);
-  }
-}
+void AssignVSOutputMembers(ShaderCode& object, std::string_view a, std::string_view b, u32 texgens,
+                           const ShaderHostConfig& host_config);
 
 // We use the flag "centroid" to fix some MSAA rendering bugs. With MSAA, the
 // pixel shader will be executed for each pixel which has at least one passed sample.
@@ -266,29 +192,8 @@ inline void AssignVSOutputMembers(T& object, const char* a, const char* b, u32 t
 // As a workaround, we interpolate at the centroid of the coveraged pixel, which
 // is always inside the primitive.
 // Without MSAA, this flag is defined to have no effect.
-inline const char* GetInterpolationQualifier(bool msaa, bool ssaa,
-                                             bool in_glsl_interface_block = false, bool in = false)
-{
-  if (!msaa)
-    return "";
-
-  // Without GL_ARB_shading_language_420pack support, the interpolation qualifier must be
-  // "centroid in" and not "centroid", even within an interface block.
-  if (in_glsl_interface_block && !g_ActiveConfig.backend_info.bSupportsBindingLayout)
-  {
-    if (!ssaa)
-      return in ? "centroid in" : "centroid out";
-    else
-      return in ? "sample in" : "sample out";
-  }
-  else
-  {
-    if (!ssaa)
-      return "centroid";
-    else
-      return "sample";
-  }
-}
+const char* GetInterpolationQualifier(bool msaa, bool ssaa, bool in_glsl_interface_block = false,
+                                      bool in = false);
 
 // Constant variable names
 #define I_COLORS "color"
@@ -323,6 +228,8 @@ inline const char* GetInterpolationQualifier(bool msaa, bool ssaa,
 static const char s_shader_uniforms[] = "\tuint    components;\n"
                                         "\tuint    xfmem_dualTexInfo;\n"
                                         "\tuint    xfmem_numColorChans;\n"
+                                        "\tuint    missing_color_hex;\n"
+                                        "\tfloat4  missing_color_value;\n"
                                         "\tfloat4 " I_POSNORMALMATRIX "[6];\n"
                                         "\tfloat4 " I_PROJECTION "[4];\n"
                                         "\tint4 " I_MATERIALS "[4];\n"

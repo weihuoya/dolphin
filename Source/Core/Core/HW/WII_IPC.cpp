@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WII_IPC.h"
 
@@ -8,6 +7,7 @@
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
 #include "Core/CoreTiming.h"
+#include "Core/HW/DVD/DVDInterface.h"
 #include "Core/HW/MMIO.h"
 #include "Core/HW/ProcessorInterface.h"
 #include "Core/IOS/IOS.h"
@@ -42,6 +42,12 @@ enum
   GPIOB_OUT = 0xc0,
   GPIOB_DIR = 0xc4,
   GPIOB_IN = 0xc8,
+
+  GPIO_OUT = 0xe0,
+  GPIO_DIR = 0xe4,
+  GPIO_IN = 0xe8,
+
+  HW_RESETS = 0x194,
 
   UNK_180 = 0x180,
   UNK_1CC = 0x1cc,
@@ -97,7 +103,13 @@ static u32 ppc_irq_masks;
 static u32 arm_irq_flags;
 static u32 arm_irq_masks;
 
-static u32 sensorbar_power;  // do we need to care about this?
+// Indicates which pins are accessible by broadway.  Writable by starlet only.
+static constexpr Common::Flags<GPIO> gpio_owner = {GPIO::SLOT_LED, GPIO::SLOT_IN, GPIO::SENSOR_BAR,
+                                                   GPIO::DO_EJECT, GPIO::AVE_SCL, GPIO::AVE_SDA};
+static Common::Flags<GPIO> gpio_dir;
+Common::Flags<GPIO> g_gpio_out;
+
+static u32 resets;
 
 static CoreTiming::EventType* updateInterrupts;
 static void UpdateInterrupts(u64 = 0, s64 cyclesLate = 0);
@@ -111,7 +123,7 @@ void DoState(PointerWrap& p)
   p.Do(ppc_irq_masks);
   p.Do(arm_irq_flags);
   p.Do(arm_irq_masks);
-  p.Do(sensorbar_power);
+  p.Do(g_gpio_out);
 }
 
 static void InitState()
@@ -125,7 +137,19 @@ static void InitState()
   arm_irq_flags = 0;
   arm_irq_masks = 0;
 
-  sensorbar_power = 0;
+  // The only inputs are POWER, EJECT_BTN, SLOT_IN, and EEP_MISO; Broadway only has access to
+  // SLOT_IN
+  gpio_dir = {
+      GPIO::POWER,      GPIO::SHUTDOWN, GPIO::FAN,    GPIO::DC_DC,   GPIO::DI_SPIN,  GPIO::SLOT_LED,
+      GPIO::SENSOR_BAR, GPIO::DO_EJECT, GPIO::EEP_CS, GPIO::EEP_CLK, GPIO::EEP_MOSI, GPIO::AVE_SCL,
+      GPIO::AVE_SDA,    GPIO::DEBUG0,   GPIO::DEBUG1, GPIO::DEBUG2,  GPIO::DEBUG3,   GPIO::DEBUG4,
+      GPIO::DEBUG5,     GPIO::DEBUG6,   GPIO::DEBUG7,
+  };
+  g_gpio_out = {};
+
+  // A cleared bit indicates the device is reset/off, so set everything to 1 (this may not exactly
+  // match hardware)
+  resets = 0xffffffff;
 
   ppc_irq_masks |= INT_CAUSE_IPC_BROADWAY;
 }
@@ -138,7 +162,7 @@ void Init()
 
 void Reset()
 {
-  INFO_LOG(WII_IPC, "Resetting ...");
+  INFO_LOG_FMT(WII_IPC, "Resetting ...");
   InitState();
 }
 
@@ -181,14 +205,79 @@ void RegisterMMIO(MMIO::Mapping* mmio, u32 base)
                    CoreTiming::ScheduleEvent(0, updateInterrupts, 0);
                  }));
 
-  mmio->Register(base | GPIOB_OUT, MMIO::Constant<u32>(0),
-                 MMIO::DirectWrite<u32>(&sensorbar_power));
+  mmio->Register(base | GPIOB_OUT, MMIO::DirectRead<u32>(&g_gpio_out.m_hex),
+                 MMIO::ComplexWrite<u32>([](u32, u32 val) {
+                   g_gpio_out.m_hex =
+                       (val & gpio_owner.m_hex) | (g_gpio_out.m_hex & ~gpio_owner.m_hex);
+                   if (g_gpio_out[GPIO::DO_EJECT])
+                   {
+                     INFO_LOG_FMT(WII_IPC, "Ejecting disc due to GPIO write");
+                     DVDInterface::EjectDisc(DVDInterface::EjectCause::Software);
+                   }
+                   // SENSOR_BAR is checked by WiimoteEmu::CameraLogic
+                   // TODO: AVE, SLOT_LED
+                 }));
+  mmio->Register(base | GPIOB_DIR, MMIO::DirectRead<u32>(&gpio_dir.m_hex),
+                 MMIO::ComplexWrite<u32>([](u32, u32 val) {
+                   gpio_dir.m_hex = (val & gpio_owner.m_hex) | (gpio_dir.m_hex & ~gpio_owner.m_hex);
+                 }));
+  mmio->Register(base | GPIOB_IN, MMIO::ComplexRead<u32>([](u32) {
+                   Common::Flags<GPIO> gpio_in;
+                   gpio_in[GPIO::SLOT_IN] = DVDInterface::IsDiscInside();
+                   return gpio_in.m_hex;
+                 }),
+                 MMIO::Nop<u32>());
+  // Starlet GPIO registers, not normally accessible by PPC (but they can be depending on how
+  // AHBPROT is set up).  We just always allow access, since some homebrew uses them.
+
+  // Note from WiiBrew: When switching owners, copying of the data is not necessary. For example, if
+  // pin 0 has certain configuration in the HW_GPIO registers, and that bit is then set in the
+  // HW_GPIO_OWNER register, those settings will immediately be visible in the HW_GPIOB registers.
+  // There is only one set of data registers, and the HW_GPIO_OWNER register just controls the
+  // access that the HW_GPIOB registers have to that data.
+  // Also: The HW_GPIO registers always have read access to all pins, but any writes (changes) must
+  // go through the HW_GPIOB registers if the corresponding bit is set in the HW_GPIO_OWNER
+  // register.
+  mmio->Register(base | GPIO_OUT, MMIO::DirectRead<u32>(&g_gpio_out.m_hex),
+                 MMIO::ComplexWrite<u32>([](u32, u32 val) {
+                   g_gpio_out.m_hex =
+                       (g_gpio_out.m_hex & gpio_owner.m_hex) | (val & ~gpio_owner.m_hex);
+                   if (g_gpio_out[GPIO::DO_EJECT])
+                   {
+                     INFO_LOG_FMT(WII_IPC, "Ejecting disc due to GPIO write");
+                     DVDInterface::EjectDisc(DVDInterface::EjectCause::Software);
+                   }
+                   // SENSOR_BAR is checked by WiimoteEmu::CameraLogic
+                   // TODO: AVE, SLOT_LED
+                 }));
+  mmio->Register(base | GPIO_DIR, MMIO::DirectRead<u32>(&gpio_dir.m_hex),
+                 MMIO::ComplexWrite<u32>([](u32, u32 val) {
+                   gpio_dir.m_hex = (gpio_dir.m_hex & gpio_owner.m_hex) | (val & ~gpio_owner.m_hex);
+                 }));
+  mmio->Register(base | GPIO_IN, MMIO::ComplexRead<u32>([](u32) {
+                   Common::Flags<GPIO> gpio_in;
+                   gpio_in[GPIO::SLOT_IN] = DVDInterface::IsDiscInside();
+                   return gpio_in.m_hex;
+                 }),
+                 MMIO::Nop<u32>());
+
+  mmio->Register(base | HW_RESETS, MMIO::DirectRead<u32>(&resets),
+                 MMIO::ComplexWrite<u32>([](u32, u32 val) {
+                   // A reset occurs when the corresponding bit is cleared
+                   const bool di_reset_triggered = (resets & 0x400) && !(val & 0x400);
+                   resets = val;
+                   if (di_reset_triggered)
+                   {
+                     // The GPIO *disables* spinning up the drive
+                     const bool spinup = !g_gpio_out[GPIO::DI_SPIN];
+                     INFO_LOG_FMT(WII_IPC, "Resetting DI {} spinup", spinup ? "with" : "without");
+                     DVDInterface::ResetDrive(spinup);
+                   }
+                 }));
 
   // Register some stubbed/unknown MMIOs required to make Wii games work.
   mmio->Register(base | PPCSPEED, MMIO::InvalidRead<u32>(), MMIO::Nop<u32>());
   mmio->Register(base | VISOLID, MMIO::InvalidRead<u32>(), MMIO::Nop<u32>());
-  mmio->Register(base | GPIOB_DIR, MMIO::Constant<u32>(0), MMIO::Nop<u32>());
-  mmio->Register(base | GPIOB_IN, MMIO::Constant<u32>(0), MMIO::Nop<u32>());
   mmio->Register(base | UNK_180, MMIO::Constant<u32>(0), MMIO::Nop<u32>());
   mmio->Register(base | UNK_1CC, MMIO::Constant<u32>(0), MMIO::Nop<u32>());
   mmio->Register(base | UNK_1D0, MMIO::Constant<u32>(0), MMIO::Nop<u32>());
@@ -216,22 +305,22 @@ void ClearX1()
   ctrl.X1 = 0;
 }
 
-void GenerateAck(u32 _Address)
+void GenerateAck(u32 address)
 {
   ctrl.Y2 = 1;
-  DEBUG_LOG(WII_IPC, "GenerateAck: %08x | %08x [R:%i A:%i E:%i]", ppc_msg, _Address, ctrl.Y1,
-            ctrl.Y2, ctrl.X1);
+  DEBUG_LOG_FMT(WII_IPC, "GenerateAck: {:08x} | {:08x} [R:{} A:{} E:{}]", ppc_msg, address, ctrl.Y1,
+                ctrl.Y2, ctrl.X1);
   // Based on a hardware test, the IPC interrupt takes approximately 100 TB ticks to fire
   // after Y2 is seen in the control register.
   CoreTiming::ScheduleEvent(100 * SystemTimers::TIMER_RATIO, updateInterrupts);
 }
 
-void GenerateReply(u32 _Address)
+void GenerateReply(u32 address)
 {
-  arm_msg = _Address;
+  arm_msg = address;
   ctrl.Y1 = 1;
-  DEBUG_LOG(WII_IPC, "GenerateReply: %08x | %08x [R:%i A:%i E:%i]", ppc_msg, _Address, ctrl.Y1,
-            ctrl.Y2, ctrl.X1);
+  DEBUG_LOG_FMT(WII_IPC, "GenerateReply: {:08x} | {:08x} [R:{} A:{} E:{}]", ppc_msg, address,
+                ctrl.Y1, ctrl.Y2, ctrl.X1);
   // Based on a hardware test, the IPC interrupt takes approximately 100 TB ticks to fire
   // after Y1 is seen in the control register.
   CoreTiming::ScheduleEvent(100 * SystemTimers::TIMER_RATIO, updateInterrupts);

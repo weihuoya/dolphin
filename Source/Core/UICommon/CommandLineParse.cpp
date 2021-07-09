@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <list>
 #include <optional>
@@ -22,14 +21,22 @@ class CommandLineConfigLayerLoader final : public Config::ConfigLayerLoader
 {
 public:
   CommandLineConfigLayerLoader(const std::list<std::string>& args, const std::string& video_backend,
-                               const std::string& audio_backend)
+                               const std::string& audio_backend, bool batch)
       : ConfigLayerLoader(Config::LayerType::CommandLine)
   {
     if (!video_backend.empty())
-      m_values.emplace_back(Config::MAIN_GFX_BACKEND.location, video_backend);
+      m_values.emplace_back(Config::MAIN_GFX_BACKEND.GetLocation(), video_backend);
 
     if (!audio_backend.empty())
-      m_values.emplace_back(Config::MAIN_DSP_HLE.location, ValueToString(audio_backend == "HLE"));
+    {
+      m_values.emplace_back(Config::MAIN_DSP_HLE.GetLocation(),
+                            ValueToString(audio_backend == "HLE"));
+    }
+
+    // Batch mode hides the main window, and render to main hides the render window. To avoid a
+    // situation where we would have no window at all, disable render to main when using batch mode.
+    if (batch)
+      m_values.emplace_back(Config::MAIN_RENDER_TO_MAIN.GetLocation(), ValueToString(false));
 
     // Arguments are in the format of <System>.<Section>.<Key>=Value
     for (const auto& arg : args)
@@ -40,11 +47,11 @@ public:
       std::getline(buffer, section, '.');
       std::getline(buffer, key, '=');
       std::getline(buffer, value, '=');
-      const std::optional<Config::System> system = Config::GetSystemFromName(system_str);
+      std::optional<Config::System> system = Config::GetSystemFromName(system_str);
       if (system)
       {
         m_values.emplace_back(
-            Config::ConfigLocation{std::move(*system), std::move(section), std::move(key)},
+            Config::Location{std::move(*system), std::move(section), std::move(key)},
             std::move(value));
       }
     }
@@ -64,7 +71,7 @@ public:
   }
 
 private:
-  std::list<std::tuple<Config::ConfigLocation, std::string>> m_values;
+  std::list<std::tuple<Config::Location, std::string>> m_values;
 };
 
 std::unique_ptr<optparse::OptionParser> CreateParser(ParserOptions options)
@@ -89,6 +96,11 @@ std::unique_ptr<optparse::OptionParser> CreateParser(ParserOptions options)
       .metavar("<System>.<Section>.<Key>=<Value>")
       .type("string")
       .help("Set a configuration option");
+  parser->add_option("-s", "--save_state")
+      .action("store")
+      .metavar("<file>")
+      .type("string")
+      .help("Load the initial save state");
 
   if (options == ParserOptions::IncludeGUIOptions)
   {
@@ -98,7 +110,7 @@ std::unique_ptr<optparse::OptionParser> CreateParser(ParserOptions options)
     parser->add_option("-l", "--logger").action("store_true").help("Open the logger");
     parser->add_option("-b", "--batch")
         .action("store_true")
-        .help("Run Dolphin without the user interface (Requires --exec)");
+        .help("Run Dolphin without the user interface (Requires --exec or --nand-title)");
     parser->add_option("-c", "--confirm").action("store_true").help("Set Confirm on Stop");
   }
 
@@ -114,13 +126,14 @@ std::unique_ptr<optparse::OptionParser> CreateParser(ParserOptions options)
 
 static void AddConfigLayer(const optparse::Values& options)
 {
+  std::list<std::string> config_args;
   if (options.is_set_by_user("config"))
-  {
-    const std::list<std::string>& config_args = options.all("config");
-    Config::AddLayer(std::make_unique<CommandLineConfigLayerLoader>(
-        config_args, static_cast<const char*>(options.get("video_backend")),
-        static_cast<const char*>(options.get("audio_emulation"))));
-  }
+    config_args = options.all("config");
+
+  Config::AddLayer(std::make_unique<CommandLineConfigLayerLoader>(
+      std::move(config_args), static_cast<const char*>(options.get("video_backend")),
+      static_cast<const char*>(options.get("audio_emulation")),
+      static_cast<bool>(options.get("batch"))));
 }
 
 optparse::Values& ParseArguments(optparse::OptionParser* parser, int argc, char** argv)

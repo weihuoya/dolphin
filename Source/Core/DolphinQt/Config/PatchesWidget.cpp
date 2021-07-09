@@ -1,12 +1,13 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Config/PatchesWidget.h"
 
 #include <QGridLayout>
 #include <QListWidget>
 #include <QPushButton>
+
+#include <fmt/format.h>
 
 #include "Common/FileUtil.h"
 #include "Common/IniFile.h"
@@ -65,7 +66,7 @@ void PatchesWidget::ConnectWidgets()
 
 void PatchesWidget::OnItemChanged(QListWidgetItem* item)
 {
-  m_patches[m_list->row(item)].active = (item->checkState() == Qt::Checked);
+  m_patches[m_list->row(item)].enabled = (item->checkState() == Qt::Checked);
   SavePatches();
 }
 
@@ -129,21 +130,31 @@ void PatchesWidget::SavePatches()
 {
   std::vector<std::string> lines;
   std::vector<std::string> lines_enabled;
+  std::vector<std::string> lines_disabled;
 
   for (const auto& patch : m_patches)
   {
-    if (patch.active)
-      lines_enabled.push_back("$" + patch.name);
+    if (patch.enabled != patch.default_enabled)
+      (patch.enabled ? lines_enabled : lines_disabled).emplace_back('$' + patch.name);
 
     if (!patch.user_defined)
       continue;
 
-    lines.push_back("$" + patch.name);
+    lines.emplace_back('$' + patch.name);
 
     for (const auto& entry : patch.entries)
     {
-      lines.push_back(StringFromFormat("0x%08X:%s:0x%08X", entry.address,
+      if (!entry.conditional)
+      {
+        lines.emplace_back(fmt::format("0x{:08X}:{}:0x{:08X}", entry.address,
                                        PatchEngine::PatchTypeAsString(entry.type), entry.value));
+      }
+      else
+      {
+        lines.emplace_back(fmt::format("0x{:08X}:{}:0x{:08X}:0x{:08X}", entry.address,
+                                       PatchEngine::PatchTypeAsString(entry.type), entry.value,
+                                       entry.comparand));
+      }
     }
   }
 
@@ -151,6 +162,7 @@ void PatchesWidget::SavePatches()
   game_ini_local.Load(File::GetUserPath(D_GAMESETTINGS_IDX) + m_game_id + ".ini");
 
   game_ini_local.SetLines("OnFrame_Enabled", lines_enabled);
+  game_ini_local.SetLines("OnFrame_Disabled", lines_disabled);
   game_ini_local.SetLines("OnFrame", lines);
 
   game_ini_local.Save(File::GetUserPath(D_GAMESETTINGS_IDX) + m_game_id + ".ini");
@@ -164,7 +176,7 @@ void PatchesWidget::Update()
   {
     auto* item = new QListWidgetItem(QString::fromStdString(patch.name));
     item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-    item->setCheckState(patch.active ? Qt::Checked : Qt::Unchecked);
+    item->setCheckState(patch.enabled ? Qt::Checked : Qt::Unchecked);
     item->setData(Qt::UserRole, patch.user_defined);
 
     m_list->addItem(item);

@@ -1,9 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.viewholders;
 
-import android.support.v7.widget.RecyclerView;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
+
+import androidx.recyclerview.widget.RecyclerView;
 
 import org.dolphinemu.dolphinemu.R;
 import org.dolphinemu.dolphinemu.model.GameFile;
@@ -16,7 +19,7 @@ public class GameViewHolder extends RecyclerView.ViewHolder
 {
   public ImageView imageScreenshot;
   public TextView textGameTitle;
-  public TextView textCompany;
+  public TextView textGameCaption;
 
   public GameFile gameFile;
 
@@ -28,6 +31,6 @@ public class GameViewHolder extends RecyclerView.ViewHolder
 
     imageScreenshot = itemView.findViewById(R.id.image_game_screen);
     textGameTitle = itemView.findViewById(R.id.text_game_title);
-    textCompany = itemView.findViewById(R.id.text_company);
+    textGameCaption = itemView.findViewById(R.id.text_game_caption);
   }
 }

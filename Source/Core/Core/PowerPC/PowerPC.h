@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -96,12 +95,34 @@ struct PairedSingle
 static_assert(std::is_standard_layout<PairedSingle>(), "PairedSingle must be standard layout");
 
 // This contains the entire state of the emulated PowerPC "Gekko" CPU.
+//
+// To minimize code size on x86, we want as much useful stuff in the first 256 bytes as possible.
+// ps needs to be relatively late in the struct due to it being larger than 256 bytes in itself.
+//
+// On AArch64, most load/store instructions support fairly large immediate offsets,
+// but not LDP/STP, which we want to use for accessing certain things.
+// These must be in the first 260 bytes: pc, npc
+// These must be in the first 520 bytes: gather_pipe_ptr, gather_pipe_base_ptr
+// Better code is generated if these are in the first 260 bytes: gpr
+// Better code is generated if these are in the first 520 bytes: ps
+// Unfortunately not all of those fit in 520 bytes, but we can fit most of ps and all of the rest.
 struct PowerPCState
 {
-  u32 gpr[32];  // General purpose registers. r1 = stack pointer.
-
   u32 pc;  // program counter
   u32 npc;
+
+  // gather pipe pointer for JIT access
+  u8* gather_pipe_ptr;
+  u8* gather_pipe_base_ptr;
+
+  u32 gpr[32];  // General purpose registers. r1 = stack pointer.
+
+#ifndef _M_X86_64
+  // The paired singles are strange : PS0 is stored in the full 64 bits of each FPR
+  // but ps calculations are only done in 32-bit precision, and PS1 is only 32 bits.
+  // Since we want to use SIMD, SSE2 is the only viable alternative - 2x double.
+  alignas(16) PairedSingle ps[32];
+#endif
 
   ConditionRegister cr;
 
@@ -123,23 +144,12 @@ struct PowerPCState
   // lscbx
   u16 xer_stringctrl;
 
-  // gather pipe pointer for JIT access
-  u8* gather_pipe_ptr;
-  u8* gather_pipe_base_ptr;
-
 #if _M_X86_64
-  // This member exists for the purpose of an assertion in x86 JitBase.cpp
-  // that its offset <= 0x100.  To minimize code size on x86, we want as much
-  // useful stuff in the one-byte offset range as possible - which is why ps
-  // is sitting down here.  It currently doesn't make a difference on other
-  // supported architectures.
+  // This member exists only for the purpose of an assertion that its offset <= 0x100.
   std::tuple<> above_fits_in_first_0x100;
-#endif
 
-  // The paired singles are strange : PS0 is stored in the full 64 bits of each FPR
-  // but ps calculations are only done in 32-bit precision, and PS1 is only 32 bits.
-  // Since we want to use SIMD, SSE2 is the only viable alternative - 2x double.
   alignas(16) PairedSingle ps[32];
+#endif
 
   u32 sr[16];  // Segment registers.
 
@@ -220,6 +230,9 @@ void UpdatePerformanceMonitor(u32 cycles, u32 num_load_stores, u32 num_fp_inst);
 #define DMAL (*(UReg_DMAL*)&PowerPC::ppcState.spr[SPR_DMAL])
 #define MMCR0 ((UReg_MMCR0&)PowerPC::ppcState.spr[SPR_MMCR0])
 #define MMCR1 ((UReg_MMCR1&)PowerPC::ppcState.spr[SPR_MMCR1])
+#define THRM1 ((UReg_THRM12&)PowerPC::ppcState.spr[SPR_THRM1])
+#define THRM2 ((UReg_THRM12&)PowerPC::ppcState.spr[SPR_THRM2])
+#define THRM3 ((UReg_THRM3&)PowerPC::ppcState.spr[SPR_THRM3])
 #define PC PowerPC::ppcState.pc
 #define NPC PowerPC::ppcState.npc
 #define FPSCR PowerPC::ppcState.fpscr
@@ -290,6 +303,9 @@ inline void SetXER_OV(bool value)
   SetXER_SO(value);
 }
 
-void UpdateFPRF(double dvalue);
+void UpdateFPRFDouble(double dvalue);
+void UpdateFPRFSingle(float fvalue);
+
+void RoundingModeUpdated();
 
 }  // namespace PowerPC

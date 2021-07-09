@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -28,8 +27,6 @@ enum PrecisionMode
 };
 
 void SetRoundMode(int mode);
-
-void SetPrecisionMode(PrecisionMode mode);
 
 void SetSIMDMode(int rounding_mode, bool non_ieee_mode);
 

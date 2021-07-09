@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
 #include <tuple>
@@ -61,8 +60,8 @@ template <typename SType>
 SType ScaleAndClamp(double ps, u32 stScale)
 {
   float convPS = (float)ps * m_quantizeTable[stScale];
-  float min = (float)std::numeric_limits<SType>::min();
-  float max = (float)std::numeric_limits<SType>::max();
+  constexpr float min = (float)std::numeric_limits<SType>::min();
+  constexpr float max = (float)std::numeric_limits<SType>::max();
 
   return (SType)std::clamp(convPS, min, max);
 }

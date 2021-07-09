@@ -1,6 +1,5 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/MMIO.h"
 
@@ -101,19 +100,9 @@ ReadHandlingMethod<T>* DirectRead(const T* addr, u32 mask)
   return new DirectHandlingMethod<T>(const_cast<T*>(addr), mask);
 }
 template <typename T>
-ReadHandlingMethod<T>* DirectRead(volatile const T* addr, u32 mask)
-{
-  return new DirectHandlingMethod<T>((T*)addr, mask);
-}
-template <typename T>
 WriteHandlingMethod<T>* DirectWrite(T* addr, u32 mask)
 {
   return new DirectHandlingMethod<T>(addr, mask);
-}
-template <typename T>
-WriteHandlingMethod<T>* DirectWrite(volatile T* addr, u32 mask)
-{
-  return new DirectHandlingMethod<T>((T*)addr, mask);
 }
 
 // Complex: holds a lambda that is called when a read or a write is executed.
@@ -184,8 +173,8 @@ template <typename T>
 ReadHandlingMethod<T>* InvalidRead()
 {
   return ComplexRead<T>([](u32 addr) {
-    ERROR_LOG(MEMMAP, "Trying to read %zu bits from an invalid MMIO (addr=%08x)", 8 * sizeof(T),
-              addr);
+    ERROR_LOG_FMT(MEMMAP, "Trying to read {} bits from an invalid MMIO (addr={:08x})",
+                  8 * sizeof(T), addr);
     return -1;
   });
 }
@@ -193,8 +182,8 @@ template <typename T>
 WriteHandlingMethod<T>* InvalidWrite()
 {
   return ComplexWrite<T>([](u32 addr, T val) {
-    ERROR_LOG(MEMMAP, "Trying to write %zu bits to an invalid MMIO (addr=%08x, val=%08x)",
-              8 * sizeof(T), addr, (u32)val);
+    ERROR_LOG_FMT(MEMMAP, "Trying to write {} bits to an invalid MMIO (addr={:08x}, val={:08x})",
+                  8 * sizeof(T), addr, val);
   });
 }
 
@@ -301,6 +290,18 @@ void ReadHandler<T>::Visit(ReadHandlingMethodVisitor<T>& visitor)
 }
 
 template <typename T>
+T ReadHandler<T>::Read(u32 addr)
+{
+  // Check if the handler has already been initialized. For real
+  // handlers, this will always be the case, so this branch should be
+  // easily predictable.
+  if (!m_Method)
+    InitializeInvalid();
+
+  return m_ReadFunc(addr);
+}
+
+template <typename T>
 void ReadHandler<T>::ResetMethod(ReadHandlingMethod<T>* method)
 {
   m_Method.reset(method);
@@ -330,6 +331,12 @@ void ReadHandler<T>::ResetMethod(ReadHandlingMethod<T>* method)
 }
 
 template <typename T>
+void ReadHandler<T>::InitializeInvalid()
+{
+  ResetMethod(InvalidRead<T>());
+}
+
+template <typename T>
 WriteHandler<T>::WriteHandler()
 {
 }
@@ -352,6 +359,18 @@ void WriteHandler<T>::Visit(WriteHandlingMethodVisitor<T>& visitor)
     InitializeInvalid();
 
   m_Method->AcceptWriteVisitor(visitor);
+}
+
+template <typename T>
+void WriteHandler<T>::Write(u32 addr, T val)
+{
+  // Check if the handler has already been initialized. For real
+  // handlers, this will always be the case, so this branch should be
+  // easily predictable.
+  if (!m_Method)
+    InitializeInvalid();
+
+  m_WriteFunc(addr, val);
 }
 
 template <typename T>
@@ -381,6 +400,12 @@ void WriteHandler<T>::ResetMethod(WriteHandlingMethod<T>* method)
   FuncCreatorVisitor v;
   Visit(v);
   m_WriteFunc = v.ret;
+}
+
+template <typename T>
+void WriteHandler<T>::InitializeInvalid()
+{
+  ResetMethod(InvalidWrite<T>());
 }
 
 // Define all the public specializations that are exported in MMIOHandlers.h.

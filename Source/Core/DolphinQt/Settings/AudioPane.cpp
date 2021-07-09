@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Settings/AudioPane.h"
 
@@ -10,6 +9,7 @@
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QRadioButton>
 #include <QSlider>
@@ -18,6 +18,7 @@
 #include <QVBoxLayout>
 
 #include "AudioCommon/AudioCommon.h"
+#include "AudioCommon/Enums.h"
 #include "AudioCommon/WASAPIStream.h"
 
 #include "Core/Config/MainSettings.h"
@@ -37,6 +38,8 @@ AudioPane::AudioPane()
   connect(&Settings::Instance(), &Settings::VolumeChanged, this, &AudioPane::OnVolumeChanged);
   connect(&Settings::Instance(), &Settings::EmulationStateChanged, this,
           [=](Core::State state) { OnEmulationStateChanged(state != Core::State::Uninitialized); });
+
+  OnEmulationStateChanged(Core::GetState() != Core::State::Uninitialized);
 }
 
 void AudioPane::CreateWidgets()
@@ -45,7 +48,7 @@ void AudioPane::CreateWidgets()
   auto* dsp_layout = new QVBoxLayout;
 
   dsp_box->setLayout(dsp_layout);
-  m_dsp_hle = new QRadioButton(tr("DSP HLE Emulation (fast)"));
+  m_dsp_hle = new QRadioButton(tr("DSP HLE (fast)"));
   m_dsp_lle = new QRadioButton(tr("DSP LLE Recompiler"));
   m_dsp_interpreter = new QRadioButton(tr("DSP LLE Interpreter (slow)"));
 
@@ -91,6 +94,29 @@ void AudioPane::CreateWidgets()
   m_dolby_pro_logic->setToolTip(
       tr("Enables Dolby Pro Logic II emulation using 5.1 surround. Certain backends only."));
 
+  auto* dolby_quality_layout = new QHBoxLayout;
+
+  m_dolby_quality_label = new QLabel(tr("Decoding Quality:"));
+
+  m_dolby_quality_slider = new QSlider(Qt::Horizontal);
+  m_dolby_quality_slider->setMinimum(0);
+  m_dolby_quality_slider->setMaximum(3);
+  m_dolby_quality_slider->setPageStep(1);
+  m_dolby_quality_slider->setTickPosition(QSlider::TicksBelow);
+  m_dolby_quality_slider->setToolTip(
+      tr("Quality of the DPLII decoder. Audio latency increases with quality."));
+  m_dolby_quality_slider->setTracking(true);
+
+  m_dolby_quality_low_label = new QLabel(GetDPL2QualityLabel(AudioCommon::DPL2Quality::Lowest));
+  m_dolby_quality_highest_label =
+      new QLabel(GetDPL2QualityLabel(AudioCommon::DPL2Quality::Highest));
+  m_dolby_quality_latency_label =
+      new QLabel(GetDPL2ApproximateLatencyLabel(AudioCommon::DPL2Quality::Highest));
+
+  dolby_quality_layout->addWidget(m_dolby_quality_low_label);
+  dolby_quality_layout->addWidget(m_dolby_quality_slider);
+  dolby_quality_layout->addWidget(m_dolby_quality_highest_label);
+
   backend_layout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
   backend_layout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   backend_layout->addRow(m_backend_label, m_backend_combo);
@@ -105,6 +131,9 @@ void AudioPane::CreateWidgets()
 #endif
 
   backend_layout->addRow(m_dolby_pro_logic);
+  backend_layout->addRow(m_dolby_quality_label);
+  backend_layout->addRow(dolby_quality_layout);
+  backend_layout->addRow(m_dolby_quality_latency_label);
 
   auto* stretching_box = new QGroupBox(tr("Audio Stretching Settings"));
   auto* stretching_layout = new QGridLayout;
@@ -126,40 +155,41 @@ void AudioPane::CreateWidgets()
   stretching_layout->addWidget(m_stretching_buffer_slider, 1, 1);
   stretching_layout->addWidget(m_stretching_buffer_indicator, 1, 2);
 
-  m_main_layout = new QGridLayout;
-
-  m_main_layout->setRowStretch(0, 0);
-
   dsp_box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
-  m_main_layout->addWidget(dsp_box, 0, 0);
-  m_main_layout->addWidget(volume_box, 0, 1, -1, 1);
-  m_main_layout->addWidget(backend_box, 1, 0);
-  m_main_layout->addWidget(stretching_box, 2, 0);
+  auto* const main_vbox_layout = new QVBoxLayout;
+  main_vbox_layout->addWidget(dsp_box);
+  main_vbox_layout->addWidget(backend_box);
+  main_vbox_layout->addWidget(stretching_box);
+
+  m_main_layout = new QHBoxLayout;
+  m_main_layout->addLayout(main_vbox_layout);
+  m_main_layout->addWidget(volume_box);
 
   setLayout(m_main_layout);
+  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 }
 
 void AudioPane::ConnectWidgets()
 {
-  connect(m_backend_combo, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
-          this, &AudioPane::SaveSettings);
+  connect(m_backend_combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+          &AudioPane::SaveSettings);
   connect(m_volume_slider, &QSlider::valueChanged, this, &AudioPane::SaveSettings);
   if (m_latency_control_supported)
   {
-    connect(m_latency_spin, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), this,
+    connect(m_latency_spin, qOverload<int>(&QSpinBox::valueChanged), this,
             &AudioPane::SaveSettings);
   }
   connect(m_stretching_buffer_slider, &QSlider::valueChanged, this, &AudioPane::SaveSettings);
   connect(m_dolby_pro_logic, &QCheckBox::toggled, this, &AudioPane::SaveSettings);
+  connect(m_dolby_quality_slider, &QSlider::valueChanged, this, &AudioPane::SaveSettings);
   connect(m_stretching_enable, &QCheckBox::toggled, this, &AudioPane::SaveSettings);
   connect(m_dsp_hle, &QRadioButton::toggled, this, &AudioPane::SaveSettings);
   connect(m_dsp_lle, &QRadioButton::toggled, this, &AudioPane::SaveSettings);
   connect(m_dsp_interpreter, &QRadioButton::toggled, this, &AudioPane::SaveSettings);
 
 #ifdef _WIN32
-  connect(m_wasapi_device_combo,
-          static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this,
+  connect(m_wasapi_device_combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
           &AudioPane::SaveSettings);
 #endif
 }
@@ -201,6 +231,13 @@ void AudioPane::LoadSettings()
 
   // DPL2
   m_dolby_pro_logic->setChecked(SConfig::GetInstance().bDPL2Decoder);
+  m_dolby_quality_slider->setValue(int(Config::Get(Config::MAIN_DPL2_QUALITY)));
+  m_dolby_quality_latency_label->setText(
+      GetDPL2ApproximateLatencyLabel(Config::Get(Config::MAIN_DPL2_QUALITY)));
+  if (AudioCommon::SupportsDPL2Decoder(current) && !m_dsp_hle->isChecked())
+  {
+    EnableDolbyQualityWidgets(m_dolby_pro_logic->isChecked());
+  }
 
   // Latency
   if (m_latency_control_supported)
@@ -230,6 +267,11 @@ void AudioPane::SaveSettings()
   auto& settings = Settings::Instance();
 
   // DSP
+  if (SConfig::GetInstance().bDSPHLE != m_dsp_hle->isChecked() ||
+      SConfig::GetInstance().m_DSPEnableJIT != m_dsp_lle->isChecked())
+  {
+    OnDspChanged();
+  }
   SConfig::GetInstance().bDSPHLE = m_dsp_hle->isChecked();
   Config::SetBaseOrCurrent(Config::MAIN_DSP_HLE, m_dsp_hle->isChecked());
   SConfig::GetInstance().m_DSPEnableJIT = m_dsp_lle->isChecked();
@@ -255,6 +297,14 @@ void AudioPane::SaveSettings()
 
   // DPL2
   SConfig::GetInstance().bDPL2Decoder = m_dolby_pro_logic->isChecked();
+  Config::SetBase(Config::MAIN_DPL2_QUALITY,
+                  static_cast<AudioCommon::DPL2Quality>(m_dolby_quality_slider->value()));
+  m_dolby_quality_latency_label->setText(
+      GetDPL2ApproximateLatencyLabel(Config::Get(Config::MAIN_DPL2_QUALITY)));
+  if (AudioCommon::SupportsDPL2Decoder(backend) && !m_dsp_hle->isChecked())
+  {
+    EnableDolbyQualityWidgets(m_dolby_pro_logic->isChecked());
+  }
 
   // Latency
   if (m_latency_control_supported)
@@ -281,11 +331,24 @@ void AudioPane::SaveSettings()
   AudioCommon::UpdateSoundStream();
 }
 
+void AudioPane::OnDspChanged()
+{
+  const auto backend = SConfig::GetInstance().sBackend;
+
+  m_dolby_pro_logic->setEnabled(AudioCommon::SupportsDPL2Decoder(backend) &&
+                                !m_dsp_hle->isChecked());
+  EnableDolbyQualityWidgets(AudioCommon::SupportsDPL2Decoder(backend) && !m_dsp_hle->isChecked() &&
+                            m_dolby_pro_logic->isChecked());
+}
+
 void AudioPane::OnBackendChanged()
 {
   const auto backend = SConfig::GetInstance().sBackend;
 
-  m_dolby_pro_logic->setEnabled(AudioCommon::SupportsDPL2Decoder(backend));
+  m_dolby_pro_logic->setEnabled(AudioCommon::SupportsDPL2Decoder(backend) &&
+                                !m_dsp_hle->isChecked());
+  EnableDolbyQualityWidgets(AudioCommon::SupportsDPL2Decoder(backend) && !m_dsp_hle->isChecked() &&
+                            m_dolby_pro_logic->isChecked());
   if (m_latency_control_supported)
   {
     m_latency_label->setEnabled(AudioCommon::SupportsLatencyControl(backend));
@@ -316,10 +379,15 @@ void AudioPane::OnEmulationStateChanged(bool running)
   m_dsp_hle->setEnabled(!running);
   m_dsp_lle->setEnabled(!running);
   m_dsp_interpreter->setEnabled(!running);
-  m_dolby_pro_logic->setEnabled(!running);
   m_backend_label->setEnabled(!running);
   m_backend_combo->setEnabled(!running);
-  if (m_latency_control_supported)
+  if (AudioCommon::SupportsDPL2Decoder(SConfig::GetInstance().sBackend) && !m_dsp_hle->isChecked())
+  {
+    m_dolby_pro_logic->setEnabled(!running);
+    EnableDolbyQualityWidgets(!running && m_dolby_pro_logic->isChecked());
+  }
+  if (m_latency_control_supported &&
+      AudioCommon::SupportsLatencyControl(SConfig::GetInstance().sBackend))
   {
     m_latency_label->setEnabled(!running);
     m_latency_spin->setEnabled(!running);
@@ -341,4 +409,43 @@ void AudioPane::CheckNeedForLatencyControl()
   std::vector<std::string> backends = AudioCommon::GetSoundBackends();
   m_latency_control_supported =
       std::any_of(backends.cbegin(), backends.cend(), AudioCommon::SupportsLatencyControl);
+}
+
+QString AudioPane::GetDPL2QualityLabel(AudioCommon::DPL2Quality value) const
+{
+  switch (value)
+  {
+  case AudioCommon::DPL2Quality::Lowest:
+    return tr("Lowest");
+  case AudioCommon::DPL2Quality::Low:
+    return tr("Low");
+  case AudioCommon::DPL2Quality::Highest:
+    return tr("Highest");
+  default:
+    return tr("High");
+  }
+}
+
+QString AudioPane::GetDPL2ApproximateLatencyLabel(AudioCommon::DPL2Quality value) const
+{
+  switch (value)
+  {
+  case AudioCommon::DPL2Quality::Lowest:
+    return tr("Latency: ~10ms");
+  case AudioCommon::DPL2Quality::Low:
+    return tr("Latency: ~20ms");
+  case AudioCommon::DPL2Quality::Highest:
+    return tr("Latency: ~80ms");
+  default:
+    return tr("Latency: ~40ms");
+  }
+}
+
+void AudioPane::EnableDolbyQualityWidgets(bool enabled) const
+{
+  m_dolby_quality_label->setEnabled(enabled);
+  m_dolby_quality_slider->setEnabled(enabled);
+  m_dolby_quality_low_label->setEnabled(enabled);
+  m_dolby_quality_highest_label->setEnabled(enabled);
+  m_dolby_quality_latency_label->setEnabled(enabled);
 }

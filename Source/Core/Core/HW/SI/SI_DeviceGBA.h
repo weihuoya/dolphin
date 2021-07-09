@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -28,7 +27,8 @@ public:
   bool IsConnected();
   void ClockSync();
   void Send(const u8* si_buffer);
-  int Receive(u8* si_buffer);
+  int Receive(u8* si_buffer, u8 bytes);
+  void Flush();
 
 private:
   void Disconnect();

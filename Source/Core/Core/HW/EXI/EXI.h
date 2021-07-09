@@ -1,10 +1,10 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include "Common/CommonTypes.h"
+#include "Core/CoreTiming.h"
 
 class PointerWrap;
 
@@ -39,10 +39,11 @@ void RegisterMMIO(MMIO::Mapping* mmio, u32 base);
 void UpdateInterrupts();
 void ScheduleUpdateInterrupts(CoreTiming::FromThread from, int cycles_late);
 
-void ChangeDevice(const u8 channel, const TEXIDevices device_type, const u8 device_num);
+void ChangeDevice(const u8 channel, const TEXIDevices device_type, const u8 device_num,
+                  CoreTiming::FromThread from_thread = CoreTiming::FromThread::NON_CPU);
 
 CEXIChannel* GetChannel(u32 index);
 
 IEXIDevice* FindDevice(TEXIDevices device_type, int customIndex = -1);
 
-}  // end of namespace ExpansionInterface
+}  // namespace ExpansionInterface

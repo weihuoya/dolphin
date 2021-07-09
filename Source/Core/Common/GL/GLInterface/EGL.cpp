@@ -1,6 +1,5 @@
 // Copyright 2012 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <array>
 #include <cstdlib>
@@ -35,7 +34,7 @@ GLContextEGL::~GLContextEGL()
 
 bool GLContextEGL::IsHeadless() const
 {
-  return m_host_window == nullptr;
+  return m_wsi.type == WindowSystemType::Headless;
 }
 
 void GLContextEGL::Swap()
@@ -53,7 +52,7 @@ void* GLContextEGL::GetFuncAddress(const std::string& name)
   return (void*)eglGetProcAddress(name.c_str());
 }
 
-void GLContextEGL::DetectMode(bool has_handle)
+void GLContextEGL::DetectMode()
 {
   EGLint num_configs;
   bool supportsGL = false, supportsGLES3 = false;
@@ -72,13 +71,13 @@ void GLContextEGL::DetectMode(bool has_handle)
                      EGL_RENDERABLE_TYPE,
                      renderable_type,
                      EGL_SURFACE_TYPE,
-                     has_handle ? EGL_WINDOW_BIT : 0,
+                     IsHeadless() ? 0 : EGL_WINDOW_BIT,
                      EGL_NONE};
 
     // Get how many configs there are
     if (!eglChooseConfig(m_egl_display, attribs, nullptr, 0, &num_configs))
     {
-      INFO_LOG(VIDEO, "Error: couldn't get an EGL visual config");
+      INFO_LOG_FMT(VIDEO, "Error: couldn't get an EGL visual config");
       continue;
     }
 
@@ -87,7 +86,7 @@ void GLContextEGL::DetectMode(bool has_handle)
     // Get all the configurations
     if (!eglChooseConfig(m_egl_display, attribs, config, num_configs, &num_configs))
     {
-      INFO_LOG(VIDEO, "Error: couldn't get an EGL visual config");
+      INFO_LOG_FMT(VIDEO, "Error: couldn't get an EGL visual config");
       delete[] config;
       continue;
     }
@@ -110,18 +109,18 @@ void GLContextEGL::DetectMode(bool has_handle)
 
   if (supportsGL)
   {
-    INFO_LOG(VIDEO, "Using OpenGL");
+    INFO_LOG_FMT(VIDEO, "Using OpenGL");
     m_opengl_mode = Mode::OpenGL;
   }
   else if (supportsGLES3)
   {
-    INFO_LOG(VIDEO, "Using OpenGL|ES");
+    INFO_LOG_FMT(VIDEO, "Using OpenGL|ES");
     m_opengl_mode = Mode::OpenGLES;
   }
   else
   {
     // Errored before we found a mode
-    ERROR_LOG(VIDEO, "Error: Failed to detect OpenGL flavour, falling back to OpenGL");
+    ERROR_LOG_FMT(VIDEO, "Error: Failed to detect OpenGL flavour, falling back to OpenGL");
     // This will fail to create a context, as it'll try to use the same attribs we just failed to
     // find a matching config with
     m_opengl_mode = Mode::OpenGL;
@@ -130,36 +129,32 @@ void GLContextEGL::DetectMode(bool has_handle)
 
 EGLDisplay GLContextEGL::OpenEGLDisplay()
 {
-  return eglGetDisplay(EGL_DEFAULT_DISPLAY);
+  return eglGetDisplay(static_cast<EGLNativeDisplayType>(m_wsi.render_surface));
 }
 
 EGLNativeWindowType GLContextEGL::GetEGLNativeWindow(EGLConfig config)
 {
-  return reinterpret_cast<EGLNativeWindowType>(EGL_DEFAULT_DISPLAY);
+  return reinterpret_cast<EGLNativeWindowType>(m_wsi.display_connection);
 }
 
 // Create rendering window.
 // Call browser: Core.cpp:EmuThread() > main.cpp:Video_Initialize()
-bool GLContextEGL::Initialize(void* display_handle, void* window_handle, bool stereo, bool core)
+bool GLContextEGL::Initialize(const WindowSystemInfo& wsi, bool stereo, bool core)
 {
-  const bool has_handle = !!window_handle;
-
   EGLint egl_major, egl_minor;
   bool supports_core_profile = false;
 
-  m_host_display = display_handle;
-  m_host_window = window_handle;
+  m_wsi = wsi;
   m_egl_display = OpenEGLDisplay();
-
   if (!m_egl_display)
   {
-    INFO_LOG(VIDEO, "Error: eglGetDisplay() failed");
+    INFO_LOG_FMT(VIDEO, "Error: eglGetDisplay() failed");
     return false;
   }
 
   if (!eglInitialize(m_egl_display, &egl_major, &egl_minor))
   {
-    INFO_LOG(VIDEO, "Error: eglInitialize() failed");
+    INFO_LOG_FMT(VIDEO, "Error: eglInitialize() failed");
     return false;
   }
 
@@ -167,7 +162,7 @@ bool GLContextEGL::Initialize(void* display_handle, void* window_handle, bool st
   EGLint num_configs;
 
   if (m_opengl_mode == Mode::Detect)
-    DetectMode(has_handle);
+    DetectMode();
 
   // attributes for a visual in RGBA format with at least
   // 8 bits per color
@@ -180,7 +175,7 @@ bool GLContextEGL::Initialize(void* display_handle, void* window_handle, bool st
                    EGL_BLUE_SIZE,
                    8,
                    EGL_SURFACE_TYPE,
-                   has_handle ? EGL_WINDOW_BIT : 0,
+                   IsHeadless() ? 0 : EGL_WINDOW_BIT,
                    EGL_NONE};
 
   std::vector<EGLint> ctx_attribs;
@@ -195,13 +190,13 @@ bool GLContextEGL::Initialize(void* display_handle, void* window_handle, bool st
     ctx_attribs = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
     break;
   default:
-    ERROR_LOG(VIDEO, "Unknown opengl mode set");
+    ERROR_LOG_FMT(VIDEO, "Unknown opengl mode set");
     return false;
   }
 
   if (!eglChooseConfig(m_egl_display, attribs, &m_config, 1, &num_configs))
   {
-    INFO_LOG(VIDEO, "Error: couldn't get an EGL visual config");
+    INFO_LOG_FMT(VIDEO, "Error: couldn't get an EGL visual config");
     return false;
   }
 
@@ -251,13 +246,13 @@ bool GLContextEGL::Initialize(void* display_handle, void* window_handle, bool st
 
   if (!m_egl_context)
   {
-    INFO_LOG(VIDEO, "Error: eglCreateContext failed");
+    INFO_LOG_FMT(VIDEO, "Error: eglCreateContext failed");
     return false;
   }
 
   if (!CreateWindowSurface())
   {
-    ERROR_LOG(VIDEO, "Error: CreateWindowSurface failed 0x%04x", eglGetError());
+    ERROR_LOG_FMT(VIDEO, "Error: CreateWindowSurface failed {:#06x}", eglGetError());
     return false;
   }
 
@@ -271,21 +266,21 @@ std::unique_ptr<GLContext> GLContextEGL::CreateSharedContext()
       eglCreateContext(m_egl_display, m_config, m_egl_context, m_attribs.data());
   if (!new_egl_context)
   {
-    INFO_LOG(VIDEO, "Error: eglCreateContext failed 0x%04x", eglGetError());
+    INFO_LOG_FMT(VIDEO, "Error: eglCreateContext failed {:#06x}", eglGetError());
     return nullptr;
   }
 
   std::unique_ptr<GLContextEGL> new_context = std::make_unique<GLContextEGL>();
   new_context->m_opengl_mode = m_opengl_mode;
   new_context->m_egl_context = new_egl_context;
-  new_context->m_host_display = m_host_display;
+  new_context->m_wsi.display_connection = m_wsi.display_connection;
   new_context->m_egl_display = m_egl_display;
   new_context->m_config = m_config;
   new_context->m_supports_surfaceless = m_supports_surfaceless;
   new_context->m_is_shared = true;
   if (!new_context->CreateWindowSurface())
   {
-    ERROR_LOG(VIDEO, "Error: CreateWindowSurface failed 0x%04x", eglGetError());
+    ERROR_LOG_FMT(VIDEO, "Error: CreateWindowSurface failed {:#06x}", eglGetError());
     return nullptr;
   }
 
@@ -294,15 +289,26 @@ std::unique_ptr<GLContext> GLContextEGL::CreateSharedContext()
 
 bool GLContextEGL::CreateWindowSurface()
 {
-  if (m_host_window)
+  if (!IsHeadless())
   {
     EGLNativeWindowType native_window = GetEGLNativeWindow(m_config);
     m_egl_surface = eglCreateWindowSurface(m_egl_display, m_config, native_window, nullptr);
     if (!m_egl_surface)
     {
-      INFO_LOG(VIDEO, "Error: eglCreateWindowSurface failed");
+      INFO_LOG_FMT(VIDEO, "Error: eglCreateWindowSurface failed");
       return false;
     }
+
+    // Get dimensions from the surface.
+    EGLint surface_width = 1, surface_height = 1;
+    if (!eglQuerySurface(m_egl_display, m_egl_surface, EGL_WIDTH, &surface_width) ||
+        !eglQuerySurface(m_egl_display, m_egl_surface, EGL_HEIGHT, &surface_height))
+    {
+      WARN_LOG_FMT(VIDEO,
+                   "Failed to get surface dimensions via eglQuerySurface. Size may be incorrect.");
+    }
+    m_backbuffer_width = static_cast<int>(surface_width);
+    m_backbuffer_height = static_cast<int>(surface_height);
   }
   else if (!m_supports_surfaceless)
   {
@@ -312,7 +318,7 @@ bool GLContextEGL::CreateWindowSurface()
     m_egl_surface = eglCreatePbufferSurface(m_egl_display, m_config, attrib_list);
     if (!m_egl_surface)
     {
-      INFO_LOG(VIDEO, "Error: eglCreatePbufferSurface failed");
+      INFO_LOG_FMT(VIDEO, "Error: eglCreatePbufferSurface failed");
       return false;
     }
   }
@@ -331,7 +337,7 @@ void GLContextEGL::DestroyWindowSurface()
   if (eglGetCurrentSurface(EGL_DRAW) == m_egl_surface)
     eglMakeCurrent(m_egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
   if (!eglDestroySurface(m_egl_display, m_egl_surface))
-    NOTICE_LOG(VIDEO, "Could not destroy window surface.");
+    NOTICE_LOG_FMT(VIDEO, "Could not destroy window surface.");
   m_egl_surface = EGL_NO_SURFACE;
 }
 
@@ -342,7 +348,7 @@ bool GLContextEGL::MakeCurrent()
 
 void GLContextEGL::UpdateSurface(void* window_handle)
 {
-  m_host_window = window_handle;
+  m_wsi.render_surface = window_handle;
   ClearCurrent();
   DestroyWindowSurface();
   CreateWindowSurface();
@@ -363,9 +369,9 @@ void GLContextEGL::DestroyContext()
   if (eglGetCurrentContext() == m_egl_context)
     eglMakeCurrent(m_egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
   if (!eglDestroyContext(m_egl_display, m_egl_context))
-    NOTICE_LOG(VIDEO, "Could not destroy drawing context.");
+    NOTICE_LOG_FMT(VIDEO, "Could not destroy drawing context.");
   if (!m_is_shared && !eglTerminate(m_egl_display))
-    NOTICE_LOG(VIDEO, "Could not destroy display connection.");
+    NOTICE_LOG_FMT(VIDEO, "Could not destroy display connection.");
   m_egl_context = EGL_NO_CONTEXT;
   m_egl_display = EGL_NO_DISPLAY;
 }

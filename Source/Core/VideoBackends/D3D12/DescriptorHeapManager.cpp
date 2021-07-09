@@ -1,10 +1,9 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoBackends/D3D12/DescriptorHeapManager.h"
 #include "Common/Assert.h"
-#include "VideoBackends/D3D12/DXContext.h"
+#include "VideoBackends/D3D12/DX12Context.h"
 #include "VideoCommon/VideoConfig.h"
 
 namespace DX12
@@ -63,7 +62,7 @@ bool DescriptorHeapManager::Allocate(DescriptorHandle* handle)
     return true;
   }
 
-  PanicAlert("Out of fixed descriptors");
+  PanicAlertFmt("Out of fixed descriptors");
   return false;
 }
 
@@ -148,7 +147,7 @@ bool SamplerHeapManager::Lookup(const SamplerState& ss, D3D12_CPU_DESCRIPTOR_HAN
   {
     // We can clear at any time because the descriptors are copied prior to execution.
     // It's still not free, since we have to recreate all our samplers again.
-    WARN_LOG(VIDEO, "Out of samplers, resetting CPU heap");
+    WARN_LOG_FMT(VIDEO, "Out of samplers, resetting CPU heap");
     Clear();
   }
 

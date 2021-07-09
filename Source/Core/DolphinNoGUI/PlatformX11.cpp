@@ -1,8 +1,13 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <unistd.h>
+
+// X.h defines None to be 0L, but other parts of Dolphin undef that so that
+// None can be used in enums.  Work around that here by copying the definition
+// before it is undefined.
+#include <X11/X.h>
+static constexpr auto X_None = None;
 
 #include "DolphinNoGUI/Platform.h"
 
@@ -18,6 +23,7 @@
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include "UICommon/X11Utils.h"
 #include "VideoCommon/RenderBase.h"
@@ -37,7 +43,7 @@ public:
   void SetTitle(const std::string& string) override;
   void MainLoop() override;
 
-  WindowSystemInfo GetWindowSystemInfo() const;
+  WindowSystemInfo GetWindowSystemInfo() const override;
 
 private:
   void CloseDisplay();
@@ -46,8 +52,8 @@ private:
 
   Display* m_display = nullptr;
   Window m_window = {};
-  Cursor m_blank_cursor = None;
-#if defined(HAVE_XRANDR) && HAVE_XRANDR
+  Cursor m_blank_cursor = X_None;
+#ifdef HAVE_XRANDR
   X11Utils::XRRConfiguration* m_xrr_config = nullptr;
 #endif
   int m_window_x = Config::Get(Config::MAIN_RENDER_WINDOW_XPOS);
@@ -58,7 +64,7 @@ private:
 
 PlatformX11::~PlatformX11()
 {
-#if defined(HAVE_XRANDR) && HAVE_XRANDR
+#ifdef HAVE_XRANDR
   delete m_xrr_config;
 #endif
 
@@ -105,7 +111,7 @@ bool PlatformX11::Init()
   if (Config::Get(Config::MAIN_DISABLE_SCREENSAVER))
     X11Utils::InhibitScreensaver(m_window, true);
 
-#if defined(HAVE_XRANDR) && HAVE_XRANDR
+#ifdef HAVE_XRANDR
   m_xrr_config = new X11Utils::XRRConfiguration(m_display, m_window);
 #endif
 
@@ -125,7 +131,7 @@ bool PlatformX11::Init()
   if (Config::Get(Config::MAIN_FULLSCREEN))
   {
     m_window_fullscreen = X11Utils::ToggleFullscreen(m_display, m_window);
-#if defined(HAVE_XRANDR) && HAVE_XRANDR
+#ifdef HAVE_XRANDR
     m_xrr_config->ToggleDisplayMode(True);
 #endif
     ProcessEvents();
@@ -159,6 +165,7 @@ WindowSystemInfo PlatformX11::GetWindowSystemInfo() const
   WindowSystemInfo wsi;
   wsi.type = WindowSystemType::X11;
   wsi.display_connection = static_cast<void*>(m_display);
+  wsi.render_window = reinterpret_cast<void*>(m_window);
   wsi.render_surface = reinterpret_cast<void*>(m_window);
   return wsi;
 }
@@ -208,7 +215,7 @@ void PlatformX11::ProcessEvents()
       {
         m_window_fullscreen = !m_window_fullscreen;
         X11Utils::ToggleFullscreen(m_display, m_window);
-#if defined(HAVE_XRANDR) && HAVE_XRANDR
+#ifdef HAVE_XRANDR
         m_xrr_config->ToggleDisplayMode(m_window_fullscreen);
 #endif
         UpdateWindowPosition();

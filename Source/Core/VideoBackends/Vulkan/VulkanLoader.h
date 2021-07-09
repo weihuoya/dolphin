@@ -1,12 +1,11 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #define VK_NO_PROTOTYPES
 
-#if defined(WIN32)
+#if defined(_WIN32)
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
 
@@ -19,7 +18,7 @@
 #endif
 
 #if defined(__APPLE__)
-#define VK_USE_PLATFORM_MACOS_MVK
+#define VK_USE_PLATFORM_METAL_EXT
 #endif
 
 #include "vulkan/vulkan.h"

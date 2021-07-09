@@ -1,10 +1,10 @@
 // Copyright 2013 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <SFML/Network/Packet.hpp>
+
 #include <map>
 #include <memory>
 #include <mutex>
@@ -14,19 +14,20 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+
 #include "Common/Event.h"
 #include "Common/QoSSession.h"
 #include "Common/SPSCQueue.h"
 #include "Common/Timer.h"
 #include "Common/TraversalClient.h"
 #include "Core/NetPlayProto.h"
+#include "Core/SyncIdentifier.h"
 #include "InputCommon/GCPadStatus.h"
 #include "UICommon/NetPlayIndex.h"
 
 namespace NetPlay
 {
 class NetPlayUI;
-enum class PlayerGameStatus;
 
 class NetPlayServer : public TraversalClientClient
 {
@@ -39,17 +40,17 @@ public:
   void SendChunkedToClients(sf::Packet&& packet, PlayerId skip_pid = 0,
                             const std::string& title = "");
 
-  NetPlayServer(u16 port, bool forward_port, const NetTraversalConfig& traversal_config);
+  NetPlayServer(u16 port, bool forward_port, NetPlayUI* dialog,
+                const NetTraversalConfig& traversal_config);
   ~NetPlayServer();
 
-  bool ChangeGame(const std::string& game);
-  bool ComputeMD5(const std::string& file_identifier);
+  bool ChangeGame(const SyncIdentifier& sync_identifier, const std::string& netplay_name);
+  bool ComputeMD5(const SyncIdentifier& sync_identifier);
   bool AbortMD5();
   void SendChatMessage(const std::string& msg);
 
-  void SetNetSettings(const NetSettings& settings);
-
   bool DoAllPlayersHaveIPLDump() const;
+  bool DoAllPlayersHaveHardwareFMA() const;
   bool StartGame();
   bool RequestStartGame();
   void AbortGameStart();
@@ -67,7 +68,6 @@ public:
 
   u16 GetPort() const;
 
-  void SetNetPlayUI(NetPlayUI* dialog);
   std::unordered_set<std::string> GetInterfaceSet() const;
   std::string GetInterfaceHost(const std::string& inter) const;
 
@@ -80,8 +80,9 @@ private:
     PlayerId pid;
     std::string name;
     std::string revision;
-    PlayerGameStatus game_status;
+    SyncIdentifierComparison game_status;
     bool has_ipl_dump;
+    bool has_hardware_fma;
 
     ENetPeer* socket;
     u32 ping;
@@ -115,11 +116,10 @@ private:
     std::string title;
   };
 
+  bool SetupNetSettings();
   bool SyncSaveData();
   bool SyncCodes();
   void CheckSyncAndStartGame();
-  bool CompressFileIntoPacket(const std::string& file_path, sf::Packet& packet);
-  bool CompressBufferIntoPacket(const std::vector<u8>& in_buffer, sf::Packet& packet);
 
   u64 GetInitialNetPlayRTC() const;
 
@@ -132,7 +132,7 @@ private:
 
   void OnTraversalStateChanged() override;
   void OnConnectReady(ENetAddress) override {}
-  void OnConnectFailed(u8) override {}
+  void OnConnectFailed(TraversalConnectFailedReason) override {}
   void UpdatePadMapping();
   void UpdateWiimoteMapping();
   std::vector<std::pair<std::string, std::string>> GetInterfaceListInternal() const;
@@ -180,7 +180,8 @@ private:
   Common::SPSCQueue<AsyncQueueEntry, false> m_async_queue;
   Common::SPSCQueue<ChunkedDataQueueEntry, false> m_chunked_data_queue;
 
-  std::string m_selected_game;
+  SyncIdentifier m_selected_game_identifier;
+  std::string m_selected_game_name;
   std::thread m_thread;
   Common::Event m_chunked_data_event;
   Common::Event m_chunked_data_complete_event;

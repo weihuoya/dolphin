@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.utils;
 
 import android.app.PendingIntent;
@@ -9,8 +11,11 @@ import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
+import android.os.Build;
 
-import org.dolphinemu.dolphinemu.NativeLibrary;
+import androidx.annotation.Keep;
+
+import org.dolphinemu.dolphinemu.DolphinApplication;
 import org.dolphinemu.dolphinemu.services.USBPermService;
 
 import java.util.Arrays;
@@ -30,38 +35,36 @@ public class Java_WiimoteAdapter
   static UsbInterface[] usb_intf = new UsbInterface[MAX_WIIMOTES];
   static UsbEndpoint[] usb_in = new UsbEndpoint[MAX_WIIMOTES];
 
+  @Keep
   public static byte[][] wiimote_payload = new byte[MAX_WIIMOTES][MAX_PAYLOAD];
 
   private static void RequestPermission()
   {
-    Context context = NativeLibrary.getEmulationActivity();
-    if (context != null)
+    HashMap<String, UsbDevice> devices = manager.getDeviceList();
+    for (Map.Entry<String, UsbDevice> pair : devices.entrySet())
     {
-      HashMap<String, UsbDevice> devices = manager.getDeviceList();
-      for (Map.Entry<String, UsbDevice> pair : devices.entrySet())
+      UsbDevice dev = pair.getValue();
+      if (dev.getProductId() == NINTENDO_WIIMOTE_PRODUCT_ID &&
+              dev.getVendorId() == NINTENDO_VENDOR_ID)
       {
-        UsbDevice dev = pair.getValue();
-        if (dev.getProductId() == NINTENDO_WIIMOTE_PRODUCT_ID &&
-                dev.getVendorId() == NINTENDO_VENDOR_ID)
+        if (!manager.hasPermission(dev))
         {
-          if (!manager.hasPermission(dev))
-          {
-            Log.warning("Requesting permission for Wii Remote adapter");
-            Intent intent = new Intent();
-            PendingIntent pend_intent;
-            intent.setClass(context, USBPermService.class);
-            pend_intent = PendingIntent.getService(context, 0, intent, 0);
-            manager.requestPermission(dev, pend_intent);
-          }
+          Log.warning("Requesting permission for Wii Remote adapter");
+
+          Context context = DolphinApplication.getAppContext();
+          Intent intent = new Intent(context, USBPermService.class);
+
+          int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ?
+                  PendingIntent.FLAG_IMMUTABLE : 0;
+          PendingIntent pendingIntent = PendingIntent.getService(context, 0, intent, flags);
+
+          manager.requestPermission(dev, pendingIntent);
         }
       }
     }
-    else
-    {
-      Log.warning("Cannot request Wiimote adapter permission as EmulationActivity is null.");
-    }
   }
 
+  @Keep
   public static boolean QueryAdapter()
   {
     HashMap<String, UsbDevice> devices = manager.getDeviceList();
@@ -80,11 +83,13 @@ public class Java_WiimoteAdapter
     return false;
   }
 
+  @Keep
   public static int Input(int index)
   {
     return usb_con.bulkTransfer(usb_in[index], wiimote_payload[index], MAX_PAYLOAD, TIMEOUT);
   }
 
+  @Keep
   public static int Output(int index, byte[] buf, int size)
   {
     byte report_number = buf[0];
@@ -114,6 +119,7 @@ public class Java_WiimoteAdapter
     return write + 1;
   }
 
+  @Keep
   public static boolean OpenAdapter()
   {
     // If the adapter is already open. Don't attempt to do it again

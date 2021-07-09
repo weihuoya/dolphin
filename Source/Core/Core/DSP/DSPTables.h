@@ -1,6 +1,5 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // Additional copyrights go to Duddie (c) 2005 (duddie@walla.com)
 
@@ -85,10 +84,6 @@ struct DSPOPCTemplate
 // Opcodes
 extern const DSPOPCTemplate cw;
 
-constexpr size_t WRITEBACK_LOG_SIZE = 5;
-extern std::array<u16, WRITEBACK_LOG_SIZE> writeBackLog;
-extern std::array<int, WRITEBACK_LOG_SIZE> writeBackLogIdx;
-
 // Predefined labels
 struct pdlabel_t
 {
@@ -105,9 +100,6 @@ const char* pdregname(int val);
 const char* pdregnamelong(int val);
 
 void InitInstructionTable();
-void ApplyWriteBackLog();
-void ZeroWriteBackLog();
-void ZeroWriteBackLogPreserveAcc(u8 acc);
 
 // Used by the assembler and disassembler for info retrieval.
 const DSPOPCTemplate* FindOpInfoByOpcode(UDSPInstruction opcode);

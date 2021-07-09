@@ -1,7 +1,6 @@
-/**
+/*
  * Copyright 2013 Dolphin Emulator Project
- * Licensed under GPLv2+
- * Refer to the license.txt file included.
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 package org.dolphinemu.dolphinemu.ui;
@@ -12,6 +11,9 @@ import android.view.View;
 
 /**
  * Work around a bug with the nVidia Shield.
+ *
+ * Without this View, the emulation SurfaceView acts like it has the
+ * highest Z-value, blocking any other View, such as the menu fragments.
  */
 public final class NVidiaShieldWorkaroundView extends View
 {

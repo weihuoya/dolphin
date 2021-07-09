@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "InputCommon/ControllerEmu/ControlGroup/AnalogStick.h"
 
@@ -27,26 +26,26 @@ AnalogStick::AnalogStick(const char* const name_, const char* const ui_name_,
     : ReshapableInput(name_, ui_name_, GroupType::Stick), m_stick_gate(std::move(stick_gate))
 {
   for (auto& named_direction : named_directions)
-    controls.emplace_back(std::make_unique<Input>(Translate, named_direction));
+    AddInput(Translate, named_direction);
 
-  controls.emplace_back(std::make_unique<Input>(Translate, _trans("Modifier")));
+  AddInput(Translate, _trans("Modifier"));
 }
 
-AnalogStick::ReshapeData AnalogStick::GetReshapableState(bool adjusted)
+AnalogStick::ReshapeData AnalogStick::GetReshapableState(bool adjusted) const
 {
-  const ControlState y = controls[0]->control_ref->State() - controls[1]->control_ref->State();
-  const ControlState x = controls[3]->control_ref->State() - controls[2]->control_ref->State();
+  const ControlState y = controls[0]->GetState() - controls[1]->GetState();
+  const ControlState x = controls[3]->GetState() - controls[2]->GetState();
 
   // Return raw values. (used in UI)
   if (!adjusted)
     return {x, y};
 
-  const ControlState modifier = controls[4]->control_ref->State();
+  const ControlState modifier = controls[4]->GetState();
 
   return Reshape(x, y, modifier);
 }
 
-AnalogStick::StateData AnalogStick::GetState()
+AnalogStick::StateData AnalogStick::GetState() const
 {
   return GetReshapableState(true);
 }
@@ -56,15 +55,21 @@ ControlState AnalogStick::GetGateRadiusAtAngle(double ang) const
   return m_stick_gate->GetRadiusAtAngle(ang);
 }
 
-OctagonAnalogStick::OctagonAnalogStick(const char* name, ControlState gate_radius)
-    : OctagonAnalogStick(name, name, gate_radius)
+OctagonAnalogStick::OctagonAnalogStick(const char* name_, ControlState gate_radius)
+    : OctagonAnalogStick(name_, name_, gate_radius)
 {
 }
 
-OctagonAnalogStick::OctagonAnalogStick(const char* name, const char* ui_name,
+OctagonAnalogStick::OctagonAnalogStick(const char* name_, const char* ui_name_,
                                        ControlState gate_radius)
-    : AnalogStick(name, ui_name, std::make_unique<ControllerEmu::OctagonStickGate>(gate_radius))
+    : AnalogStick(name_, ui_name_, std::make_unique<ControllerEmu::OctagonStickGate>(gate_radius))
 {
+  AddVirtualNotchSetting(&m_virtual_notch_setting, 45);
+}
+
+ControlState OctagonAnalogStick::GetVirtualNotchSize() const
+{
+  return m_virtual_notch_setting.GetValue() * MathUtil::TAU / 360;
 }
 
 }  // namespace ControllerEmu

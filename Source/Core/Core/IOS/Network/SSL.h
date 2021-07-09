@@ -1,6 +1,5 @@
 // Copyright 2011 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -24,11 +23,7 @@
 
 namespace IOS::HLE
 {
-#define NET_SSL_MAXINSTANCES 4
-
-// TODO: remove this macro.
-#define SSLID_VALID(x)                                                                             \
-  (x >= 0 && x < NET_SSL_MAXINSTANCES && ::IOS::HLE::Device::NetSSL::_SSL[x].active)
+constexpr int NET_SSL_MAXINSTANCES = 4;
 
 enum ssl_err_t : s32
 {
@@ -78,23 +73,21 @@ struct WII_SSL
   mbedtls_x509_crt cacert;
   mbedtls_x509_crt clicert;
   mbedtls_pk_context pk;
-  int sockfd;
-  int hostfd;
+  int sockfd = -1;
+  int hostfd = -1;
   std::string hostname;
   bool active;
 };
 
-namespace Device
-{
-class NetSSL : public Device
+class NetSSLDevice : public Device
 {
 public:
-  NetSSL(Kernel& ios, const std::string& device_name);
+  NetSSLDevice(Kernel& ios, const std::string& device_name);
 
-  virtual ~NetSSL();
+  virtual ~NetSSLDevice();
 
-  IPCCommandResult IOCtl(const IOCtlRequest& request) override;
-  IPCCommandResult IOCtlV(const IOCtlVRequest& request) override;
+  std::optional<IPCReply> IOCtl(const IOCtlRequest& request) override;
+  std::optional<IPCReply> IOCtlV(const IOCtlVRequest& request) override;
 
   int GetSSLFreeID() const;
 
@@ -103,5 +96,9 @@ public:
 private:
   bool m_cert_error_shown = false;
 };
-}  // namespace Device
+
+constexpr bool IsSSLIDValid(int id)
+{
+  return (id >= 0 && id < NET_SSL_MAXINSTANCES && NetSSLDevice::_SSL[id].active);
+}
 }  // namespace IOS::HLE

@@ -1,6 +1,5 @@
 // Copyright 2011 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/FifoPlayer/FifoRecorder.h"
 
@@ -20,7 +19,7 @@ FifoRecorder::FifoRecorder() = default;
 
 void FifoRecorder::StartRecording(s32 numFrames, CallbackFunc finishedCb)
 {
-  std::lock_guard<std::recursive_mutex> lk(m_mutex);
+  std::lock_guard lk(m_mutex);
 
   m_File = std::make_unique<FifoDataFile>();
 
@@ -36,8 +35,8 @@ void FifoRecorder::StartRecording(s32 numFrames, CallbackFunc finishedCb)
   //   - Global variables suck
   //   - Multithreading with the above two sucks
   //
-  m_Ram.resize(Memory::RAM_SIZE);
-  m_ExRam.resize(Memory::EXRAM_SIZE);
+  m_Ram.resize(Memory::GetRamSize());
+  m_ExRam.resize(Memory::GetExRamSize());
 
   std::fill(m_Ram.begin(), m_Ram.end(), 0);
   std::fill(m_ExRam.begin(), m_ExRam.end(), 0);
@@ -57,7 +56,7 @@ void FifoRecorder::StartRecording(s32 numFrames, CallbackFunc finishedCb)
 
 void FifoRecorder::StopRecording()
 {
-  std::lock_guard<std::recursive_mutex> lk(m_mutex);
+  std::lock_guard lk(m_mutex);
   m_RequestedRecordingEnd = true;
 }
 
@@ -82,8 +81,8 @@ void FifoRecorder::WriteGPCommand(const u8* data, u32 size)
     // Make sure FifoPlayer's command analyzer agrees about the size of the command.
     if (analyzed_size != size)
     {
-      PanicAlert("FifoRecorder: Expected command to be %i bytes long, we were given %i bytes",
-                 analyzed_size, size);
+      PanicAlertFmt("FifoRecorder: Expected command to be {} bytes long, we were given {} bytes",
+                    analyzed_size, size);
     }
 
     // Copy data to buffer
@@ -97,7 +96,7 @@ void FifoRecorder::WriteGPCommand(const u8* data, u32 size)
     m_CurrentFrame.fifoData = m_FifoData;
 
     {
-      std::lock_guard<std::recursive_mutex> lk(m_mutex);
+      std::lock_guard lk(m_mutex);
 
       // Copy frame to file
       // The file will be responsible for freeing the memory allocated for each frame's fifoData
@@ -121,13 +120,13 @@ void FifoRecorder::UseMemory(u32 address, u32 size, MemoryUpdate::Type type, boo
   u8* newData;
   if (address & 0x10000000)
   {
-    curData = &m_ExRam[address & Memory::EXRAM_MASK];
-    newData = &Memory::m_pEXRAM[address & Memory::EXRAM_MASK];
+    curData = &m_ExRam[address & Memory::GetExRamMask()];
+    newData = &Memory::m_pEXRAM[address & Memory::GetExRamMask()];
   }
   else
   {
-    curData = &m_Ram[address & Memory::RAM_MASK];
-    newData = &Memory::m_pRAM[address & Memory::RAM_MASK];
+    curData = &m_Ram[address & Memory::GetRamMask()];
+    newData = &Memory::m_pRAM[address & Memory::GetRamMask()];
   }
 
   if (!dynamicUpdate && memcmp(curData, newData, size) != 0)
@@ -155,7 +154,7 @@ void FifoRecorder::UseMemory(u32 address, u32 size, MemoryUpdate::Type type, boo
 void FifoRecorder::EndFrame(u32 fifoStart, u32 fifoEnd)
 {
   // m_IsRecording is assumed to be true at this point, otherwise this function would not be called
-  std::lock_guard<std::recursive_mutex> lk(m_mutex);
+  std::lock_guard lk(m_mutex);
 
   m_FrameEnded = true;
 
@@ -198,7 +197,7 @@ void FifoRecorder::EndFrame(u32 fifoStart, u32 fifoEnd)
 void FifoRecorder::SetVideoMemory(const u32* bpMem, const u32* cpMem, const u32* xfMem,
                                   const u32* xfRegs, u32 xfRegsSize, const u8* texMem)
 {
-  std::lock_guard<std::recursive_mutex> lk(m_mutex);
+  std::lock_guard lk(m_mutex);
 
   if (m_File)
   {

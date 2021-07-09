@@ -1,6 +1,5 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DiscIO/Volume.h"
 
@@ -9,14 +8,20 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
+
+#include <mbedtls/sha1.h>
 
 #include "Common/CommonTypes.h"
 #include "Common/StringUtil.h"
 
+#include "Core/IOS/ES/Formats.h"
 #include "DiscIO/Blob.h"
+#include "DiscIO/DiscUtils.h"
 #include "DiscIO/Enums.h"
+#include "DiscIO/VolumeDisc.h"
 #include "DiscIO/VolumeGC.h"
 #include "DiscIO/VolumeWad.h"
 #include "DiscIO/VolumeWii.h"
@@ -26,6 +31,43 @@ namespace DiscIO
 const IOS::ES::TicketReader Volume::INVALID_TICKET{};
 const IOS::ES::TMDReader Volume::INVALID_TMD{};
 const std::vector<u8> Volume::INVALID_CERT_CHAIN{};
+
+template <typename T>
+static void AddToSyncHash(mbedtls_sha1_context* context, const T& data)
+{
+  static_assert(std::is_trivially_copyable_v<T>);
+  mbedtls_sha1_update_ret(context, reinterpret_cast<const u8*>(&data), sizeof(data));
+}
+
+void Volume::ReadAndAddToSyncHash(mbedtls_sha1_context* context, u64 offset, u64 length,
+                                  const Partition& partition) const
+{
+  std::vector<u8> buffer(length);
+  if (Read(offset, length, buffer.data(), partition))
+    mbedtls_sha1_update_ret(context, buffer.data(), buffer.size());
+}
+
+void Volume::AddTMDToSyncHash(mbedtls_sha1_context* context, const Partition& partition) const
+{
+  // We want to hash some important parts of the TMD, but nothing that changes when fakesigning.
+  // (Fakesigned WADs are very popular, and we don't want people with properly signed WADs to
+  // unnecessarily be at a disadvantage due to most netplay partners having fakesigned WADs.)
+
+  const IOS::ES::TMDReader& tmd = GetTMD(partition);
+  if (!tmd.IsValid())
+    return;
+
+  AddToSyncHash(context, tmd.GetIOSId());
+  AddToSyncHash(context, tmd.GetTitleId());
+  AddToSyncHash(context, tmd.GetTitleFlags());
+  AddToSyncHash(context, tmd.GetGroupId());
+  AddToSyncHash(context, tmd.GetRegion());
+  AddToSyncHash(context, tmd.GetTitleVersion());
+  AddToSyncHash(context, tmd.GetBootIndex());
+
+  for (const IOS::ES::Content& content : tmd.GetContents())
+    AddToSyncHash(context, content);
+}
 
 std::map<Language, std::string> Volume::ReadWiiNames(const std::vector<char16_t>& data)
 {
@@ -45,14 +87,10 @@ std::map<Language, std::string> Volume::ReadWiiNames(const std::vector<char16_t>
 
 static std::unique_ptr<VolumeDisc> CreateDisc(std::unique_ptr<BlobReader>& reader)
 {
-  // Check for Wii
-  const std::optional<u32> wii_magic = reader->ReadSwapped<u32>(0x18);
-  if (wii_magic == u32(0x5D1C9EA3))
+  if (reader->ReadSwapped<u32>(0x18) == WII_DISC_MAGIC)
     return std::make_unique<VolumeWii>(std::move(reader));
 
-  // Check for GC
-  const std::optional<u32> gc_magic = reader->ReadSwapped<u32>(0x1C);
-  if (gc_magic == u32(0xC2339F3D))
+  if (reader->ReadSwapped<u32>(0x1C) == GAMECUBE_DISC_MAGIC)
     return std::make_unique<VolumeGC>(std::move(reader));
 
   // No known magic words found

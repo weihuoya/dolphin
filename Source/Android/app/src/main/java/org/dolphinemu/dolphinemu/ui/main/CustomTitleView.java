@@ -1,13 +1,16 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.ui.main;
 
 import android.content.Context;
 import android.graphics.drawable.Drawable;
-import android.support.v17.leanback.widget.TitleViewAdapter;
 import android.util.AttributeSet;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+
+import androidx.leanback.widget.TitleViewAdapter;
 
 import org.dolphinemu.dolphinemu.R;
 
@@ -51,7 +54,7 @@ public class CustomTitleView extends LinearLayout implements TitleViewAdapter.Pr
   {
     super(context, attrs, defStyle);
     View root = LayoutInflater.from(context).inflate(R.layout.tv_title, this);
-    mTitleView = (TextView) root.findViewById(R.id.title);
+    mTitleView = root.findViewById(R.id.title);
     mBadgeView = root.findViewById(R.id.badge);
   }
 

@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // Enable define below to enable oprofile integration. For this to work,
 // it requires at least oprofile version 0.9.4, and changing the build
@@ -127,7 +126,7 @@ void JitBaseBlockCache::FinalizeBlock(JitBlock& block, bool block_link,
   {
     for (const auto& e : block.linkData)
     {
-      links_to.emplace(e.exitAddress, &block);
+      links_to[e.exitAddress].insert(&block);
     }
 
     LinkBlock(block);
@@ -270,11 +269,6 @@ void JitBaseBlockCache::ErasePhysicalRange(u32 address, u32 length)
   }
 }
 
-u32* JitBaseBlockCache::GetBlockBitSet() const
-{
-  return valid_block.m_valid_block.get();
-}
-
 void JitBaseBlockCache::WriteDestroyBlock(const JitBlock& block)
 {
 }
@@ -304,13 +298,14 @@ void JitBaseBlockCache::LinkBlockExits(JitBlock& block)
 void JitBaseBlockCache::LinkBlock(JitBlock& block)
 {
   LinkBlockExits(block);
-  auto ppp = links_to.equal_range(block.effectiveAddress);
+  const auto it = links_to.find(block.effectiveAddress);
+  if (it == links_to.end())
+    return;
 
-  for (auto iter = ppp.first; iter != ppp.second; ++iter)
+  for (JitBlock* b2 : it->second)
   {
-    JitBlock& b2 = *iter->second;
-    if (block.msrBits == b2.msrBits)
-      LinkBlockExits(b2);
+    if (block.msrBits == b2->msrBits)
+      LinkBlockExits(*b2);
   }
 }
 
@@ -323,14 +318,15 @@ void JitBaseBlockCache::UnlinkBlock(const JitBlock& block)
   }
 
   // Unlink all exits of other blocks which points to this block
-  auto ppp = links_to.equal_range(block.effectiveAddress);
-  for (auto iter = ppp.first; iter != ppp.second; ++iter)
+  const auto it = links_to.find(block.effectiveAddress);
+  if (it == links_to.end())
+    return;
+  for (JitBlock* sourceBlock : it->second)
   {
-    JitBlock& sourceBlock = *iter->second;
-    if (sourceBlock.msrBits != block.msrBits)
+    if (sourceBlock->msrBits != block.msrBits)
       continue;
 
-    for (auto& e : sourceBlock.linkData)
+    for (auto& e : sourceBlock->linkData)
     {
       if (e.exitAddress == block.effectiveAddress)
       {
@@ -351,14 +347,12 @@ void JitBaseBlockCache::DestroyBlock(JitBlock& block)
   // Delete linking addresses
   for (const auto& e : block.linkData)
   {
-    auto it = links_to.equal_range(e.exitAddress);
-    while (it.first != it.second)
-    {
-      if (it.first->second == &block)
-        it.first = links_to.erase(it.first);
-      else
-        it.first++;
-    }
+    auto it = links_to.find(e.exitAddress);
+    if (it == links_to.end())
+      continue;
+    it->second.erase(&block);
+    if (it->second.empty())
+      links_to.erase(it);
   }
 
   // Raise an signal if we are going to call this block again

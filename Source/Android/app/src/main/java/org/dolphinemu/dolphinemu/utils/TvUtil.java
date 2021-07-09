@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.utils;
 
 import android.annotation.TargetApi;
@@ -18,11 +20,12 @@ import android.media.tv.TvContract;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PersistableBundle;
-import android.support.annotation.AnyRes;
-import android.support.annotation.NonNull;
-import android.support.media.tv.Channel;
-import android.support.media.tv.TvContractCompat;
 import android.util.Log;
+
+import androidx.annotation.AnyRes;
+import androidx.annotation.NonNull;
+import androidx.tvprovider.media.tv.Channel;
+import androidx.tvprovider.media.tv.TvContractCompat;
 
 import org.dolphinemu.dolphinemu.model.GameFile;
 import org.dolphinemu.dolphinemu.model.HomeScreenChannel;
@@ -35,7 +38,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION;
-import static android.support.v4.content.FileProvider.getUriForFile;
+import static androidx.core.content.FileProvider.getUriForFile;
 
 /**
  * Assists in TV related services, e.g., home screen channels
@@ -121,11 +124,10 @@ public class TvUtil
           throws Resources.NotFoundException
   {
     Resources res = context.getResources();
-    Uri resUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE +
+    return Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE +
             "://" + res.getResourcePackageName(resId)
             + '/' + res.getResourceTypeName(resId)
             + '/' + res.getResourceEntryName(resId));
-    return resUri;
   }
 
   /**
@@ -166,7 +168,7 @@ public class TvUtil
       {
         contentUri = getUriForFile(context, getFileProvider(context), cover);
       }
-      else if ((cover = new File(game.getCoverPath())).exists())
+      else if ((cover = new File(game.getCoverPath(context))).exists())
       {
         contentUri = getUriForFile(context, getFileProvider(context), cover);
       }
@@ -253,9 +255,7 @@ public class TvUtil
    */
   public static List<HomeScreenChannel> createUniversalSubscriptions()
   {
-    //Leaving the subs local variable in case more channels are created other than platforms.
-    List<HomeScreenChannel> subs = new ArrayList<>(createPlatformSubscriptions());
-    return subs;
+    return new ArrayList<>(createPlatformSubscriptions());
   }
 
   private static List<HomeScreenChannel> createPlatformSubscriptions()
@@ -263,10 +263,12 @@ public class TvUtil
     List<HomeScreenChannel> subs = new ArrayList<>();
     for (Platform platform : Platform.values())
     {
+      // TODO: Replace the getIdString calls with getHeaderName to get localized names.
+      // This would require SyncProgramsJobService to stop using the display name as a key
       subs.add(new HomeScreenChannel(
-              platform.getHeaderName(),
-              platform.getHeaderName(),
-              AppLinkHelper.buildBrowseUri(platform.getHeaderName()).toString()));
+              platform.getIdString(),
+              platform.getIdString(),
+              AppLinkHelper.buildBrowseUri(platform)));
     }
     return subs;
   }

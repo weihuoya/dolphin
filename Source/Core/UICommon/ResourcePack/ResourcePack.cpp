@@ -1,13 +1,13 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "UICommon/ResourcePack/ResourcePack.h"
 
 #include <algorithm>
 
-#include <minizip/unzip.h>
+#include <unzip.h>
 
+#include "Common/CommonPaths.h"
 #include "Common/FileSearch.h"
 #include "Common/FileUtil.h"
 #include "Common/MinizipUtil.h"
@@ -19,7 +19,7 @@
 
 namespace ResourcePack
 {
-constexpr char TEXTURE_PATH[] = "Load/Textures/";
+constexpr char TEXTURE_PATH[] = HIRES_TEXTURES_DIR DIR_SEP;
 
 ResourcePack::ResourcePack(const std::string& path) : m_path(path)
 {

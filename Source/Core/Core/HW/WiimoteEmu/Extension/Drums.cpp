@@ -1,12 +1,11 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WiimoteEmu/Extension/Drums.h"
 
-#include <cassert>
 #include <type_traits>
 
+#include "Common/Assert.h"
 #include "Common/BitUtils.h"
 #include "Common/Common.h"
 #include "Common/CommonTypes.h"
@@ -58,8 +57,7 @@ Drums::Drums() : Extension1stParty("Drums", _trans("Drum Kit"))
   groups.emplace_back(m_pads = new ControllerEmu::Buttons(_trans("Pads")));
   for (auto& drum_pad_name : drum_pad_names)
   {
-    m_pads->controls.emplace_back(
-        new ControllerEmu::Input(ControllerEmu::Translate, drum_pad_name));
+    m_pads->AddInput(ControllerEmu::Translate, drum_pad_name);
   }
 
   m_pads->AddSetting(&m_hit_strength_setting,
@@ -75,8 +73,8 @@ Drums::Drums() : Extension1stParty("Drums", _trans("Drum Kit"))
 
   // Buttons.
   groups.emplace_back(m_buttons = new ControllerEmu::Buttons(_trans("Buttons")));
-  m_buttons->controls.emplace_back(new ControllerEmu::Input(ControllerEmu::DoNotTranslate, "-"));
-  m_buttons->controls.emplace_back(new ControllerEmu::Input(ControllerEmu::DoNotTranslate, "+"));
+  m_buttons->AddInput(ControllerEmu::DoNotTranslate, "-");
+  m_buttons->AddInput(ControllerEmu::DoNotTranslate, "+");
 }
 
 void Drums::Update()
@@ -166,17 +164,6 @@ void Drums::Update()
   Common::BitCastPtr<DataFormat>(&m_reg.controller_data) = drum_data;
 }
 
-bool Drums::IsButtonPressed() const
-{
-  u8 buttons = 0;
-  m_buttons->GetState(&buttons, drum_button_bitmasks.data());
-
-  u8 pads = 0;
-  m_pads->GetState(&pads, drum_pad_bitmasks.data());
-
-  return buttons != 0 || pads != 0;
-}
-
 void Drums::Reset()
 {
   EncryptedExtension::Reset();
@@ -211,7 +198,7 @@ ControllerEmu::ControlGroup* Drums::GetGroup(DrumsGroup group)
   case DrumsGroup::Stick:
     return m_stick;
   default:
-    assert(false);
+    ASSERT(false);
     return nullptr;
   }
 }

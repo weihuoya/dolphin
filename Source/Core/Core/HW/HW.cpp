@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/HW.h"
 
@@ -10,6 +9,7 @@
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/CoreTiming.h"
+#include "Core/HW/AddressSpace.h"
 #include "Core/HW/AudioInterface.h"
 #include "Core/HW/CPU.h"
 #include "Core/HW/DSP.h"
@@ -24,7 +24,6 @@
 #include "Core/HW/WII_IPC.h"
 #include "Core/IOS/IOS.h"
 #include "Core/State.h"
-#include "Core/WiiRoot.h"
 
 namespace HW
 {
@@ -41,7 +40,8 @@ void Init()
   SerialInterface::Init();
   ProcessorInterface::Init();
   ExpansionInterface::Init();  // Needs to be initialized before Memory
-  Memory::Init();
+  Memory::Init();              // Needs to be initialized before AddressSpace
+  AddressSpace::Init();
   DSP::Init(SConfig::GetInstance().bDSPHLE);
   DVDInterface::Init();
   GPFifo::Init();
@@ -50,8 +50,6 @@ void Init()
 
   if (SConfig::GetInstance().bWii)
   {
-    // The NAND should only be initialised once per emulation session.
-    Core::InitializeWiiRoot(Core::WantsDeterminism());
     IOS::Init();
     IOS::HLE::Init();  // Depends on Memory
   }
@@ -62,12 +60,12 @@ void Shutdown()
   // IOS should always be shut down regardless of bWii because it can be running in GC mode (MIOS).
   IOS::HLE::Shutdown();  // Depends on Memory
   IOS::Shutdown();
-  Core::ShutdownWiiRoot();
 
   SystemTimers::Shutdown();
   CPU::Shutdown();
   DVDInterface::Shutdown();
   DSP::Shutdown();
+  AddressSpace::Shutdown();
   Memory::Shutdown();
   ExpansionInterface::Shutdown();
   SerialInterface::Shutdown();
