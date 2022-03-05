@@ -1,24 +1,23 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
-#include <QSpinBox>
+#include "DolphinQt/Config/ToolTipControls/ToolTipSpinBox.h"
 
 namespace Config
 {
 template <typename T>
-struct ConfigInfo;
+class Info;
 }
 
-class GraphicsInteger : public QSpinBox
+class GraphicsInteger : public ToolTipSpinBox
 {
   Q_OBJECT
 public:
-  GraphicsInteger(int minimum, int maximum, const Config::ConfigInfo<int>& setting, int step = 1);
+  GraphicsInteger(int minimum, int maximum, const Config::Info<int>& setting, int step = 1);
   void Update(int value);
 
 private:
-  const Config::ConfigInfo<int>& m_setting;
+  const Config::Info<int>& m_setting;
 };

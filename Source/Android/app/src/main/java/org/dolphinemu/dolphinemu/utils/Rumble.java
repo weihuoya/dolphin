@@ -1,19 +1,19 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.utils;
 
 import android.content.Context;
 import android.os.Build;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
-import android.preference.PreferenceManager;
 import android.util.SparseArray;
 import android.view.InputDevice;
 
 import org.dolphinemu.dolphinemu.activities.EmulationActivity;
+import org.dolphinemu.dolphinemu.features.settings.model.AdHocStringSetting;
+import org.dolphinemu.dolphinemu.features.settings.model.BooleanSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.Settings;
-import org.dolphinemu.dolphinemu.features.settings.model.StringSetting;
 import org.dolphinemu.dolphinemu.features.settings.utils.SettingsFile;
-
-import java.util.HashMap;
 
 public class Rumble
 {
@@ -24,24 +24,22 @@ public class Rumble
   {
     clear();
 
-    if (activity.deviceHasTouchScreen() &&
-            PreferenceManager.getDefaultSharedPreferences(activity)
-                    .getBoolean("phoneRumble", true))
+    if (BooleanSetting.MAIN_PHONE_RUMBLE.getBooleanGlobal())
     {
       setPhoneVibrator(true, activity);
     }
 
     for (int i = 0; i < 8; i++)
     {
-      StringSetting deviceName =
-              (StringSetting) activity.getSettings().getSection(Settings.SECTION_BINDINGS)
-                      .getSetting(SettingsFile.KEY_EMU_RUMBLE + i);
-      if (deviceName != null && !deviceName.getValue().isEmpty())
+      String deviceName = AdHocStringSetting.getStringGlobal(Settings.FILE_DOLPHIN,
+              Settings.SECTION_BINDINGS, SettingsFile.KEY_EMU_RUMBLE + i, "");
+
+      if (!deviceName.isEmpty())
       {
         for (int id : InputDevice.getDeviceIds())
         {
           InputDevice device = InputDevice.getDevice(id);
-          if (deviceName.getValue().equals(device.getDescriptor()))
+          if (deviceName.equals(device.getDescriptor()))
           {
             Vibrator vib = device.getVibrator();
             if (vib != null && vib.hasVibrator())

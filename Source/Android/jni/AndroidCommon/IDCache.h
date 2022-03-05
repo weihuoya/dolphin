@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,14 +7,16 @@
 
 namespace IDCache
 {
-static constexpr jint JNI_VERSION = JNI_VERSION_1_6;
-
 JNIEnv* GetEnvForThread();
+
+jclass GetStringClass();
 
 jclass GetNativeLibraryClass();
 jmethodID GetDisplayAlertMsg();
 jmethodID GetDoRumble();
 jmethodID GetUpdateTouchPointer();
+jmethodID GetOnTitleChanged();
+jmethodID GetFinishEmulationActivity();
 
 jclass GetAnalyticsClass();
 jmethodID GetSendAnalyticsReport();
@@ -27,5 +28,48 @@ jmethodID GetGameFileConstructor();
 
 jclass GetGameFileCacheClass();
 jfieldID GetGameFileCachePointer();
+
+jclass GetLinkedHashMapClass();
+jmethodID GetLinkedHashMapInit();
+jmethodID GetLinkedHashMapPut();
+
+jclass GetIniFileClass();
+jfieldID GetIniFilePointer();
+jclass GetIniFileSectionClass();
+jfieldID GetIniFileSectionPointer();
+jmethodID GetIniFileSectionConstructor();
+
+jclass GetCompressCallbackClass();
+jmethodID GetCompressCallbackRun();
+
+jclass GetContentHandlerClass();
+jmethodID GetContentHandlerOpenFd();
+jmethodID GetContentHandlerDelete();
+jmethodID GetContentHandlerGetSizeAndIsDirectory();
+jmethodID GetContentHandlerGetDisplayName();
+jmethodID GetContentHandlerGetChildNames();
+jmethodID GetContentHandlerDoFileSearch();
+
+jclass GetNetworkHelperClass();
+jmethodID GetNetworkHelperGetNetworkIpAddress();
+jmethodID GetNetworkHelperGetNetworkPrefixLength();
+jmethodID GetNetworkHelperGetNetworkGateway();
+
+jmethodID GetBooleanSupplierGet();
+
+jclass GetARCheatClass();
+jfieldID GetARCheatPointer();
+jmethodID GetARCheatConstructor();
+
+jclass GetGeckoCheatClass();
+jfieldID GetGeckoCheatPointer();
+jmethodID GetGeckoCheatConstructor();
+
+jclass GetPatchCheatClass();
+jfieldID GetPatchCheatPointer();
+jmethodID GetPatchCheatConstructor();
+
+jclass GetRiivolutionPatchesClass();
+jfieldID GetRiivolutionPatchesPointer();
 
 }  // namespace IDCache

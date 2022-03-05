@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // ========================
 // See comments in Jit.cpp.
@@ -17,6 +16,8 @@
 // Settings
 // ----------
 #pragma once
+
+#include <rangeset/rangesizeset.h>
 
 #include "Common/CommonTypes.h"
 #include "Common/x64ABI.h"
@@ -56,7 +57,12 @@ public:
   // Jit!
 
   void Jit(u32 em_address) override;
-  u8* DoJit(u32 em_address, JitBlock* b, u32 nextPC);
+  void Jit(u32 em_address, bool clear_cache_and_retry_on_failure);
+  bool DoJit(u32 em_address, JitBlock* b, u32 nextPC);
+
+  // Finds a free memory region and sets the near and far code emitters to point at that region.
+  // Returns false if no free memory region can be found for either of the two.
+  bool SetEmitterStateToFreeCodeRegion();
 
   BitSet32 CallerSavedRegistersInUse() const;
   BitSet8 ComputeStaticGQRs(const PPCAnalyst::CodeBlock&) const;
@@ -89,13 +95,15 @@ public:
 
   void GenerateConstantOverflow(bool overflow);
   void GenerateConstantOverflow(s64 val);
-  void GenerateOverflow();
+  void GenerateOverflow(Gen::CCFlags cond = Gen::CCFlags::CC_NO);
   void FinalizeCarryOverflow(bool oe, bool inv = false);
   void FinalizeCarry(Gen::CCFlags cond);
   void FinalizeCarry(bool ca);
   void ComputeRC(preg_t preg, bool needs_test = true, bool needs_sext = true);
 
   void AndWithMask(Gen::X64Reg reg, u32 mask);
+  void RotateLeft(int bits, Gen::X64Reg regOp, const Gen::OpArg& arg, u8 rotate);
+
   bool CheckMergedBranch(u32 crf) const;
   void DoMergedBranch();
   void DoMergedBranchCondition();
@@ -107,14 +115,19 @@ public:
   void SetCRFieldBit(int field, int bit, Gen::X64Reg in);
   void ClearCRFieldBit(int field, int bit);
   void SetCRFieldBit(int field, int bit);
-
+  void FixGTBeforeSettingCRFieldBit(Gen::X64Reg reg);
   // Generates a branch that will check if a given bit of a CR register part
   // is set or not.
   Gen::FixupBranch JumpIfCRFieldBit(int field, int bit, bool jump_if_set = true);
-  void SetFPRFIfNeeded(Gen::X64Reg xmm);
 
+  void UpdateFPExceptionSummary(Gen::X64Reg fpscr, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
+
+  void SetFPRFIfNeeded(const Gen::OpArg& xmm, bool single);
+  void FinalizeSingleResult(Gen::X64Reg output, const Gen::OpArg& input, bool packed = true,
+                            bool duplicate = false);
+  void FinalizeDoubleResult(Gen::X64Reg output, const Gen::OpArg& input);
   void HandleNaNs(UGeckoInstruction inst, Gen::X64Reg xmm_out, Gen::X64Reg xmm_in,
-                  Gen::X64Reg clobber = Gen::XMM0);
+                  Gen::X64Reg clobber);
 
   void MultiplyImmediate(u32 imm, int a, int d, bool overflow);
 
@@ -129,13 +142,13 @@ public:
   using Instruction = void (Jit64::*)(UGeckoInstruction instCode);
   void FallBackToInterpreter(UGeckoInstruction _inst);
   void DoNothing(UGeckoInstruction _inst);
-  void HLEFunction(UGeckoInstruction _inst);
+  void HLEFunction(u32 hook_index);
 
-  void DynaRunTable4(UGeckoInstruction _inst);
-  void DynaRunTable19(UGeckoInstruction _inst);
-  void DynaRunTable31(UGeckoInstruction _inst);
-  void DynaRunTable59(UGeckoInstruction _inst);
-  void DynaRunTable63(UGeckoInstruction _inst);
+  void DynaRunTable4(UGeckoInstruction inst);
+  void DynaRunTable19(UGeckoInstruction inst);
+  void DynaRunTable31(UGeckoInstruction inst);
+  void DynaRunTable59(UGeckoInstruction inst);
+  void DynaRunTable63(UGeckoInstruction inst);
 
   void addx(UGeckoInstruction inst);
   void arithcx(UGeckoInstruction inst);
@@ -236,13 +249,14 @@ public:
   void eieio(UGeckoInstruction inst);
 
 private:
-  static void InitializeInstructionTables();
   void CompileInstruction(PPCAnalyst::CodeOp& op);
 
   bool HandleFunctionHooking(u32 address);
 
   void AllocStack();
   void FreeStack();
+
+  void ResetFreeMemoryRanges();
 
   JitBlockCache blocks{*this};
   TrampolineCache trampolines{*this};
@@ -252,9 +266,12 @@ private:
 
   Jit64AsmRoutineManager asm_routines{*this};
 
-  bool m_enable_blr_optimization;
-  bool m_cleanup_after_stackfault;
-  u8* m_stack;
+  bool m_enable_blr_optimization = false;
+  bool m_cleanup_after_stackfault = false;
+  u8* m_stack = nullptr;
+
+  HyoutaUtilities::RangeSizeSet<u8*> m_free_ranges_near;
+  HyoutaUtilities::RangeSizeSet<u8*> m_free_ranges_far;
 };
 
 void LogGeneratedX86(size_t size, const PPCAnalyst::CodeBuffer& code_buffer, const u8* normalEntry,

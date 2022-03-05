@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/Hash.h"
 
@@ -12,7 +11,11 @@
 #include "Common/Intrinsics.h"
 
 #ifdef _M_ARM_64
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
 #include <arm_acle.h>
+#endif
 #endif
 
 namespace Common
@@ -91,11 +94,11 @@ u32 HashAdler32(const u8* data, size_t len)
 
 // Stupid hash - but can't go back now :)
 // Don't use for new things. At least it's reasonably fast.
-u32 HashEctor(const u8* ptr, int length)
+u32 HashEctor(const u8* ptr, size_t length)
 {
   u32 crc = 0;
 
-  for (int i = 0; i < length; i++)
+  for (size_t i = 0; i < length; i++)
   {
     crc ^= ptr[i];
     crc = (crc << 3) | (crc >> 29);

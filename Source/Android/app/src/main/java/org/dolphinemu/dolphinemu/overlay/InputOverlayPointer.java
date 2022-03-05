@@ -1,10 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.overlay;
 
-import android.app.Activity;
-import android.content.Context;
+import android.graphics.Rect;
 import android.os.Handler;
-import android.util.DisplayMetrics;
-import android.view.Display;
 import android.view.MotionEvent;
 
 import org.dolphinemu.dolphinemu.NativeLibrary;
@@ -18,15 +17,16 @@ public class InputOverlayPointer
   public static final int DOUBLE_TAP_2 = 2;
   public static final int DOUBLE_TAP_CLASSIC_A = 3;
 
-  private final float[] axes = {0f, 0f};
+  private final float[] mAxes = {0f, 0f};
 
-  private float maxHeight;
-  private float maxWidth;
-  private float aspectAdjusted;
-  private boolean xAdjusted;
+  private float mGameCenterX;
+  private float mGameCenterY;
+  private float mGameWidthHalfInv;
+  private float mGameHeightHalfInv;
+
   private boolean doubleTap = false;
   private int doubleTapButton;
-  private int trackId = -1;
+  private int mTrackId = -1;
 
   public static ArrayList<Integer> DOUBLE_TAP_OPTIONS = new ArrayList<>();
 
@@ -38,42 +38,36 @@ public class InputOverlayPointer
     DOUBLE_TAP_OPTIONS.add(NativeLibrary.ButtonType.CLASSIC_BUTTON_A);
   }
 
-  public InputOverlayPointer(Context context, int button)
+  public InputOverlayPointer(Rect surfacePosition, int button)
   {
-    Display display = ((Activity) context).getWindowManager().getDefaultDisplay();
-    DisplayMetrics outMetrics = new DisplayMetrics();
-    display.getMetrics(outMetrics);
     doubleTapButton = button;
 
-    Integer y = outMetrics.heightPixels;
-    Integer x = outMetrics.widthPixels;
+    mGameCenterX = (surfacePosition.left + surfacePosition.right) / 2.0f;
+    mGameCenterY = (surfacePosition.top + surfacePosition.bottom) / 2.0f;
+
+    float gameWidth = surfacePosition.right - surfacePosition.left;
+    float gameHeight = surfacePosition.bottom - surfacePosition.top;
 
     // Adjusting for device's black bars.
-    Float deviceAR = (float) x / y;
-    Float gameAR = NativeLibrary.GetGameAspectRatio();
-    aspectAdjusted = gameAR / deviceAR;
+    float surfaceAR = gameWidth / gameHeight;
+    float gameAR = NativeLibrary.GetGameAspectRatio();
 
-    if (gameAR <= deviceAR) // Black bars on left/right
+    if (gameAR <= surfaceAR)
     {
-      xAdjusted = true;
-      Integer gameX = Math.round((float) y * gameAR);
-      Integer buffer = (x - gameX);
-
-      maxWidth = (float) (x - buffer) / 2;
-      maxHeight = (float) y / 2;
+      // Black bars on left/right
+      gameWidth = gameHeight * gameAR;
     }
-    else // Bars on top/bottom
+    else
     {
-      xAdjusted = false;
-      Integer gameY = Math.round((float) x / gameAR);
-      Integer buffer = (y - gameY);
-
-      maxWidth = (float) x / 2;
-      maxHeight = (float) (y - buffer) / 2;
+      // Black bars on top/bottom
+      gameHeight = gameWidth / gameAR;
     }
+
+    mGameWidthHalfInv = 1.0f / (gameWidth * 0.5f);
+    mGameHeightHalfInv = 1.0f / (gameHeight * 0.5f);
   }
 
-  public boolean onTouch(MotionEvent event)
+  public void onTouch(MotionEvent event)
   {
     int pointerIndex = event.getActionIndex();
 
@@ -81,32 +75,21 @@ public class InputOverlayPointer
     {
       case MotionEvent.ACTION_DOWN:
       case MotionEvent.ACTION_POINTER_DOWN:
-        trackId = event.getPointerId(pointerIndex);
+        mTrackId = event.getPointerId(pointerIndex);
         touchPress();
         break;
       case MotionEvent.ACTION_UP:
       case MotionEvent.ACTION_POINTER_UP:
-        if (trackId == event.getPointerId(pointerIndex))
-          trackId = -1;
+        if (mTrackId == event.getPointerId(pointerIndex))
+          mTrackId = -1;
         break;
     }
 
-    if (trackId == -1)
-      return false;
+    if (mTrackId == -1)
+      return;
 
-    int x = (int) event.getX(event.findPointerIndex(trackId));
-    int y = (int) event.getY(event.findPointerIndex(trackId));
-    if (xAdjusted)
-    {
-      axes[0] = (y - maxHeight) / maxHeight;
-      axes[1] = ((x * aspectAdjusted) - maxWidth) / maxWidth;
-    }
-    else
-    {
-      axes[0] = ((y * aspectAdjusted) - maxHeight) / maxHeight;
-      axes[1] = (x - maxWidth) / maxWidth;
-    }
-    return false;
+    mAxes[0] = (event.getY(event.findPointerIndex(mTrackId)) - mGameCenterY) * mGameHeightHalfInv;
+    mAxes[1] = (event.getX(event.findPointerIndex(mTrackId)) - mGameCenterX) * mGameWidthHalfInv;
   }
 
   private void touchPress()
@@ -128,10 +111,10 @@ public class InputOverlayPointer
   public float[] getAxisValues()
   {
     float[] iraxes = {0f, 0f, 0f, 0f};
-    iraxes[1] = axes[0];
-    iraxes[0] = axes[0];
-    iraxes[3] = axes[1];
-    iraxes[2] = axes[1];
+    iraxes[1] = mAxes[0];
+    iraxes[0] = mAxes[0];
+    iraxes[3] = mAxes[1];
+    iraxes[2] = mAxes[1];
     return iraxes;
   }
 }

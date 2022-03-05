@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <cubeb/cubeb.h>
 
@@ -9,7 +8,7 @@
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
 #include "Common/Thread.h"
-#include "Core/ConfigManager.h"
+#include "Core/Config/MainSettings.h"
 
 // ~10 ms - needs to be at least 240 for surround
 constexpr u32 BUFFER_SAMPLES = 512;
@@ -37,7 +36,7 @@ bool CubebStream::Init()
   if (!m_ctx)
     return false;
 
-  m_stereo = !SConfig::GetInstance().bDPL2Decoder;
+  m_stereo = !Config::ShouldUseDPL2Decoder();
 
   cubeb_stream_params params;
   params.rate = m_mixer->GetSampleRate();
@@ -56,8 +55,8 @@ bool CubebStream::Init()
 
   u32 minimum_latency = 0;
   if (cubeb_get_min_latency(m_ctx.get(), &params, &minimum_latency) != CUBEB_OK)
-    ERROR_LOG(AUDIO, "Error getting minimum latency");
-  INFO_LOG(AUDIO, "Minimum latency: %i frames", minimum_latency);
+    ERROR_LOG_FMT(AUDIO, "Error getting minimum latency");
+  INFO_LOG_FMT(AUDIO, "Minimum latency: {} frames", minimum_latency);
 
   return cubeb_stream_init(m_ctx.get(), &m_stream, "Dolphin Audio Output", nullptr, nullptr,
                            nullptr, &params, std::max(BUFFER_SAMPLES, minimum_latency),

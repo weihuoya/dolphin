@@ -1,8 +1,8 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "AudioCommon/Mixer.h"
+#include "AudioCommon/Enums.h"
 
 #include <algorithm>
 #include <cmath>
@@ -12,13 +12,30 @@
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
 #include "Common/Swap.h"
+#include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
+
+static u32 DPL2QualityToFrameBlockSize(AudioCommon::DPL2Quality quality)
+{
+  switch (quality)
+  {
+  case AudioCommon::DPL2Quality::Lowest:
+    return 512;
+  case AudioCommon::DPL2Quality::Low:
+    return 1024;
+  case AudioCommon::DPL2Quality::Highest:
+    return 4096;
+  default:
+    return 2048;
+  }
+}
 
 Mixer::Mixer(unsigned int BackendSampleRate)
     : m_sampleRate(BackendSampleRate), m_stretcher(BackendSampleRate),
-      m_surround_decoder(BackendSampleRate, SURROUND_BLOCK_SIZE)
+      m_surround_decoder(BackendSampleRate,
+                         DPL2QualityToFrameBlockSize(Config::Get(Config::MAIN_DPL2_QUALITY)))
 {
-  INFO_LOG(AUDIO_INTERFACE, "Mixer is initialized");
+  INFO_LOG_FMT(AUDIO_INTERFACE, "Mixer is initialized");
 }
 
 Mixer::~Mixer()
@@ -30,6 +47,8 @@ void Mixer::DoState(PointerWrap& p)
   m_dma_mixer.DoState(p);
   m_streaming_mixer.DoState(p);
   m_wiimote_speaker_mixer.DoState(p);
+  for (auto& mixer : m_gba_mixers)
+    mixer.DoState(p);
 }
 
 // Executed from sound stream thread
@@ -76,20 +95,24 @@ unsigned int Mixer::MixerFifo::Mix(short* samples, unsigned int numSamples,
   s32 lvolume = m_LVolume.load();
   s32 rvolume = m_RVolume.load();
 
+  const auto read_buffer = [this](auto index) {
+    return m_little_endian ? m_buffer[index] : Common::swap16(m_buffer[index]);
+  };
+
   // TODO: consider a higher-quality resampling algorithm.
   for (; currentSample < numSamples * 2 && ((indexW - indexR) & INDEX_MASK) > 2; currentSample += 2)
   {
     u32 indexR2 = indexR + 2;  // next sample
 
-    s16 l1 = Common::swap16(m_buffer[indexR & INDEX_MASK]);   // current
-    s16 l2 = Common::swap16(m_buffer[indexR2 & INDEX_MASK]);  // next
+    s16 l1 = read_buffer(indexR & INDEX_MASK);   // current
+    s16 l2 = read_buffer(indexR2 & INDEX_MASK);  // next
     int sampleL = ((l1 << 16) + (l2 - l1) * (u16)m_frac) >> 16;
     sampleL = (sampleL * lvolume) >> 8;
     sampleL += samples[currentSample + 1];
     samples[currentSample + 1] = std::clamp(sampleL, -32767, 32767);
 
-    s16 r1 = Common::swap16(m_buffer[(indexR + 1) & INDEX_MASK]);   // current
-    s16 r2 = Common::swap16(m_buffer[(indexR2 + 1) & INDEX_MASK]);  // next
+    s16 r1 = read_buffer((indexR + 1) & INDEX_MASK);   // current
+    s16 r2 = read_buffer((indexR2 + 1) & INDEX_MASK);  // next
     int sampleR = ((r1 << 16) + (r2 - r1) * (u16)m_frac) >> 16;
     sampleR = (sampleR * rvolume) >> 8;
     sampleR += samples[currentSample];
@@ -105,8 +128,8 @@ unsigned int Mixer::MixerFifo::Mix(short* samples, unsigned int numSamples,
 
   // Padding
   short s[2];
-  s[0] = Common::swap16(m_buffer[(indexR - 1) & INDEX_MASK]);
-  s[1] = Common::swap16(m_buffer[(indexR - 2) & INDEX_MASK]);
+  s[0] = read_buffer((indexR - 1) & INDEX_MASK);
+  s[1] = read_buffer((indexR - 2) & INDEX_MASK);
   s[0] = (s[0] * rvolume) >> 8;
   s[1] = (s[1] * lvolume) >> 8;
   for (; currentSample < numSamples * 2; currentSample += 2)
@@ -131,7 +154,7 @@ unsigned int Mixer::Mix(short* samples, unsigned int num_samples)
 
   memset(samples, 0, num_samples * 2 * sizeof(short));
 
-  if (SConfig::GetInstance().m_audio_stretch)
+  if (Config::Get(Config::MAIN_AUDIO_STRETCH))
   {
     unsigned int available_samples =
         std::min(m_dma_mixer.AvailableSamples(), m_streaming_mixer.AvailableSamples());
@@ -141,6 +164,8 @@ unsigned int Mixer::Mix(short* samples, unsigned int num_samples)
     m_dma_mixer.Mix(m_scratch_buffer.data(), available_samples, false);
     m_streaming_mixer.Mix(m_scratch_buffer.data(), available_samples, false);
     m_wiimote_speaker_mixer.Mix(m_scratch_buffer.data(), available_samples, false);
+    for (auto& mixer : m_gba_mixers)
+      mixer.Mix(m_scratch_buffer.data(), available_samples, false);
 
     if (!m_is_stretching)
     {
@@ -155,6 +180,8 @@ unsigned int Mixer::Mix(short* samples, unsigned int num_samples)
     m_dma_mixer.Mix(samples, num_samples, true);
     m_streaming_mixer.Mix(samples, num_samples, true);
     m_wiimote_speaker_mixer.Mix(samples, num_samples, true);
+    for (auto& mixer : m_gba_mixers)
+      mixer.Mix(samples, num_samples, true);
     m_is_stretching = false;
   }
 
@@ -175,7 +202,7 @@ unsigned int Mixer::MixSurround(float* samples, unsigned int num_samples)
   size_t available_frames = Mix(m_scratch_buffer.data(), static_cast<u32>(needed_frames));
   if (available_frames != needed_frames)
   {
-    ERROR_LOG(AUDIO, "Error decoding surround frames.");
+    ERROR_LOG_FMT(AUDIO, "Error decoding surround frames.");
     return 0;
   }
 
@@ -241,12 +268,17 @@ void Mixer::PushWiimoteSpeakerSamples(const short* samples, unsigned int num_sam
 
     for (unsigned int i = 0; i < num_samples; ++i)
     {
-      samples_stereo[i * 2] = Common::swap16(samples[i]);
-      samples_stereo[i * 2 + 1] = Common::swap16(samples[i]);
+      samples_stereo[i * 2] = samples[i];
+      samples_stereo[i * 2 + 1] = samples[i];
     }
 
     m_wiimote_speaker_mixer.PushSamples(samples_stereo, num_samples);
   }
+}
+
+void Mixer::PushGBASamples(int device_number, const short* samples, unsigned int num_samples)
+{
+  m_gba_mixers[device_number].PushSamples(samples, num_samples);
 }
 
 void Mixer::SetDMAInputSampleRate(unsigned int rate)
@@ -259,6 +291,11 @@ void Mixer::SetStreamInputSampleRate(unsigned int rate)
   m_streaming_mixer.SetInputSampleRate(rate);
 }
 
+void Mixer::SetGBAInputSampleRates(int device_number, unsigned int rate)
+{
+  m_gba_mixers[device_number].SetInputSampleRate(rate);
+}
+
 void Mixer::SetStreamingVolume(unsigned int lvolume, unsigned int rvolume)
 {
   m_streaming_mixer.SetVolume(lvolume, rvolume);
@@ -267,6 +304,11 @@ void Mixer::SetStreamingVolume(unsigned int lvolume, unsigned int rvolume)
 void Mixer::SetWiimoteSpeakerVolume(unsigned int lvolume, unsigned int rvolume)
 {
   m_wiimote_speaker_mixer.SetVolume(lvolume, rvolume);
+}
+
+void Mixer::SetGBAVolume(int device_number, unsigned int lvolume, unsigned int rvolume)
+{
+  m_gba_mixers[device_number].SetVolume(lvolume, rvolume);
 }
 
 void Mixer::StartLogDTKAudio(const std::string& filename)
@@ -278,17 +320,17 @@ void Mixer::StartLogDTKAudio(const std::string& filename)
     {
       m_log_dtk_audio = true;
       m_wave_writer_dtk.SetSkipSilence(false);
-      NOTICE_LOG(AUDIO, "Starting DTK Audio logging");
+      NOTICE_LOG_FMT(AUDIO, "Starting DTK Audio logging");
     }
     else
     {
       m_wave_writer_dtk.Stop();
-      NOTICE_LOG(AUDIO, "Unable to start DTK Audio logging");
+      NOTICE_LOG_FMT(AUDIO, "Unable to start DTK Audio logging");
     }
   }
   else
   {
-    WARN_LOG(AUDIO, "DTK Audio logging has already been started");
+    WARN_LOG_FMT(AUDIO, "DTK Audio logging has already been started");
   }
 }
 
@@ -298,11 +340,11 @@ void Mixer::StopLogDTKAudio()
   {
     m_log_dtk_audio = false;
     m_wave_writer_dtk.Stop();
-    NOTICE_LOG(AUDIO, "Stopping DTK Audio logging");
+    NOTICE_LOG_FMT(AUDIO, "Stopping DTK Audio logging");
   }
   else
   {
-    WARN_LOG(AUDIO, "DTK Audio logging has already been stopped");
+    WARN_LOG_FMT(AUDIO, "DTK Audio logging has already been stopped");
   }
 }
 
@@ -315,17 +357,17 @@ void Mixer::StartLogDSPAudio(const std::string& filename)
     {
       m_log_dsp_audio = true;
       m_wave_writer_dsp.SetSkipSilence(false);
-      NOTICE_LOG(AUDIO, "Starting DSP Audio logging");
+      NOTICE_LOG_FMT(AUDIO, "Starting DSP Audio logging");
     }
     else
     {
       m_wave_writer_dsp.Stop();
-      NOTICE_LOG(AUDIO, "Unable to start DSP Audio logging");
+      NOTICE_LOG_FMT(AUDIO, "Unable to start DSP Audio logging");
     }
   }
   else
   {
-    WARN_LOG(AUDIO, "DSP Audio logging has already been started");
+    WARN_LOG_FMT(AUDIO, "DSP Audio logging has already been started");
   }
 }
 
@@ -335,11 +377,11 @@ void Mixer::StopLogDSPAudio()
   {
     m_log_dsp_audio = false;
     m_wave_writer_dsp.Stop();
-    NOTICE_LOG(AUDIO, "Stopping DSP Audio logging");
+    NOTICE_LOG_FMT(AUDIO, "Stopping DSP Audio logging");
   }
   else
   {
-    WARN_LOG(AUDIO, "DSP Audio logging has already been stopped");
+    WARN_LOG_FMT(AUDIO, "DSP Audio logging has already been stopped");
   }
 }
 

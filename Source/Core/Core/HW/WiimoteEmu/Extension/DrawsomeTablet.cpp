@@ -1,12 +1,11 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WiimoteEmu/Extension/DrawsomeTablet.h"
 
 #include <array>
-#include <cassert>
 
+#include "Common/Assert.h"
 #include "Common/BitUtils.h"
 #include "Common/Common.h"
 #include "Common/CommonTypes.h"
@@ -29,8 +28,7 @@ DrawsomeTablet::DrawsomeTablet() : Extension3rdParty("Drawsome", _trans("Drawsom
 
   // Touch
   groups.emplace_back(m_touch = new ControllerEmu::Triggers(_trans("Touch")));
-  m_touch->controls.emplace_back(
-      new ControllerEmu::Input(ControllerEmu::Translate, _trans("Pressure")));
+  m_touch->AddInput(ControllerEmu::Translate, _trans("Pressure"));
 }
 
 void DrawsomeTablet::Update()
@@ -93,12 +91,6 @@ void DrawsomeTablet::Reset()
   m_reg.calibration.fill(0xff);
 }
 
-bool DrawsomeTablet::IsButtonPressed() const
-{
-  // Device has no buttons.
-  return false;
-}
-
 ControllerEmu::ControlGroup* DrawsomeTablet::GetGroup(DrawsomeTabletGroup group)
 {
   switch (group)
@@ -108,7 +100,7 @@ ControllerEmu::ControlGroup* DrawsomeTablet::GetGroup(DrawsomeTabletGroup group)
   case DrawsomeTabletGroup::Touch:
     return m_touch;
   default:
-    assert(false);
+    ASSERT(false);
     return nullptr;
   }
 }

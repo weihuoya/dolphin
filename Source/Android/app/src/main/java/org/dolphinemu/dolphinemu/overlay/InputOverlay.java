@@ -1,7 +1,6 @@
-/**
+/*
  * Copyright 2013 Dolphin Emulator Project
- * Licensed under GPLv2+
- * Refer to the license.txt file included.
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 package org.dolphinemu.dolphinemu.overlay;
@@ -24,12 +23,18 @@ import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.View.OnTouchListener;
+import android.widget.Toast;
 
 import org.dolphinemu.dolphinemu.NativeLibrary;
 import org.dolphinemu.dolphinemu.NativeLibrary.ButtonState;
 import org.dolphinemu.dolphinemu.NativeLibrary.ButtonType;
+import org.dolphinemu.dolphinemu.NativeLibrary.Hotkey;
 import org.dolphinemu.dolphinemu.R;
-import org.dolphinemu.dolphinemu.activities.EmulationActivity;
+import org.dolphinemu.dolphinemu.features.settings.model.BooleanSetting;
+import org.dolphinemu.dolphinemu.features.settings.model.IntSetting;
+import org.dolphinemu.dolphinemu.features.settings.model.Settings;
+import org.dolphinemu.dolphinemu.features.settings.utils.SettingsFile;
+import org.dolphinemu.dolphinemu.utils.IniFile;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -44,20 +49,30 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
   public static final int OVERLAY_GAMECUBE = 0;
   public static final int OVERLAY_WIIMOTE = 1;
   public static final int OVERLAY_WIIMOTE_SIDEWAYS = 2;
-  public static final int OVERLAY_WIIMOTE_NUNCHUCK = 3;
+  public static final int OVERLAY_WIIMOTE_NUNCHUK = 3;
   public static final int OVERLAY_WIIMOTE_CLASSIC = 4;
+  public static final int OVERLAY_NONE = 5;
+
+  private static final int DISABLED_GAMECUBE_CONTROLLER = 0;
+  private static final int EMULATED_GAMECUBE_CONTROLLER = 6;
+  private static final int GAMECUBE_ADAPTER = 12;
 
   private final Set<InputOverlayDrawableButton> overlayButtons = new HashSet<>();
   private final Set<InputOverlayDrawableDpad> overlayDpads = new HashSet<>();
   private final Set<InputOverlayDrawableJoystick> overlayJoysticks = new HashSet<>();
-  private InputOverlayPointer overlayPointer;
+  private final Set<InputOverlayDrawableHotkey> overlayHotkeys = new HashSet<>();
+  private InputOverlayPointer overlayPointer = null;
 
+  private Rect mSurfacePosition = null;
+
+  private boolean mIsFirstRun = true;
   private boolean mIsInEditMode = false;
   private InputOverlayDrawableButton mButtonBeingConfigured;
   private InputOverlayDrawableDpad mDpadBeingConfigured;
   private InputOverlayDrawableJoystick mJoystickBeingConfigured;
+  private InputOverlayDrawableHotkey mHotkeyBeingConfigured;
 
-  private SharedPreferences mPreferences;
+  private final SharedPreferences mPreferences;
 
   // Buttons that have special positions in Wiimote only
   private static final ArrayList<Integer> WIIMOTE_H_BUTTONS = new ArrayList<>();
@@ -112,8 +127,9 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     if (!mPreferences.getBoolean("OverlayInitV3", false))
       defaultOverlay();
 
-    // Load the controls.
-    refreshControls();
+    // Load the controls if we can. If not, EmulationActivity has to do it later.
+    if (NativeLibrary.IsGameMetadataValid())
+      refreshControls();
 
     // Set the on touch listener.
     setOnTouchListener(this);
@@ -125,25 +141,33 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     requestFocus();
   }
 
+  public void setSurfacePosition(Rect rect)
+  {
+    mSurfacePosition = rect;
+    initTouchPointer();
+  }
+
   public void initTouchPointer()
   {
-    // Refresh before starting the pointer
-    refreshControls();
+    // Check if we have all the data we need yet
+    boolean aspectRatioAvailable = NativeLibrary.IsRunningAndStarted();
+    if (!aspectRatioAvailable || mSurfacePosition == null)
+      return;
 
-    if (!EmulationActivity.isGameCubeGame())
+    // Check if there's any point in running the pointer code
+    if (!NativeLibrary.IsEmulatingWii())
+      return;
+
+    int doubleTapButton = IntSetting.MAIN_DOUBLE_TAP_BUTTON.getIntGlobal();
+
+    if (mPreferences.getInt("wiiController", OVERLAY_WIIMOTE_NUNCHUK) !=
+            InputOverlay.OVERLAY_WIIMOTE_CLASSIC &&
+            doubleTapButton == InputOverlayPointer.DOUBLE_TAP_CLASSIC_A)
     {
-      int doubleTapButton = mPreferences.getInt("doubleTapButton",
-              InputOverlayPointer.DOUBLE_TAP_OPTIONS.get(InputOverlayPointer.DOUBLE_TAP_A));
-
-      if (mPreferences.getInt("wiiController", OVERLAY_WIIMOTE_NUNCHUCK) !=
-              InputOverlay.OVERLAY_WIIMOTE_CLASSIC &&
-              doubleTapButton == InputOverlayPointer.DOUBLE_TAP_CLASSIC_A)
-      {
-        doubleTapButton = InputOverlayPointer.DOUBLE_TAP_A;
-      }
-
-      overlayPointer = new InputOverlayPointer(this.getContext(), doubleTapButton);
+      doubleTapButton = InputOverlayPointer.DOUBLE_TAP_A;
     }
+
+    overlayPointer = new InputOverlayPointer(mSurfacePosition, doubleTapButton);
   }
 
   @Override
@@ -164,6 +188,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     for (InputOverlayDrawableJoystick joystick : overlayJoysticks)
     {
       joystick.draw(canvas);
+    }
+
+    for (InputOverlayDrawableHotkey hotkey : overlayHotkeys)
+    {
+      hotkey.draw(canvas);
     }
   }
 
@@ -308,6 +337,38 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       }
     }
 
+    for (InputOverlayDrawableHotkey hotkey : overlayHotkeys)
+    {
+      // Determine the hotkey state to apply based on the MotionEvent action flag.
+      switch (event.getAction() & MotionEvent.ACTION_MASK)
+      {
+        case MotionEvent.ACTION_DOWN:
+        case MotionEvent.ACTION_POINTER_DOWN:
+          // If a pointer enters the bounds of a hotkey, press that hotkey.
+          if (hotkey.getBounds()
+                  .contains((int) event.getX(event.getActionIndex()),
+                          (int) event.getY(event.getActionIndex())))
+          {
+            hotkey.setPressedState(true);
+            hotkey.setTrackId(event.getPointerId(event.getActionIndex()));
+            pressed = true;
+          }
+          break;
+        case MotionEvent.ACTION_UP:
+        case MotionEvent.ACTION_POINTER_UP:
+          // If a pointer ends, release the button it was pressing.
+          if (hotkey.getTrackId() == event.getPointerId(event.getActionIndex()))
+          {
+            hotkey.setPressedState(false);
+            hotkey.setEnabledState(
+                    NativeLibrary.onHotkeyEvent(hotkey.getHotkeyId(), true));
+            hotkey.setTrackId(-1);
+            pressed = true;
+          }
+          break;
+      }
+    }
+
     invalidate();
 
     return true;
@@ -319,6 +380,8 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     int fingerPositionX = (int) event.getX(pointerIndex);
     int fingerPositionY = (int) event.getY(pointerIndex);
 
+    final SharedPreferences sPrefs = PreferenceManager.getDefaultSharedPreferences(getContext());
+    int controller = sPrefs.getInt("wiiController", 3);
     String orientation =
             getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT ?
                     "-Portrait" : "";
@@ -357,7 +420,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             // Persist button position by saving new place.
             saveControlPosition(mButtonBeingConfigured.getId(),
                     mButtonBeingConfigured.getBounds().left,
-                    mButtonBeingConfigured.getBounds().top, orientation);
+                    mButtonBeingConfigured.getBounds().top, controller, orientation);
             mButtonBeingConfigured = null;
           }
           break;
@@ -395,7 +458,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             // Persist button position by saving new place.
             saveControlPosition(mDpadBeingConfigured.getId(0),
                     mDpadBeingConfigured.getBounds().left, mDpadBeingConfigured.getBounds().top,
-                    orientation);
+                    controller, orientation);
             mDpadBeingConfigured = null;
           }
           break;
@@ -428,8 +491,46 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
           {
             saveControlPosition(mJoystickBeingConfigured.getId(),
                     mJoystickBeingConfigured.getBounds().left,
-                    mJoystickBeingConfigured.getBounds().top, orientation);
+                    mJoystickBeingConfigured.getBounds().top, controller, orientation);
             mJoystickBeingConfigured = null;
+          }
+          break;
+      }
+    }
+
+    for (InputOverlayDrawableHotkey hotkey : overlayHotkeys)
+    {
+      // Determine the button state to apply based on the MotionEvent action flag.
+      switch (event.getAction() & MotionEvent.ACTION_MASK)
+      {
+        case MotionEvent.ACTION_DOWN:
+        case MotionEvent.ACTION_POINTER_DOWN:
+          // If no button is being moved now, remember the currently touched button to move.
+          if (mHotkeyBeingConfigured == null &&
+                  hotkey.getBounds().contains(fingerPositionX, fingerPositionY))
+          {
+            mHotkeyBeingConfigured = hotkey;
+            mHotkeyBeingConfigured.onConfigureTouch(event);
+          }
+          break;
+        case MotionEvent.ACTION_MOVE:
+          if (mHotkeyBeingConfigured != null)
+          {
+            mHotkeyBeingConfigured.onConfigureTouch(event);
+            invalidate();
+            return true;
+          }
+          break;
+
+        case MotionEvent.ACTION_UP:
+        case MotionEvent.ACTION_POINTER_UP:
+          if (mHotkeyBeingConfigured == hotkey)
+          {
+            // Persist button position by saving new place.
+            saveControlPosition(mHotkeyBeingConfigured.getId(),
+                    mHotkeyBeingConfigured.getBounds().left,
+                    mHotkeyBeingConfigured.getBounds().top, controller, orientation);
+            mHotkeyBeingConfigured = null;
           }
           break;
       }
@@ -471,47 +572,47 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
   private void addGameCubeOverlayControls(String orientation)
   {
-    if (mPreferences.getBoolean("buttonToggleGc0", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_0.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.gcpad_a,
               R.drawable.gcpad_a_pressed, ButtonType.BUTTON_A, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleGc1", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_1.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.gcpad_b,
               R.drawable.gcpad_b_pressed, ButtonType.BUTTON_B, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleGc2", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_2.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.gcpad_x,
               R.drawable.gcpad_x_pressed, ButtonType.BUTTON_X, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleGc3", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_3.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.gcpad_y,
               R.drawable.gcpad_y_pressed, ButtonType.BUTTON_Y, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleGc4", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_4.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.gcpad_z,
               R.drawable.gcpad_z_pressed, ButtonType.BUTTON_Z, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleGc5", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_5.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.gcpad_start,
               R.drawable.gcpad_start_pressed, ButtonType.BUTTON_START, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleGc6", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_6.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.gcpad_l,
               R.drawable.gcpad_l_pressed, ButtonType.TRIGGER_L, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleGc7", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_7.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.gcpad_r,
               R.drawable.gcpad_r_pressed, ButtonType.TRIGGER_R, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleGc8", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_8.getBooleanGlobal())
     {
       overlayDpads.add(initializeOverlayDpad(getContext(), R.drawable.gcwii_dpad,
               R.drawable.gcwii_dpad_pressed_one_direction,
@@ -519,90 +620,89 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
               ButtonType.BUTTON_UP, ButtonType.BUTTON_DOWN,
               ButtonType.BUTTON_LEFT, ButtonType.BUTTON_RIGHT, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleGc9", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_9.getBooleanGlobal())
     {
       overlayJoysticks.add(initializeOverlayJoystick(getContext(), R.drawable.gcwii_joystick_range,
               R.drawable.gcwii_joystick, R.drawable.gcwii_joystick_pressed, ButtonType.STICK_MAIN,
               orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleGc10", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_10.getBooleanGlobal())
     {
       overlayJoysticks.add(initializeOverlayJoystick(getContext(), R.drawable.gcwii_joystick_range,
               R.drawable.gcpad_c, R.drawable.gcpad_c_pressed, ButtonType.STICK_C, orientation));
+    }
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_11.getBooleanGlobal())
+    {
+      overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.classic_l,
+              R.drawable.classic_l_pressed, ButtonType.TRIGGER_L_ANALOG, orientation));
+    }
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_GC_12.getBooleanGlobal())
+    {
+      overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.classic_r,
+              R.drawable.classic_r_pressed, ButtonType.TRIGGER_R_ANALOG, orientation));
     }
   }
 
   private void addWiimoteOverlayControls(String orientation)
   {
-    if (mPreferences.getBoolean("buttonToggleWii0", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_WII_0.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.wiimote_a,
               R.drawable.wiimote_a_pressed, ButtonType.WIIMOTE_BUTTON_A, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleWii1", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_WII_1.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.wiimote_b,
               R.drawable.wiimote_b_pressed, ButtonType.WIIMOTE_BUTTON_B, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleWii2", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_WII_2.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.wiimote_one,
               R.drawable.wiimote_one_pressed, ButtonType.WIIMOTE_BUTTON_1, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleWii3", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_WII_3.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.wiimote_two,
               R.drawable.wiimote_two_pressed, ButtonType.WIIMOTE_BUTTON_2, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleWii4", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_WII_4.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.wiimote_plus,
               R.drawable.wiimote_plus_pressed, ButtonType.WIIMOTE_BUTTON_PLUS, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleWii5", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_WII_5.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.wiimote_minus,
               R.drawable.wiimote_minus_pressed, ButtonType.WIIMOTE_BUTTON_MINUS, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleWii6", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_WII_6.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.wiimote_home,
               R.drawable.wiimote_home_pressed, ButtonType.WIIMOTE_BUTTON_HOME, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleWii7", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_WII_7.getBooleanGlobal())
     {
-      if (mPreferences.getInt("wiiController", 3) == 2)
-      {
-        overlayDpads.add(initializeOverlayDpad(getContext(), R.drawable.gcwii_dpad,
-                R.drawable.gcwii_dpad_pressed_one_direction,
-                R.drawable.gcwii_dpad_pressed_two_directions,
-                ButtonType.WIIMOTE_RIGHT, ButtonType.WIIMOTE_LEFT,
-                ButtonType.WIIMOTE_UP, ButtonType.WIIMOTE_DOWN, orientation));
-      }
-      else
-      {
-        overlayDpads.add(initializeOverlayDpad(getContext(), R.drawable.gcwii_dpad,
-                R.drawable.gcwii_dpad_pressed_one_direction,
-                R.drawable.gcwii_dpad_pressed_two_directions,
-                ButtonType.WIIMOTE_UP, ButtonType.WIIMOTE_DOWN,
-                ButtonType.WIIMOTE_LEFT, ButtonType.WIIMOTE_RIGHT, orientation));
-      }
+      overlayDpads.add(initializeOverlayDpad(getContext(), R.drawable.gcwii_dpad,
+              R.drawable.gcwii_dpad_pressed_one_direction,
+              R.drawable.gcwii_dpad_pressed_two_directions,
+              ButtonType.WIIMOTE_UP, ButtonType.WIIMOTE_DOWN,
+              ButtonType.WIIMOTE_LEFT, ButtonType.WIIMOTE_RIGHT, orientation));
     }
   }
 
   private void addNunchukOverlayControls(String orientation)
   {
-    if (mPreferences.getBoolean("buttonToggleWii8", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_WII_8.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.nunchuk_c,
               R.drawable.nunchuk_c_pressed, ButtonType.NUNCHUK_BUTTON_C, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleWii9", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_WII_9.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.nunchuk_z,
               R.drawable.nunchuk_z_pressed, ButtonType.NUNCHUK_BUTTON_Z, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleWii10", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_WII_10.getBooleanGlobal())
     {
       overlayJoysticks.add(initializeOverlayJoystick(getContext(), R.drawable.gcwii_joystick_range,
               R.drawable.gcwii_joystick, R.drawable.gcwii_joystick_pressed,
@@ -612,62 +712,62 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
   private void addClassicOverlayControls(String orientation)
   {
-    if (mPreferences.getBoolean("buttonToggleClassic0", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_0.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.classic_a,
               R.drawable.classic_a_pressed, ButtonType.CLASSIC_BUTTON_A, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic1", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_1.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.classic_b,
               R.drawable.classic_b_pressed, ButtonType.CLASSIC_BUTTON_B, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic2", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_2.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.classic_x,
               R.drawable.classic_x_pressed, ButtonType.CLASSIC_BUTTON_X, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic3", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_3.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.classic_y,
               R.drawable.classic_y_pressed, ButtonType.CLASSIC_BUTTON_Y, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic4", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_4.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.wiimote_plus,
               R.drawable.wiimote_plus_pressed, ButtonType.CLASSIC_BUTTON_PLUS, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic5", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_5.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.wiimote_minus,
               R.drawable.wiimote_minus_pressed, ButtonType.CLASSIC_BUTTON_MINUS, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic6", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_6.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.wiimote_home,
               R.drawable.wiimote_home_pressed, ButtonType.CLASSIC_BUTTON_HOME, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic7", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_7.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.classic_l,
               R.drawable.classic_l_pressed, ButtonType.CLASSIC_TRIGGER_L, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic8", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_8.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.classic_r,
               R.drawable.classic_r_pressed, ButtonType.CLASSIC_TRIGGER_R, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic9", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_9.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.classic_zl,
               R.drawable.classic_zl_pressed, ButtonType.CLASSIC_BUTTON_ZL, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic10", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_10.getBooleanGlobal())
     {
       overlayButtons.add(initializeOverlayButton(getContext(), R.drawable.classic_zr,
               R.drawable.classic_zr_pressed, ButtonType.CLASSIC_BUTTON_ZR, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic11", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_11.getBooleanGlobal())
     {
       overlayDpads.add(initializeOverlayDpad(getContext(), R.drawable.gcwii_dpad,
               R.drawable.gcwii_dpad_pressed_one_direction,
@@ -675,17 +775,39 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
               ButtonType.CLASSIC_DPAD_UP, ButtonType.CLASSIC_DPAD_DOWN,
               ButtonType.CLASSIC_DPAD_LEFT, ButtonType.CLASSIC_DPAD_RIGHT, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic12", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_12.getBooleanGlobal())
     {
       overlayJoysticks.add(initializeOverlayJoystick(getContext(), R.drawable.gcwii_joystick_range,
               R.drawable.gcwii_joystick, R.drawable.gcwii_joystick_pressed,
               ButtonType.CLASSIC_STICK_LEFT, orientation));
     }
-    if (mPreferences.getBoolean("buttonToggleClassic13", true))
+    if (BooleanSetting.MAIN_BUTTON_TOGGLE_CLASSIC_13.getBooleanGlobal())
     {
       overlayJoysticks.add(initializeOverlayJoystick(getContext(), R.drawable.gcwii_joystick_range,
               R.drawable.gcwii_joystick, R.drawable.gcwii_joystick_pressed,
               ButtonType.CLASSIC_STICK_RIGHT, orientation));
+    }
+  }
+
+  // Hotkeys
+  private void addHotkeys(String orientation)
+  {
+    int hotkeyId = IntSetting.MAIN_HOTKEY_MODE.getIntGlobal() + Hotkey.HOTKEY;
+    if (hotkeyId > Hotkey.HOTKEY)
+    {
+      overlayHotkeys.add(initializeOverlayHotkey(getContext(), R.drawable.hotkey_enabled,
+              R.drawable.hotkey_disabled, R.drawable.hotkey_pressed, Hotkey.HOTKEY, hotkeyId,
+              orientation));
+    }
+  }
+
+  public void refreshHotkeys()
+  {
+    if (!overlayHotkeys.isEmpty())
+    {
+      for (InputOverlayDrawableHotkey hotkey : overlayHotkeys)
+        hotkey.refreshState();
+      invalidate();
     }
   }
 
@@ -695,32 +817,71 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     overlayButtons.removeAll(overlayButtons);
     overlayDpads.removeAll(overlayDpads);
     overlayJoysticks.removeAll(overlayJoysticks);
+    overlayHotkeys.removeAll(overlayHotkeys);
 
     String orientation =
             getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT ?
                     "-Portrait" : "";
 
-    if (mPreferences.getBoolean("showInputOverlay", true))
+    if (BooleanSetting.MAIN_SHOW_INPUT_OVERLAY.getBooleanGlobal())
     {
       // Add all the enabled overlay items back to the HashSet.
-      if (EmulationActivity.isGameCubeGame() || mPreferences.getInt("wiiController", 3) == 0)
+      if (!NativeLibrary.IsEmulatingWii())
       {
-        addGameCubeOverlayControls(orientation);
-      }
-      else if (mPreferences.getInt("wiiController", 3) == 4)
-      {
-        addClassicOverlayControls(orientation);
+        IniFile dolphinIni = new IniFile(SettingsFile.getSettingsFile(Settings.FILE_DOLPHIN));
+
+        switch (dolphinIni.getInt(Settings.SECTION_INI_CORE, SettingsFile.KEY_GCPAD_PLAYER_1,
+                EMULATED_GAMECUBE_CONTROLLER))
+        {
+          case DISABLED_GAMECUBE_CONTROLLER:
+            if (mIsFirstRun)
+            {
+              Toast.makeText(getContext(), R.string.disabled_gc_overlay_notice, Toast.LENGTH_SHORT)
+                      .show();
+            }
+            break;
+
+          case EMULATED_GAMECUBE_CONTROLLER:
+            addGameCubeOverlayControls(orientation);
+            addHotkeys(orientation);
+            break;
+
+          case GAMECUBE_ADAPTER:
+            break;
+        }
       }
       else
       {
-        addWiimoteOverlayControls(orientation);
-        if (mPreferences.getInt("wiiController", 3) == 3)
+        switch (mPreferences.getInt("wiiController", 3))
         {
-          addNunchukOverlayControls(orientation);
+          case OVERLAY_GAMECUBE:
+            addGameCubeOverlayControls(orientation);
+            addHotkeys(orientation);
+            break;
+
+          case OVERLAY_WIIMOTE:
+          case OVERLAY_WIIMOTE_SIDEWAYS:
+            addWiimoteOverlayControls(orientation);
+            addHotkeys(orientation);
+            break;
+
+          case OVERLAY_WIIMOTE_NUNCHUK:
+            addWiimoteOverlayControls(orientation);
+            addNunchukOverlayControls(orientation);
+            addHotkeys(orientation);
+            break;
+
+          case OVERLAY_WIIMOTE_CLASSIC:
+            addClassicOverlayControls(orientation);
+            addHotkeys(orientation);
+            break;
+
+          case OVERLAY_NONE:
+            break;
         }
       }
     }
-
+    mIsFirstRun = false;
     invalidate();
   }
 
@@ -730,7 +891,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
 
     // Values for these come from R.array.controllersEntries
-    if (EmulationActivity.isGameCubeGame() || mPreferences.getInt("wiiController", 3) == 0)
+    if (!NativeLibrary.IsEmulatingWii() || mPreferences.getInt("wiiController", 3) == 0)
     {
       if (isLandscape)
         gcDefaultOverlay();
@@ -760,13 +921,40 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     refreshControls();
   }
 
-  private void saveControlPosition(int sharedPrefsId, int x, int y, String orientation)
+  private void saveControlPosition(int sharedPrefsId, int x, int y, int controller,
+          String orientation)
   {
     final SharedPreferences sPrefs = PreferenceManager.getDefaultSharedPreferences(getContext());
     SharedPreferences.Editor sPrefsEditor = sPrefs.edit();
-    sPrefsEditor.putFloat(sharedPrefsId + orientation + "-X", x);
-    sPrefsEditor.putFloat(sharedPrefsId + orientation + "-Y", y);
+    sPrefsEditor.putFloat(getXKey(sharedPrefsId, controller, orientation), x);
+    sPrefsEditor.putFloat(getYKey(sharedPrefsId, controller, orientation), y);
     sPrefsEditor.apply();
+  }
+
+  private static String getKey(int sharedPrefsId, int controller, String orientation, String suffix)
+  {
+    if (controller == 2 && WIIMOTE_H_BUTTONS.contains(sharedPrefsId))
+    {
+      return sharedPrefsId + "_H" + orientation + suffix;
+    }
+    else if (controller == 1 && WIIMOTE_O_BUTTONS.contains(sharedPrefsId))
+    {
+      return sharedPrefsId + "_O" + orientation + suffix;
+    }
+    else
+    {
+      return sharedPrefsId + orientation + suffix;
+    }
+  }
+
+  private static String getXKey(int sharedPrefsId, int controller, String orientation)
+  {
+    return getKey(sharedPrefsId, controller, orientation, "-X");
+  }
+
+  private static String getYKey(int sharedPrefsId, int controller, String orientation)
+  {
+    return getKey(sharedPrefsId, controller, orientation, "-Y");
   }
 
   /**
@@ -817,47 +1005,48 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
       case ButtonType.BUTTON_A:
       case ButtonType.WIIMOTE_BUTTON_B:
       case ButtonType.NUNCHUK_BUTTON_Z:
-        scale = 0.2f;
-        break;
       case ButtonType.BUTTON_X:
       case ButtonType.BUTTON_Y:
-        scale = 0.175f;
+      case ButtonType.TRIGGER_L_ANALOG:
+      case ButtonType.TRIGGER_R_ANALOG:
+        scale = 0.17f;
         break;
       case ButtonType.BUTTON_Z:
       case ButtonType.TRIGGER_L:
       case ButtonType.TRIGGER_R:
-        scale = 0.225f;
+        scale = 0.18f;
         break;
       case ButtonType.BUTTON_START:
         scale = 0.075f;
         break;
       case ButtonType.WIIMOTE_BUTTON_1:
       case ButtonType.WIIMOTE_BUTTON_2:
-        if (controller == 2)
-          scale = 0.14f;
-        else
-          scale = 0.0875f;
-        break;
       case ButtonType.WIIMOTE_BUTTON_PLUS:
       case ButtonType.WIIMOTE_BUTTON_MINUS:
+        scale = 0.0725f;
+        if (controller == 2)
+          scale = 0.123f;
+        break;
       case ButtonType.WIIMOTE_BUTTON_HOME:
       case ButtonType.CLASSIC_BUTTON_PLUS:
       case ButtonType.CLASSIC_BUTTON_MINUS:
       case ButtonType.CLASSIC_BUTTON_HOME:
-        scale = 0.0625f;
+        scale = 0.0725f;
         break;
       case ButtonType.CLASSIC_TRIGGER_L:
       case ButtonType.CLASSIC_TRIGGER_R:
+        scale = 0.22f;
+        break;
       case ButtonType.CLASSIC_BUTTON_ZL:
       case ButtonType.CLASSIC_BUTTON_ZR:
-        scale = 0.25f;
+        scale = 0.18f;
         break;
       default:
         scale = 0.125f;
         break;
     }
 
-    scale *= (sPrefs.getInt("controlScale", 50) + 50);
+    scale *= (IntSetting.MAIN_CONTROL_SCALE.getIntGlobal() + 50);
     scale /= 100;
 
     // Initialize the InputOverlayDrawableButton.
@@ -870,27 +1059,8 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     // The X and Y coordinates of the InputOverlayDrawableButton on the InputOverlay.
     // These were set in the input overlay configuration menu.
-    String xKey;
-    String yKey;
-
-    if (controller == 2 && WIIMOTE_H_BUTTONS.contains(buttonId))
-    {
-      xKey = buttonId + "_H" + orientation + "-X";
-      yKey = buttonId + "_H" + orientation + "-Y";
-    }
-    else if (controller == 1 && WIIMOTE_O_BUTTONS.contains(buttonId))
-    {
-      xKey = buttonId + "_O" + orientation + "-X";
-      yKey = buttonId + "_O" + orientation + "-Y";
-    }
-    else
-    {
-      xKey = buttonId + orientation + "-X";
-      yKey = buttonId + orientation + "-Y";
-    }
-
-    int drawableX = (int) sPrefs.getFloat(xKey, 0f);
-    int drawableY = (int) sPrefs.getFloat(yKey, 0f);
+    int drawableX = (int) sPrefs.getFloat(getXKey(buttonId, controller, orientation), 0f);
+    int drawableY = (int) sPrefs.getFloat(getYKey(buttonId, controller, orientation), 0f);
 
     int width = overlayDrawable.getWidth();
     int height = overlayDrawable.getHeight();
@@ -901,6 +1071,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     // Need to set the image's position
     overlayDrawable.setPosition(drawableX, drawableY);
+    overlayDrawable.setOpacity(IntSetting.MAIN_CONTROL_OPACITY.getIntGlobal() * 255 / 100);
 
     return overlayDrawable;
   }
@@ -954,7 +1125,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
         break;
     }
 
-    scale *= (sPrefs.getInt("controlScale", 50) + 50);
+    scale *= (IntSetting.MAIN_CONTROL_SCALE.getIntGlobal() + 50);
     scale /= 100;
 
     // Initialize the InputOverlayDrawableDpad.
@@ -973,26 +1144,8 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     // The X and Y coordinates of the InputOverlayDrawableDpad on the InputOverlay.
     // These were set in the input overlay configuration menu.
-    String xKey;
-    String yKey;
-
-    if (controller == 2 && WIIMOTE_H_BUTTONS.contains(buttonUp))
-    {
-      xKey = buttonUp + "_H" + orientation + "-X";
-      yKey = buttonUp + "_H" + orientation + "-Y";
-    }
-    else if (controller == 1 && WIIMOTE_O_BUTTONS.contains(buttonUp))
-    {
-      xKey = buttonUp + "_O" + orientation + "-X";
-      yKey = buttonUp + "_O" + orientation + "-Y";
-    }
-    else
-    {
-      xKey = buttonUp + orientation + "-X";
-      yKey = buttonUp + orientation + "-Y";
-    }
-    int drawableX = (int) sPrefs.getFloat(xKey, 0f);
-    int drawableY = (int) sPrefs.getFloat(yKey, 0f);
+    int drawableX = (int) sPrefs.getFloat(getXKey(buttonUp, controller, orientation), 0f);
+    int drawableY = (int) sPrefs.getFloat(getYKey(buttonUp, controller, orientation), 0f);
 
     int width = overlayDrawable.getWidth();
     int height = overlayDrawable.getHeight();
@@ -1003,6 +1156,7 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     // Need to set the image's position
     overlayDrawable.setPosition(drawableX, drawableY);
+    overlayDrawable.setOpacity(IntSetting.MAIN_CONTROL_OPACITY.getIntGlobal() * 255 / 100);
 
     return overlayDrawable;
   }
@@ -1025,10 +1179,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     // SharedPreference to retrieve the X and Y coordinates for the InputOverlayDrawableJoystick.
     final SharedPreferences sPrefs = PreferenceManager.getDefaultSharedPreferences(context);
+    int controller = sPrefs.getInt("wiiController", 3);
 
     // Decide scale based on user preference
     float scale = 0.275f;
-    scale *= (sPrefs.getInt("controlScale", 50) + 50);
+    scale *= (IntSetting.MAIN_CONTROL_SCALE.getIntGlobal() + 50);
     scale /= 100;
 
     // Initialize the InputOverlayDrawableJoystick.
@@ -1039,20 +1194,19 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
 
     // The X and Y coordinates of the InputOverlayDrawableButton on the InputOverlay.
     // These were set in the input overlay configuration menu.
-    int drawableX = (int) sPrefs.getFloat(joystick + orientation + "-X", 0f);
-    int drawableY = (int) sPrefs.getFloat(joystick + orientation + "-Y", 0f);
+    int drawableX = (int) sPrefs.getFloat(getXKey(joystick, controller, orientation), 0f);
+    int drawableY = (int) sPrefs.getFloat(getYKey(joystick, controller, orientation), 0f);
 
     // Decide inner scale based on joystick ID
     float innerScale;
 
-    switch (joystick)
+    if (joystick == ButtonType.STICK_C)
     {
-      case ButtonType.STICK_C:
-        innerScale = 1.833f;
-        break;
-      default:
-        innerScale = 1.375f;
-        break;
+      innerScale = 1.833f;
+    }
+    else
+    {
+      innerScale = 1.375f;
     }
 
     // Now set the bounds for the InputOverlayDrawableJoystick.
@@ -1062,13 +1216,68 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
     Rect innerRect = new Rect(0, 0, (int) (outerSize / innerScale), (int) (outerSize / innerScale));
 
     // Send the drawableId to the joystick so it can be referenced when saving control position.
-    final InputOverlayDrawableJoystick overlayDrawable
-            = new InputOverlayDrawableJoystick(res, bitmapOuter,
-            bitmapInnerDefault, bitmapInnerPressed,
-            outerRect, innerRect, joystick, sPrefs);
+    final InputOverlayDrawableJoystick overlayDrawable =
+            new InputOverlayDrawableJoystick(res, bitmapOuter, bitmapInnerDefault,
+                    bitmapInnerPressed, outerRect, innerRect, joystick);
 
     // Need to set the image's position
     overlayDrawable.setPosition(drawableX, drawableY);
+    overlayDrawable.setOpacity(IntSetting.MAIN_CONTROL_OPACITY.getIntGlobal() * 255 / 100);
+
+    return overlayDrawable;
+  }
+
+  /**
+   * Initializes an {@link InputOverlayDrawableHotkey}
+   *
+   * @param context       The current {@link Context}.
+   * @param enabledResId  The {@link Bitmap} resource ID of the enabled state.
+   * @param disabledResId The {@link Bitmap} resource ID of the disabled state.
+   * @param pressedResId  The {@link Bitmap} resource ID of the pressed state.
+   * @param hotkeyId      Identifier for which hotkey this is.
+   * @return the initialized {@link InputOverlayDrawableHotkey}
+   */
+  private static InputOverlayDrawableHotkey initializeOverlayHotkey(Context context,
+          int enabledResId, int disabledResId, int pressedResId, int buttonType, int hotkeyId,
+          String orientation)
+  {
+    final Resources res = context.getResources();
+
+    // SharedPreference to retrieve the X and Y coordinates for the InputOverlayDrawableButton.
+    final SharedPreferences sPrefs = PreferenceManager.getDefaultSharedPreferences(context);
+    int controller = sPrefs.getInt("wiiController", 3);
+
+    // Decide scale based on button ID and user preference
+    float scale = 0.0625f;
+    scale *= (IntSetting.MAIN_CONTROL_SCALE.getIntGlobal() + 50);
+    scale /= 100;
+
+    // Initialize the InputOverlayDrawableHotkey.
+    final Bitmap enabledStateBitmap =
+            resizeBitmap(context, BitmapFactory.decodeResource(res, enabledResId), scale);
+    final Bitmap disabledStateBitmap =
+            resizeBitmap(context, BitmapFactory.decodeResource(res, disabledResId), scale);
+    final Bitmap pressedStateBitmap =
+            resizeBitmap(context, BitmapFactory.decodeResource(res, pressedResId), scale);
+    InputOverlayDrawableHotkey overlayDrawable =
+            new InputOverlayDrawableHotkey(res, enabledStateBitmap, disabledStateBitmap,
+                    pressedStateBitmap, buttonType, hotkeyId);
+
+    // The X and Y coordinates of the InputOverlayDrawableHotkey on the InputOverlay.
+    // These were set in the input overlay configuration menu.
+    int drawableX = (int) sPrefs.getFloat(getXKey(buttonType, controller, orientation), 0f);
+    int drawableY = (int) sPrefs.getFloat(getYKey(buttonType, controller, orientation), 0f);
+
+    int width = overlayDrawable.getWidth();
+    int height = overlayDrawable.getHeight();
+
+    // Now set the bounds for the InputOverlayDrawableHotkey.
+    // This will dictate where on the screen (and the what the size) the InputOverlayDrawableHotkey will be.
+    overlayDrawable.setBounds(drawableX, drawableY, drawableX + width, drawableY + height);
+
+    // Need to set the image's position
+    overlayDrawable.setPosition(drawableX, drawableY);
+    overlayDrawable.setOpacity(IntSetting.MAIN_CONTROL_OPACITY.getIntGlobal() * 255 / 100);
 
     return overlayDrawable;
   }
@@ -1185,6 +1394,14 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             (((float) res.getInteger(R.integer.TRIGGER_R_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.TRIGGER_R + "-Y",
             (((float) res.getInteger(R.integer.TRIGGER_R_Y) / 1000) * maxY));
+    sPrefsEditor.putFloat(ButtonType.TRIGGER_L_ANALOG + "-X",
+            (((float) res.getInteger(R.integer.TRIGGER_L_ANALOG_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(ButtonType.TRIGGER_L_ANALOG + "-Y",
+            (((float) res.getInteger(R.integer.TRIGGER_L_ANALOG_Y) / 1000) * maxY));
+    sPrefsEditor.putFloat(ButtonType.TRIGGER_R_ANALOG + "-X",
+            (((float) res.getInteger(R.integer.TRIGGER_R_ANALOG_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(ButtonType.TRIGGER_R_ANALOG + "-Y",
+            (((float) res.getInteger(R.integer.TRIGGER_R_ANALOG_Y) / 1000) * maxY));
     sPrefsEditor.putFloat(ButtonType.BUTTON_START + "-X",
             (((float) res.getInteger(R.integer.BUTTON_START_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.BUTTON_START + "-Y",
@@ -1197,11 +1414,15 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             (((float) res.getInteger(R.integer.STICK_MAIN_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.STICK_MAIN + "-Y",
             (((float) res.getInteger(R.integer.STICK_MAIN_Y) / 1000) * maxY));
+    // Hotkey
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + "-X",
+            (((float) res.getInteger(R.integer.HOTKEY_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + "-Y",
+            (((float) res.getInteger(R.integer.HOTKEY_Y) / 1000) * maxY));
 
     // We want to commit right away, otherwise the overlay could load before this is saved.
     sPrefsEditor.commit();
   }
-
 
   private void gcPortraitDefaultOverlay()
   {
@@ -1257,6 +1478,14 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             (((float) res.getInteger(R.integer.TRIGGER_R_PORTRAIT_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.TRIGGER_R + portrait + "-Y",
             (((float) res.getInteger(R.integer.TRIGGER_R_PORTRAIT_Y) / 1000) * maxY));
+    sPrefsEditor.putFloat(ButtonType.TRIGGER_L_ANALOG + portrait + "-X",
+            (((float) res.getInteger(R.integer.TRIGGER_L_ANALOG_PORTRAIT_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(ButtonType.TRIGGER_L_ANALOG + portrait + "-Y",
+            (((float) res.getInteger(R.integer.TRIGGER_L_ANALOG_PORTRAIT_Y) / 1000) * maxY));
+    sPrefsEditor.putFloat(ButtonType.TRIGGER_R_ANALOG + portrait + "-X",
+            (((float) res.getInteger(R.integer.TRIGGER_R_ANALOG_PORTRAIT_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(ButtonType.TRIGGER_R_ANALOG + portrait + "-Y",
+            (((float) res.getInteger(R.integer.TRIGGER_R_ANALOG_PORTRAIT_Y) / 1000) * maxY));
     sPrefsEditor.putFloat(ButtonType.BUTTON_START + portrait + "-X",
             (((float) res.getInteger(R.integer.BUTTON_START_PORTRAIT_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.BUTTON_START + portrait + "-Y",
@@ -1269,6 +1498,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             (((float) res.getInteger(R.integer.STICK_MAIN_PORTRAIT_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.STICK_MAIN + portrait + "-Y",
             (((float) res.getInteger(R.integer.STICK_MAIN_PORTRAIT_Y) / 1000) * maxY));
+    // Hotkey
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + portrait + "-X",
+            (((float) res.getInteger(R.integer.HOTKEY_PORTRAIT_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + portrait + "-Y",
+            (((float) res.getInteger(R.integer.HOTKEY_PORTRAIT_Y) / 1000) * maxY));
 
     // We want to commit right away, otherwise the overlay could load before this is saved.
     sPrefsEditor.commit();
@@ -1339,6 +1573,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             (((float) res.getInteger(R.integer.NUNCHUK_STICK_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.NUNCHUK_STICK + "-Y",
             (((float) res.getInteger(R.integer.NUNCHUK_STICK_Y) / 1000) * maxY));
+    // Hotkey
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + "-X",
+            (((float) res.getInteger(R.integer.HOTKEY_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + "-Y",
+            (((float) res.getInteger(R.integer.HOTKEY_Y) / 1000) * maxY));
 
     // We want to commit right away, otherwise the overlay could load before this is saved.
     sPrefsEditor.commit();
@@ -1391,6 +1630,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             (((float) res.getInteger(R.integer.WIIMOTE_RIGHT_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.WIIMOTE_RIGHT + "-Y",
             (((float) res.getInteger(R.integer.WIIMOTE_RIGHT_Y) / 1000) * maxY));
+    // Hotkey
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + "_H-X",
+            (((float) res.getInteger(R.integer.HOTKEY_H_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + "_H-Y",
+            (((float) res.getInteger(R.integer.HOTKEY_H_Y) / 1000) * maxY));
 
     // We want to commit right away, otherwise the overlay could load before this is saved.
     sPrefsEditor.commit();
@@ -1467,6 +1711,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             (((float) res.getInteger(R.integer.WIIMOTE_RIGHT_PORTRAIT_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.WIIMOTE_RIGHT + portrait + "-Y",
             (((float) res.getInteger(R.integer.WIIMOTE_RIGHT_PORTRAIT_Y) / 1000) * maxY));
+    // Hotkey
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + portrait + "-X",
+            (((float) res.getInteger(R.integer.HOTKEY_PORTRAIT_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + portrait + "-Y",
+            (((float) res.getInteger(R.integer.HOTKEY_PORTRAIT_Y) / 1000) * maxY));
 
     // We want to commit right away, otherwise the overlay could load before this is saved.
     sPrefsEditor.commit();
@@ -1514,6 +1763,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             (((float) res.getInteger(R.integer.WIIMOTE_O_UP_PORTRAIT_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.WIIMOTE_UP + "_O" + portrait + "-Y",
             (((float) res.getInteger(R.integer.WIIMOTE_O_UP_PORTRAIT_Y) / 1000) * maxY));
+    // Hotkey
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + "_H" + portrait + "-X",
+            (((float) res.getInteger(R.integer.HOTKEY_H_PORTRAIT_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + "_H" + portrait + "-Y",
+            (((float) res.getInteger(R.integer.HOTKEY_H_PORTRAIT_Y) / 1000) * maxY));
 
     // We want to commit right away, otherwise the overlay could load before this is saved.
     sPrefsEditor.commit();
@@ -1596,6 +1850,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             (((float) res.getInteger(R.integer.CLASSIC_TRIGGER_R_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.CLASSIC_TRIGGER_R + "-Y",
             (((float) res.getInteger(R.integer.CLASSIC_TRIGGER_R_Y) / 1000) * maxY));
+    // Hotkey
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + "-X",
+            (((float) res.getInteger(R.integer.HOTKEY_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + "-Y",
+            (((float) res.getInteger(R.integer.HOTKEY_Y) / 1000) * maxY));
 
     // We want to commit right away, otherwise the overlay could load before this is saved.
     sPrefsEditor.commit();
@@ -1679,6 +1938,11 @@ public final class InputOverlay extends SurfaceView implements OnTouchListener
             (((float) res.getInteger(R.integer.CLASSIC_TRIGGER_R_PORTRAIT_X) / 1000) * maxX));
     sPrefsEditor.putFloat(ButtonType.CLASSIC_TRIGGER_R + portrait + "-Y",
             (((float) res.getInteger(R.integer.CLASSIC_TRIGGER_R_PORTRAIT_Y) / 1000) * maxY));
+    // Hotkey
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + portrait + "-X",
+            (((float) res.getInteger(R.integer.HOTKEY_PORTRAIT_X) / 1000) * maxX));
+    sPrefsEditor.putFloat(Hotkey.HOTKEY + portrait + "-Y",
+            (((float) res.getInteger(R.integer.HOTKEY_PORTRAIT_Y) / 1000) * maxY));
 
     // We want to commit right away, otherwise the overlay could load before this is saved.
     sPrefsEditor.commit();

@@ -1,8 +1,6 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <cinttypes>
 #include <memory>
 
 #include "Common/CommonTypes.h"
@@ -29,7 +27,7 @@ bool CBoot::BootNANDTitle(const u64 title_id)
   if (ticket.IsValid())
     console_type = ticket.GetConsoleType();
   else
-    ERROR_LOG(BOOT, "No ticket was found for %016" PRIx64, title_id);
+    ERROR_LOG_FMT(BOOT, "No ticket was found for {:016x}", title_id);
   SetupWiiMemory(console_type);
   return es->LaunchTitle(title_id);
 }
@@ -38,7 +36,7 @@ bool CBoot::Boot_WiiWAD(const DiscIO::VolumeWAD& wad)
 {
   if (!WiiUtils::InstallWAD(*IOS::HLE::GetIOS(), wad, WiiUtils::InstallType::Temporary))
   {
-    PanicAlertT("Cannot boot this WAD because it could not be installed to the NAND.");
+    PanicAlertFmtT("Cannot boot this WAD because it could not be installed to the NAND.");
     return false;
   }
   return BootNANDTitle(wad.GetTMD().GetTitleId());

@@ -1,6 +1,5 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,9 +7,11 @@
 #include <memory>
 
 #include "Common/CommonTypes.h"
+#include "Common/Matrix.h"
 #include "Core/HW/WiimoteCommon/WiimoteConstants.h"
 #include "Core/HW/WiimoteCommon/WiimoteHid.h"
 #include "Core/HW/WiimoteCommon/WiimoteReport.h"
+#include "InputCommon/ControllerEmu/ControllerEmu.h"
 
 namespace WiimoteCommon
 {
@@ -20,12 +21,6 @@ class DataReportManipulator
 {
 public:
   virtual ~DataReportManipulator() = default;
-
-  // Accel data handled as if there were always 10 bits of precision.
-  struct AccelData
-  {
-    u16 x, y, z;
-  };
 
   using CoreData = ButtonData;
 
@@ -54,7 +49,7 @@ public:
 
   virtual u32 GetDataSize() const = 0;
 
-  u8* data_ptr;
+  u8* data_ptr = nullptr;
 };
 
 std::unique_ptr<DataReportManipulator> MakeDataReportManipulator(InputReportID rpt_id,
@@ -66,7 +61,6 @@ public:
   explicit DataReportBuilder(InputReportID rpt_id);
 
   using CoreData = ButtonData;
-  using AccelData = DataReportManipulator::AccelData;
 
   void SetMode(InputReportID rpt_id);
   InputReportID GetMode() const;
@@ -99,12 +93,11 @@ public:
 
   u32 GetDataSize() const;
 
+  // The largest report is 0x3d (21 extension bytes).
+  static constexpr int MAX_DATA_SIZE = 21;
+
 private:
-  static constexpr int HEADER_SIZE = 2;
-
-  static constexpr int MAX_DATA_SIZE = MAX_PAYLOAD - 2;
-
-  TypedHIDInputData<std::array<u8, MAX_DATA_SIZE>> m_data;
+  TypedInputData<std::array<u8, MAX_DATA_SIZE>> m_data;
 
   std::unique_ptr<DataReportManipulator> m_manip;
 };

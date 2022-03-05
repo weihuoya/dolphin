@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoCommon/VertexLoader_Normal.h"
 
@@ -15,7 +14,7 @@
 #include "VideoCommon/VertexLoaderUtils.h"
 
 // warning: mapping buffer should be disabled to use this
-#define LOG_NORM()  // PRIM_LOG("norm: %f %f %f, ", ((float*)g_vertex_manager_write_ptr)[-3],
+#define LOG_NORM()  // PRIM_LOG("norm: {} {} {}, ", ((float*)g_vertex_manager_write_ptr)[-3],
                     // ((float*)g_vertex_manager_write_ptr)[-2],
                     // ((float*)g_vertex_manager_write_ptr)[-1]);
 
@@ -230,12 +229,15 @@ constexpr Types InitializeTable()
 constexpr Types s_table = InitializeTable();
 }  // Anonymous namespace
 
-u32 VertexLoader_Normal::GetSize(u64 type, u32 format, u32 elements, u32 index3)
+u32 VertexLoader_Normal::GetSize(VertexComponentFormat type, ComponentFormat format,
+                                 NormalComponentCount elements, u32 index3)
 {
-  return s_table[type][index3][elements][format].gc_size;
+  return s_table[u32(type)][index3][u32(elements)][u32(format)].gc_size;
 }
 
-TPipelineFunction VertexLoader_Normal::GetFunction(u64 type, u32 format, u32 elements, u32 index3)
+TPipelineFunction VertexLoader_Normal::GetFunction(VertexComponentFormat type,
+                                                   ComponentFormat format,
+                                                   NormalComponentCount elements, u32 index3)
 {
-  return s_table[type][index3][elements][format].function;
+  return s_table[u32(type)][index3][u32(elements)][u32(format)].function;
 }

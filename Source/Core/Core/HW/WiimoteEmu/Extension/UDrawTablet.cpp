@@ -1,12 +1,11 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WiimoteEmu/Extension/UDrawTablet.h"
 
 #include <array>
-#include <cassert>
 
+#include "Common/Assert.h"
 #include "Common/BitUtils.h"
 #include "Common/Common.h"
 #include "Common/CommonTypes.h"
@@ -37,8 +36,7 @@ UDrawTablet::UDrawTablet() : Extension3rdParty("uDraw", _trans("uDraw GameTablet
   groups.emplace_back(m_buttons = new ControllerEmu::Buttons(_trans("Buttons")));
   for (auto& button_name : udraw_tablet_button_names)
   {
-    m_buttons->controls.emplace_back(
-        new ControllerEmu::Input(ControllerEmu::Translate, button_name));
+    m_buttons->AddInput(ControllerEmu::Translate, button_name);
   }
 
   // Stylus
@@ -47,8 +45,7 @@ UDrawTablet::UDrawTablet() : Extension3rdParty("uDraw", _trans("uDraw GameTablet
 
   // Touch
   groups.emplace_back(m_touch = new ControllerEmu::Triggers(_trans("Touch")));
-  m_touch->controls.emplace_back(
-      new ControllerEmu::Input(ControllerEmu::Translate, _trans("Pressure")));
+  m_touch->AddInput(ControllerEmu::Translate, _trans("Pressure"));
 }
 
 void UDrawTablet::Update()
@@ -121,13 +118,6 @@ void UDrawTablet::Reset()
   m_reg.calibration.fill(0xff);
 }
 
-bool UDrawTablet::IsButtonPressed() const
-{
-  u8 buttons = 0;
-  m_buttons->GetState(&buttons, udraw_tablet_button_bitmasks.data());
-  return buttons != 0;
-}
-
 ControllerEmu::ControlGroup* UDrawTablet::GetGroup(UDrawTabletGroup group)
 {
   switch (group)
@@ -139,7 +129,7 @@ ControllerEmu::ControlGroup* UDrawTablet::GetGroup(UDrawTabletGroup group)
   case UDrawTabletGroup::Touch:
     return m_touch;
   default:
-    assert(false);
+    ASSERT(false);
     return nullptr;
   }
 }

@@ -1,6 +1,5 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -52,7 +51,6 @@ public:
   Guitar();
 
   void Update() override;
-  bool IsButtonPressed() const override;
   void Reset() override;
 
   ControllerEmu::ControlGroup* GetGroup(GuitarGroup group);

@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -15,6 +14,9 @@ class QMouseEvent;
 class QResizeEvent;
 class QShowEvent;
 
+struct CodeViewBranch;
+class BranchDisplayDelegate;
+
 class CodeViewWidget : public QTableWidget
 {
   Q_OBJECT
@@ -22,10 +24,12 @@ public:
   enum class SetAddressUpdate
   {
     WithUpdate,
-    WithoutUpdate
+    WithoutUpdate,
+    WithDetailedUpdate
   };
 
   explicit CodeViewWidget();
+  ~CodeViewWidget() override;
 
   u32 GetAddress() const;
   u32 GetContextAddress() const;
@@ -38,11 +42,14 @@ public:
   void ToggleBreakpoint();
   void AddBreakpoint();
 
+  u32 AddressForRow(int row) const;
+
 signals:
   void RequestPPCComparison(u32 addr);
   void ShowMemory(u32 address);
   void SymbolsChanged();
   void BreakpointsChanged();
+  void UpdateCodeWidget();
 
 private:
   enum class ReplaceWith
@@ -79,8 +86,14 @@ private:
   void OnReplaceInstruction();
   void OnRestoreInstruction();
 
+  void CalculateBranchIndentation();
+
   bool m_updating = false;
 
   u32 m_address = 0;
   u32 m_context_address = 0;
+
+  std::vector<CodeViewBranch> m_branches;
+
+  friend class BranchDisplayDelegate;
 };

@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -20,7 +19,8 @@ constexpr size_t NUM_COMMAND_BUFFERS = 2;
 enum STAGING_BUFFER_TYPE
 {
   STAGING_BUFFER_TYPE_UPLOAD,
-  STAGING_BUFFER_TYPE_READBACK
+  STAGING_BUFFER_TYPE_READBACK,
+  STAGING_BUFFER_TYPE_NONE
 };
 
 // Descriptor set layouts

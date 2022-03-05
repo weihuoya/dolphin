@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -103,6 +102,14 @@ public:
   // vkGetImageMemoryRequirements
   std::optional<u32> GetMemoryType(u32 bits, VkMemoryPropertyFlags properties, bool strict,
                                    bool* is_coherent = nullptr);
+
+  void GetImageMemoryRequirements(VkImage image, VkMemoryRequirements* mem_reqs, bool* dedicated);
+  void GetBufferMemoryRequirements(VkBuffer buffer, VkMemoryRequirements* mem_reqs, bool* dedicated);
+
+  VkResult Allocate(const VkImageCreateInfo* create_info, VkImage* out_image, VkDeviceMemory* out_memory);
+  VkResult Allocate(const VkBufferCreateInfo* create_info, VkBuffer* out_buffer,
+                    VkDeviceMemory* out_memory, STAGING_BUFFER_TYPE type = STAGING_BUFFER_TYPE_NONE,
+                    bool* out_coherent = nullptr);
 
   // Finds a memory type for upload or readback buffers.
   u32 GetUploadMemoryType(u32 bits, bool* is_coherent = nullptr);

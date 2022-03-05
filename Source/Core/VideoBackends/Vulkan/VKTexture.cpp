@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
 #include <cstddef>
@@ -14,21 +13,30 @@
 
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 #include "VideoBackends/Vulkan/ObjectCache.h"
-#include "VideoBackends/Vulkan/Renderer.h"
 #include "VideoBackends/Vulkan/StagingBuffer.h"
 #include "VideoBackends/Vulkan/StateTracker.h"
-#include "VideoBackends/Vulkan/StreamBuffer.h"
+#include "VideoBackends/Vulkan/VKRenderer.h"
+#include "VideoBackends/Vulkan/VKStreamBuffer.h"
 #include "VideoBackends/Vulkan/VKTexture.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
 
 namespace Vulkan
 {
 VKTexture::VKTexture(const TextureConfig& tex_config, VkDeviceMemory device_memory, VkImage image,
-                     VkImageLayout layout /* = VK_IMAGE_LAYOUT_UNDEFINED */,
+                     std::string_view name, VkImageLayout layout /* = VK_IMAGE_LAYOUT_UNDEFINED */,
                      ComputeImageLayout compute_layout /* = ComputeImageLayout::Undefined */)
     : AbstractTexture(tex_config), m_device_memory(device_memory), m_image(image), m_layout(layout),
-      m_compute_layout(compute_layout)
+      m_compute_layout(compute_layout), m_name(name)
 {
+  if (!m_name.empty())
+  {
+    VkDebugUtilsObjectNameInfoEXT name_info = {};
+    name_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+    name_info.objectType = VK_OBJECT_TYPE_IMAGE;
+    name_info.objectHandle = reinterpret_cast<uint64_t>(image);
+    name_info.pObjectName = m_name.c_str();
+    vkSetDebugUtilsObjectNameEXT(g_vulkan_context->GetDevice(), &name_info);
+  }
 }
 
 VKTexture::~VKTexture()
@@ -44,7 +52,7 @@ VKTexture::~VKTexture()
   }
 }
 
-std::unique_ptr<VKTexture> VKTexture::Create(const TextureConfig& tex_config)
+std::unique_ptr<VKTexture> VKTexture::Create(const TextureConfig& tex_config, std::string_view name)
 {
   // Determine image usage, we need to flag as an attachment if it can be used as a rendertarget.
   VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
@@ -73,45 +81,17 @@ std::unique_ptr<VKTexture> VKTexture::Create(const TextureConfig& tex_config)
                                   nullptr,
                                   VK_IMAGE_LAYOUT_UNDEFINED};
 
-  VkImage image = VK_NULL_HANDLE;
-  VkResult res = vkCreateImage(g_vulkan_context->GetDevice(), &image_info, nullptr, &image);
-  if (res != VK_SUCCESS)
-  {
-    LOG_VULKAN_ERROR(res, "vkCreateImage failed: ");
-    return nullptr;
-  }
-
-  // Allocate memory to back this texture, we want device local memory in this case
-  VkMemoryRequirements memory_requirements;
-  vkGetImageMemoryRequirements(g_vulkan_context->GetDevice(), image, &memory_requirements);
-
-  VkMemoryAllocateInfo memory_info = {
-      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, memory_requirements.size,
-      g_vulkan_context
-          ->GetMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                          false)
-          .value_or(0)};
-
+  VkImage image;
   VkDeviceMemory device_memory;
-  res = vkAllocateMemory(g_vulkan_context->GetDevice(), &memory_info, nullptr, &device_memory);
+  VkResult res = g_vulkan_context->Allocate(&image_info, &image, &device_memory);
   if (res != VK_SUCCESS)
   {
-    LOG_VULKAN_ERROR(res, "vkAllocateMemory failed: ");
-    vkDestroyImage(g_vulkan_context->GetDevice(), image, nullptr);
     return nullptr;
   }
 
-  res = vkBindImageMemory(g_vulkan_context->GetDevice(), image, device_memory, 0);
-  if (res != VK_SUCCESS)
-  {
-    LOG_VULKAN_ERROR(res, "vkBindImageMemory failed: ");
-    vkDestroyImage(g_vulkan_context->GetDevice(), image, nullptr);
-    vkFreeMemory(g_vulkan_context->GetDevice(), device_memory, nullptr);
-    return nullptr;
-  }
-
-  std::unique_ptr<VKTexture> texture = std::make_unique<VKTexture>(
-      tex_config, device_memory, image, VK_IMAGE_LAYOUT_UNDEFINED, ComputeImageLayout::Undefined);
+  std::unique_ptr<VKTexture> texture =
+      std::make_unique<VKTexture>(tex_config, device_memory, image, name, VK_IMAGE_LAYOUT_UNDEFINED,
+                                  ComputeImageLayout::Undefined);
   if (!texture->CreateView(VK_IMAGE_VIEW_TYPE_2D_ARRAY))
     return nullptr;
 
@@ -122,7 +102,7 @@ std::unique_ptr<VKTexture> VKTexture::CreateAdopted(const TextureConfig& tex_con
                                                     VkImageViewType view_type, VkImageLayout layout)
 {
   std::unique_ptr<VKTexture> texture = std::make_unique<VKTexture>(
-      tex_config, nullptr, image, layout, ComputeImageLayout::Undefined);
+      tex_config, VkDeviceMemory(VK_NULL_HANDLE), image, "", layout, ComputeImageLayout::Undefined);
   if (!texture->CreateView(view_type))
     return nullptr;
 
@@ -217,7 +197,7 @@ VkFormat VKTexture::GetVkFormatForHostTextureFormat(AbstractTextureFormat format
     return VK_FORMAT_UNDEFINED;
 
   default:
-    PanicAlert("Unhandled texture format.");
+    PanicAlertFmt("Unhandled texture format.");
     return VK_FORMAT_R8G8B8A8_UNORM;
   }
 }
@@ -369,12 +349,13 @@ void VKTexture::Load(u32 level, u32 width, u32 height, u32 row_length, const u8*
     if (!stream_buffer->ReserveMemory(upload_size, upload_alignment))
     {
       // Execute the command buffer first.
-      WARN_LOG(VIDEO, "Executing command list while waiting for space in texture upload buffer");
+      WARN_LOG_FMT(VIDEO,
+                   "Executing command list while waiting for space in texture upload buffer");
       Renderer::GetInstance()->ExecuteCommandBuffer(false);
 
       // Try allocating again. This may cause a fence wait.
       if (!stream_buffer->ReserveMemory(upload_size, upload_alignment))
-        PanicAlert("Failed to allocate space in texture upload buffer");
+        PanicAlertFmt("Failed to allocate space in texture upload buffer");
     }
     // Copy to the streaming buffer.
     upload_buffer = stream_buffer->GetBuffer();
@@ -389,7 +370,7 @@ void VKTexture::Load(u32 level, u32 width, u32 height, u32 row_length, const u8*
                                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
     if (!temp_buffer || !temp_buffer->Map())
     {
-      PanicAlert("Failed to allocate staging texture for large texture upload.");
+      PanicAlertFmt("Failed to allocate staging texture for large texture upload.");
       return;
     }
 

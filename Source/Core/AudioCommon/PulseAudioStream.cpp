@@ -1,14 +1,15 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <cstring>
 
 #include "AudioCommon/PulseAudioStream.h"
+
+#include "Common/Assert.h"
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
 #include "Common/Thread.h"
-#include "Core/ConfigManager.h"
+#include "Core/Config/MainSettings.h"
 
 namespace
 {
@@ -19,10 +20,10 @@ PulseAudio::PulseAudio() = default;
 
 bool PulseAudio::Init()
 {
-  m_stereo = !SConfig::GetInstance().bDPL2Decoder;
+  m_stereo = !Config::ShouldUseDPL2Decoder();
   m_channels = m_stereo ? 2 : 6;  // will tell PA we use a Stereo or 5.0 channel setup
 
-  NOTICE_LOG(AUDIO, "PulseAudio backend using %d channels", m_channels);
+  NOTICE_LOG_FMT(AUDIO, "PulseAudio backend using {} channels", m_channels);
 
   m_run_thread.Set();
   m_thread = std::thread(&PulseAudio::SoundLoop, this);
@@ -47,7 +48,7 @@ void PulseAudio::SoundLoop()
       m_pa_error = pa_mainloop_iterate(m_pa_ml, 1, nullptr);
 
     if (m_pa_error < 0)
-      ERROR_LOG(AUDIO, "PulseAudio error: %s", pa_strerror(m_pa_error));
+      ERROR_LOG_FMT(AUDIO, "PulseAudio error: {}", pa_strerror(m_pa_error));
 
     PulseShutdown();
   }
@@ -73,7 +74,7 @@ bool PulseAudio::PulseInit()
 
   if (m_pa_connected == 2 || m_pa_error < 0)
   {
-    ERROR_LOG(AUDIO, "PulseAudio failed to initialize: %s", pa_strerror(m_pa_error));
+    ERROR_LOG_FMT(AUDIO, "PulseAudio failed to initialize: {}", pa_strerror(m_pa_error));
     return false;
   }
 
@@ -104,7 +105,7 @@ bool PulseAudio::PulseInit()
   }
   ss.channels = m_channels;
   ss.rate = m_mixer->GetSampleRate();
-  assert(pa_sample_spec_valid(&ss));
+  ASSERT(pa_sample_spec_valid(&ss));
   m_pa_s = pa_stream_new(m_pa_ctx, "Playback", &ss, channel_map_p);
   pa_stream_set_write_callback(m_pa_s, WriteCallback, this);
   pa_stream_set_underflow_callback(m_pa_s, UnderflowCallback, this);
@@ -123,11 +124,11 @@ bool PulseAudio::PulseInit()
   m_pa_error = pa_stream_connect_playback(m_pa_s, nullptr, &m_pa_ba, flags, nullptr, nullptr);
   if (m_pa_error < 0)
   {
-    ERROR_LOG(AUDIO, "PulseAudio failed to initialize: %s", pa_strerror(m_pa_error));
+    ERROR_LOG_FMT(AUDIO, "PulseAudio failed to initialize: {}", pa_strerror(m_pa_error));
     return false;
   }
 
-  INFO_LOG(AUDIO, "Pulse successfully initialized");
+  INFO_LOG_FMT(AUDIO, "Pulse successfully initialized");
   return true;
 }
 
@@ -161,7 +162,7 @@ void PulseAudio::UnderflowCallback(pa_stream* s)
   pa_operation* op = pa_stream_set_buffer_attr(s, &m_pa_ba, nullptr, nullptr);
   pa_operation_unref(op);
 
-  WARN_LOG(AUDIO, "pulseaudio underflow, new latency: %d bytes", m_pa_ba.tlength);
+  WARN_LOG_FMT(AUDIO, "pulseaudio underflow, new latency: {} bytes", m_pa_ba.tlength);
 }
 
 void PulseAudio::WriteCallback(pa_stream* s, size_t length)
@@ -190,7 +191,7 @@ void PulseAudio::WriteCallback(pa_stream* s, size_t length)
     }
     else
     {
-      ERROR_LOG(AUDIO, "Unsupported number of PA channels requested: %d", (int)m_channels);
+      ERROR_LOG_FMT(AUDIO, "Unsupported number of PA channels requested: {}", m_channels);
       return;
     }
   }

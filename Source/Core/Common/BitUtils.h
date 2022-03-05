@@ -1,13 +1,19 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <array>
 #include <climits>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <type_traits>
+
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
 
 namespace Common
 {
@@ -240,6 +246,53 @@ inline auto BitCastPtr(PtrType* ptr) noexcept -> BitCastPtrType<T, PtrType>
   return BitCastPtrType<T, PtrType>{ptr};
 }
 
+// Similar to BitCastPtr, but specifically for aliasing structs to arrays.
+template <typename ArrayType, typename T,
+          typename Container = std::array<ArrayType, sizeof(T) / sizeof(ArrayType)>>
+inline auto BitCastToArray(const T& obj) noexcept -> Container
+{
+  static_assert(sizeof(T) % sizeof(ArrayType) == 0,
+                "Size of array type must be a factor of size of source type.");
+  static_assert(std::is_trivially_copyable<T>(),
+                "BitCastToArray source type must be trivially copyable.");
+  static_assert(std::is_trivially_copyable<Container>(),
+                "BitCastToArray array type must be trivially copyable.");
+
+  Container result;
+  std::memcpy(result.data(), &obj, sizeof(T));
+  return result;
+}
+
+template <typename ArrayType, typename T,
+          typename Container = std::array<ArrayType, sizeof(T) / sizeof(ArrayType)>>
+inline void BitCastFromArray(const Container& array, T& obj) noexcept
+{
+  static_assert(sizeof(T) % sizeof(ArrayType) == 0,
+                "Size of array type must be a factor of size of destination type.");
+  static_assert(std::is_trivially_copyable<Container>(),
+                "BitCastFromArray array type must be trivially copyable.");
+  static_assert(std::is_trivially_copyable<T>(),
+                "BitCastFromArray destination type must be trivially copyable.");
+
+  std::memcpy(&obj, array.data(), sizeof(T));
+}
+
+template <typename ArrayType, typename T,
+          typename Container = std::array<ArrayType, sizeof(T) / sizeof(ArrayType)>>
+inline auto BitCastFromArray(const Container& array) noexcept -> T
+{
+  static_assert(sizeof(T) % sizeof(ArrayType) == 0,
+                "Size of array type must be a factor of size of destination type.");
+  static_assert(std::is_trivially_copyable<Container>(),
+                "BitCastFromArray array type must be trivially copyable.");
+  static_assert(std::is_trivially_copyable<T>(),
+                "BitCastFromArray destination type must be trivially copyable.");
+
+  T obj;
+  std::memcpy(&obj, array.data(), sizeof(T));
+  return obj;
+}
+
 template <typename T>
 void SetBit(T& value, size_t bit_number, bool bit_value)
 {
@@ -249,6 +302,124 @@ void SetBit(T& value, size_t bit_number, bool bit_value)
     value |= (T{1} << bit_number);
   else
     value &= ~(T{1} << bit_number);
+}
+
+template <size_t bit_number, typename T>
+void SetBit(T& value, bool bit_value)
+{
+  SetBit(value, bit_number, bit_value);
+}
+
+template <typename T>
+class FlagBit
+{
+public:
+  FlagBit(std::underlying_type_t<T>& bits, T bit) : m_bits(bits), m_bit(bit) {}
+  explicit operator bool() const
+  {
+    return (m_bits & static_cast<std::underlying_type_t<T>>(m_bit)) != 0;
+  }
+  FlagBit& operator=(const bool rhs)
+  {
+    if (rhs)
+      m_bits |= static_cast<std::underlying_type_t<T>>(m_bit);
+    else
+      m_bits &= ~static_cast<std::underlying_type_t<T>>(m_bit);
+    return *this;
+  }
+
+private:
+  std::underlying_type_t<T>& m_bits;
+  T m_bit;
+};
+
+template <typename T>
+class Flags
+{
+public:
+  constexpr Flags() = default;
+  constexpr Flags(std::initializer_list<T> bits)
+  {
+    for (auto bit : bits)
+    {
+      m_hex |= static_cast<std::underlying_type_t<T>>(bit);
+    }
+  }
+  FlagBit<T> operator[](T bit) { return FlagBit(m_hex, bit); }
+
+  std::underlying_type_t<T> m_hex = 0;
+};
+
+// Left-shift a value and set new LSBs to that of the supplied LSB.
+// Converts a value from a N-bit range to an (N+X)-bit range. e.g. 0x101 -> 0x10111
+template <typename T>
+T ExpandValue(T value, size_t left_shift_amount)
+{
+  static_assert(std::is_unsigned<T>(), "ExpandValue is only sane on unsigned types.");
+
+  return (value << left_shift_amount) |
+         (T(-ExtractBit<0>(value)) >> (BitSize<T>() - left_shift_amount));
+}
+
+template <typename T>
+constexpr int CountLeadingZerosConst(T value)
+{
+  int result = sizeof(T) * 8;
+  while (value)
+  {
+    result--;
+    value >>= 1;
+  }
+  return result;
+}
+
+constexpr int CountLeadingZeros(uint64_t value)
+{
+#if defined(__GNUC__)
+  return value ? __builtin_clzll(value) : 64;
+#elif defined(_MSC_VER)
+  if (std::is_constant_evaluated())
+  {
+    return CountLeadingZerosConst(value);
+  }
+  else
+  {
+    unsigned long index = 0;
+    return _BitScanReverse64(&index, value) ? 63 - index : 64;
+  }
+#else
+  return CountLeadingZerosConst(value);
+#endif
+}
+
+constexpr int CountLeadingZeros(uint32_t value)
+{
+#if defined(__GNUC__)
+  return value ? __builtin_clz(value) : 32;
+#elif defined(_MSC_VER)
+  if (std::is_constant_evaluated())
+  {
+    return CountLeadingZerosConst(value);
+  }
+  else
+  {
+    unsigned long index = 0;
+    return _BitScanReverse(&index, value) ? 31 - index : 32;
+  }
+#else
+  return CountLeadingZerosConst(value);
+#endif
+}
+
+#undef CONSTEXPR_FROM_INTRINSIC
+
+template <typename T>
+constexpr T LargestPowerOf2Divisor(T value)
+{
+  static_assert(std::is_unsigned<T>(),
+                "LargestPowerOf2Divisor only makes sense for unsigned types.");
+
+  return value & -static_cast<std::make_signed_t<T>>(value);
 }
 
 }  // namespace Common

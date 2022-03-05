@@ -1,25 +1,37 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.fragments;
 
 import android.net.Uri;
 import android.os.Bundle;
-import android.support.annotation.NonNull;
-import android.support.v4.content.FileProvider;
 import android.view.View;
 import android.widget.TextView;
 
-import org.dolphinemu.dolphinemu.R;
+import androidx.annotation.NonNull;
+import androidx.core.content.FileProvider;
 
 import com.nononsenseapps.filepicker.FilePickerFragment;
 
+import org.dolphinemu.dolphinemu.R;
+
 import java.io.File;
-import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Set;
 
 public class CustomFilePickerFragment extends FilePickerFragment
 {
-  private static final Set<String> extensions = new HashSet<>(Arrays.asList(
-          "gcm", "tgc", "iso", "ciso", "gcz", "wbfs", "wad", "dol", "elf", "dff"));
+  public static final String KEY_EXTENSIONS = "KEY_EXTENSIONS";
+
+  private HashSet<String> mExtensions;
+
+  public void setExtensions(HashSet<String> extensions)
+  {
+    Bundle b = getArguments();
+    if (b == null)
+      b = new Bundle();
+
+    b.putSerializable(KEY_EXTENSIONS, extensions);
+    setArguments(b);
+  }
 
   @NonNull
   @Override
@@ -34,6 +46,8 @@ public class CustomFilePickerFragment extends FilePickerFragment
   @Override public void onActivityCreated(Bundle savedInstanceState)
   {
     super.onActivityCreated(savedInstanceState);
+
+    mExtensions = (HashSet<String>) getArguments().getSerializable(KEY_EXTENSIONS);
 
     if (mode == MODE_DIR)
     {
@@ -54,7 +68,7 @@ public class CustomFilePickerFragment extends FilePickerFragment
 
     return (showHiddenItems || !file.isHidden()) &&
             (file.isDirectory() ||
-                    extensions.contains(fileExtension(file.getName()).toLowerCase()));
+                    mExtensions.contains(fileExtension(file.getName()).toLowerCase()));
   }
 
   @Override

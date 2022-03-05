@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -9,11 +8,11 @@
 
 #include "Common/Lazy.h"
 #include "Core/NetPlayClient.h"
+#include "DolphinQt/GameList/GameListModel.h"
 #include "VideoCommon/OnScreenDisplay.h"
 
 class ChunkedProgressDialog;
 class MD5Dialog;
-class GameListModel;
 class PadMappingDialog;
 class QCheckBox;
 class QComboBox;
@@ -31,7 +30,7 @@ class NetPlayDialog : public QDialog, public NetPlay::NetPlayUI
 {
   Q_OBJECT
 public:
-  explicit NetPlayDialog(QWidget* parent = nullptr);
+  explicit NetPlayDialog(const GameListModel& game_list_model, QWidget* parent = nullptr);
   ~NetPlayDialog();
 
   void show(std::string nickname, bool use_traversal);
@@ -45,7 +44,9 @@ public:
   void Update() override;
   void AppendChat(const std::string& msg) override;
 
-  void OnMsgChangeGame(const std::string& filename) override;
+  void OnMsgChangeGame(const NetPlay::SyncIdentifier& sync_identifier,
+                       const std::string& netplay_name) override;
+  void OnMsgChangeGBARom(int pad, const NetPlay::GBAConfig& config) override;
   void OnMsgStartGame() override;
   void OnMsgStopGame() override;
   void OnMsgPowerButton() override;
@@ -65,13 +66,16 @@ public:
   void OnIndexRefreshFailed(const std::string error) override;
 
   bool IsRecording() override;
-  std::string FindGame(const std::string& game) override;
-  std::shared_ptr<const UICommon::GameFile> FindGameFile(const std::string& game) override;
+  std::shared_ptr<const UICommon::GameFile>
+  FindGameFile(const NetPlay::SyncIdentifier& sync_identifier,
+               NetPlay::SyncIdentifierComparison* found = nullptr) override;
+  std::string FindGBARomPath(const std::array<u8, 20>& hash, std::string_view title,
+                             int device_number) override;
 
   void LoadSettings();
   void SaveSettings();
 
-  void ShowMD5Dialog(const std::string& file_identifier) override;
+  void ShowMD5Dialog(const std::string& title) override;
   void SetMD5Progress(int pid, int progress) override;
   void SetMD5Result(int pid, const std::string& result) override;
   void AbortMD5() override;
@@ -98,8 +102,6 @@ private:
   void UpdateGUI();
   void GameStatusChanged(bool running);
   void SetOptionsEnabled(bool enabled);
-
-  void SetGame(const QString& game_path);
 
   void SendMessage(const std::string& message);
 
@@ -128,7 +130,7 @@ private:
   QPushButton* m_start_button;
   QLabel* m_buffer_label;
   QSpinBox* m_buffer_size_box;
-  QAction* m_save_sd_action;
+  QAction* m_write_save_data_action;
   QAction* m_load_wii_action;
   QAction* m_sync_save_data_action;
   QAction* m_sync_codes_action;
@@ -139,6 +141,7 @@ private:
   QAction* m_golf_mode_action;
   QAction* m_golf_mode_overlay_action;
   QAction* m_fixed_delay_action;
+  QAction* m_hide_remote_gbas_action;
   QPushButton* m_quit_button;
   QSplitter* m_splitter;
   QActionGroup* m_network_mode_group;
@@ -147,10 +150,11 @@ private:
   MD5Dialog* m_md5_dialog;
   ChunkedProgressDialog* m_chunked_progress_dialog;
   PadMappingDialog* m_pad_mapping;
-  std::string m_current_game;
+  NetPlay::SyncIdentifier m_current_game_identifier;
+  std::string m_current_game_name;
   Common::Lazy<std::string> m_external_ip_address;
   std::string m_nickname;
-  GameListModel* m_game_list_model = nullptr;
+  const GameListModel& m_game_list_model;
   bool m_use_traversal = false;
   bool m_is_copy_button_retry = false;
   bool m_got_stop_request = true;

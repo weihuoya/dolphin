@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoCommon/TextureConverterShaderGen.h"
 
@@ -19,7 +18,7 @@ TCShaderUid GetShaderUid(EFBCopyFormat dst_format, bool is_depth_copy, bool is_i
 
   UidData* const uid_data = out.GetUidData();
   uid_data->dst_format = dst_format;
-  uid_data->efb_has_alpha = bpmem.zcontrol.pixel_format == PEControl::RGBA6_Z24;
+  uid_data->efb_has_alpha = bpmem.zcontrol.pixel_format == PixelFormat::RGBA6_Z24;
   uid_data->is_depth_copy = is_depth_copy;
   uid_data->is_intensity = is_intensity;
   uid_data->scale_by_half = scale_by_half;
@@ -32,23 +31,23 @@ static void WriteHeader(APIType api_type, ShaderCode& out)
 {
   if (api_type == APIType::D3D)
   {
-    out.Write("cbuffer PSBlock : register(b0) {\n"
+    out.Write("cbuffer PSBlock : register(b0) {{\n"
               "  float2 src_offset, src_size;\n"
               "  float3 filter_coefficients;\n"
               "  float gamma_rcp;\n"
               "  float2 clamp_tb;\n"
               "  float pixel_height;\n"
-              "};\n\n");
+              "}};\n\n");
   }
   else if (api_type == APIType::OpenGL || api_type == APIType::Vulkan)
   {
-    out.Write("UBO_BINDING(std140, 1) uniform PSBlock {\n"
+    out.Write("UBO_BINDING(std140, 1) uniform PSBlock {{\n"
               "  float2 src_offset, src_size;\n"
               "  float3 filter_coefficients;\n"
               "  float gamma_rcp;\n"
               "  float2 clamp_tb;\n"
               "  float pixel_height;\n"
-              "};\n");
+              "}};\n");
   }
 }
 
@@ -60,15 +59,15 @@ ShaderCode GenerateVertexShader(APIType api_type)
   if (api_type == APIType::D3D)
   {
     out.Write("void main(in uint id : SV_VertexID, out float3 v_tex0 : TEXCOORD0,\n"
-              "          out float4 opos : SV_Position) {\n");
+              "          out float4 opos : SV_Position) {{\n");
   }
   else if (api_type == APIType::OpenGL || api_type == APIType::Vulkan)
   {
     if (g_ActiveConfig.backend_info.bSupportsGeometryShaders)
     {
-      out.Write("VARYING_LOCATION(0) out VertexData {\n");
-      out.Write("  float3 v_tex0;\n");
-      out.Write("};\n");
+      out.Write("VARYING_LOCATION(0) out VertexData {{\n"
+                "  float3 v_tex0;\n"
+                "}};\n");
     }
     else
     {
@@ -76,7 +75,7 @@ ShaderCode GenerateVertexShader(APIType api_type)
     }
     out.Write("#define id gl_VertexID\n"
               "#define opos gl_Position\n"
-              "void main() {\n");
+              "void main() {{\n");
   }
   out.Write("  v_tex0 = float3(float((id << 1) & 2), float(id & 2), 0.0f);\n");
   out.Write(
@@ -87,7 +86,7 @@ ShaderCode GenerateVertexShader(APIType api_type)
   if (api_type == APIType::Vulkan)
     out.Write("  opos.y = -opos.y;\n");
 
-  out.Write("}\n");
+  out.Write("}}\n");
 
   return out;
 }
@@ -103,33 +102,33 @@ ShaderCode GeneratePixelShader(APIType api_type, const UidData* uid_data)
   {
     out.Write("Texture2DArray tex0 : register(t0);\n"
               "SamplerState samp0 : register(s0);\n"
-              "float4 SampleEFB(float3 uv, float y_offset) {\n"
+              "float4 SampleEFB(float3 uv, float y_offset) {{\n"
               "  return tex0.Sample(samp0, float3(uv.x, clamp(uv.y + (y_offset * pixel_height), "
-              "clamp_tb.x, clamp_tb.y), %s));\n"
-              "}\n\n",
+              "clamp_tb.x, clamp_tb.y), {}));\n"
+              "}}\n\n",
               mono_depth ? "0.0" : "uv.z");
-    out.Write("void main(in float3 v_tex0 : TEXCOORD0, out float4 ocol0 : SV_Target)\n{\n");
+    out.Write("void main(in float3 v_tex0 : TEXCOORD0, out float4 ocol0 : SV_Target)\n{{\n");
   }
   else if (api_type == APIType::OpenGL || api_type == APIType::Vulkan)
   {
     out.Write("SAMPLER_BINDING(0) uniform sampler2DArray samp0;\n");
-    out.Write("float4 SampleEFB(float3 uv, float y_offset) {\n"
+    out.Write("float4 SampleEFB(float3 uv, float y_offset) {{\n"
               "  return texture(samp0, float3(uv.x, clamp(uv.y + (y_offset * pixel_height), "
-              "clamp_tb.x, clamp_tb.y), %s));\n"
-              "}\n",
+              "clamp_tb.x, clamp_tb.y), {}));\n"
+              "}}\n",
               mono_depth ? "0.0" : "uv.z");
     if (g_ActiveConfig.backend_info.bSupportsGeometryShaders)
     {
-      out.Write("VARYING_LOCATION(0) in VertexData {\n");
-      out.Write("  float3 v_tex0;\n");
-      out.Write("};\n");
+      out.Write("VARYING_LOCATION(0) in VertexData {{\n"
+                "  float3 v_tex0;\n"
+                "}};\n");
     }
     else
     {
       out.Write("VARYING_LOCATION(0) in vec3 v_tex0;\n");
     }
     out.Write("FRAGMENT_OUTPUT_LOCATION(0) out vec4 ocol0;"
-              "void main()\n{\n");
+              "void main()\n{{\n");
   }
 
   // The copy filter applies to both color and depth copies. This has been verified on hardware.
@@ -209,7 +208,8 @@ ShaderCode GeneratePixelShader(APIType api_type, const UidData* uid_data)
       break;
 
     default:
-      ERROR_LOG(VIDEO, "Unknown copy zbuf format: 0x%X", static_cast<int>(uid_data->dst_format));
+      ERROR_LOG_FMT(VIDEO, "Unknown copy zbuf format: {:#X}",
+                    static_cast<int>(uid_data->dst_format));
       out.Write("  ocol0 = float4(texcol.bgr, 0.0);\n");
       break;
     }
@@ -234,13 +234,13 @@ ShaderCode GeneratePixelShader(APIType api_type, const UidData* uid_data)
       // TODO - verify these coefficients
       out.Write("  const float3 coefficients = float3(0.257, 0.504, 0.098);\n"
                 "  float intensity = dot(texcol.rgb, coefficients) + 16.0 / 255.0;\n"
-                "  ocol0 = float4(intensity, intensity, intensity, %s);\n",
+                "  ocol0 = float4(intensity, intensity, intensity, {});\n",
                 has_alpha ? "texcol.a" : "intensity");
       break;
 
     default:
-      ERROR_LOG(VIDEO, "Unknown copy intensity format: 0x%X",
-                static_cast<int>(uid_data->dst_format));
+      ERROR_LOG_FMT(VIDEO, "Unknown copy intensity format: {:#X}",
+                    static_cast<int>(uid_data->dst_format));
       out.Write("  ocol0 = texcol;\n");
       break;
     }
@@ -315,13 +315,14 @@ ShaderCode GeneratePixelShader(APIType api_type, const UidData* uid_data)
       break;
 
     default:
-      ERROR_LOG(VIDEO, "Unknown copy color format: 0x%X", static_cast<int>(uid_data->dst_format));
+      ERROR_LOG_FMT(VIDEO, "Unknown copy color format: {:#X}",
+                    static_cast<int>(uid_data->dst_format));
       out.Write("  ocol0 = texcol;\n");
       break;
     }
   }
 
-  out.Write("}\n");
+  out.Write("}}\n");
 
   return out;
 }

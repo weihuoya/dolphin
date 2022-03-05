@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -16,26 +15,27 @@ namespace Config
 
 // SYSCONF.IPL
 
-extern const ConfigInfo<bool> SYSCONF_SCREENSAVER;
-extern const ConfigInfo<u32> SYSCONF_LANGUAGE;
-extern const ConfigInfo<u32> SYSCONF_COUNTRY;
-extern const ConfigInfo<bool> SYSCONF_WIDESCREEN;
-extern const ConfigInfo<bool> SYSCONF_PROGRESSIVE_SCAN;
-extern const ConfigInfo<bool> SYSCONF_PAL60;
+extern const Info<bool> SYSCONF_SCREENSAVER;
+extern const Info<u32> SYSCONF_LANGUAGE;
+extern const Info<u32> SYSCONF_COUNTRY;
+extern const Info<bool> SYSCONF_WIDESCREEN;
+extern const Info<bool> SYSCONF_PROGRESSIVE_SCAN;
+extern const Info<bool> SYSCONF_PAL60;
+extern const Info<u32> SYSCONF_SOUND_MODE;
 
 // SYSCONF.BT
 
-extern const ConfigInfo<u32> SYSCONF_SENSOR_BAR_POSITION;
-extern const ConfigInfo<u32> SYSCONF_SENSOR_BAR_SENSITIVITY;
-extern const ConfigInfo<u32> SYSCONF_SPEAKER_VOLUME;
-extern const ConfigInfo<bool> SYSCONF_WIIMOTE_MOTOR;
+extern const Info<u32> SYSCONF_SENSOR_BAR_POSITION;
+extern const Info<u32> SYSCONF_SENSOR_BAR_SENSITIVITY;
+extern const Info<u32> SYSCONF_SPEAKER_VOLUME;
+extern const Info<bool> SYSCONF_WIIMOTE_MOTOR;
 
 struct SYSCONFSetting
 {
-  std::variant<ConfigInfo<u32>, ConfigInfo<bool>> config_info;
+  std::variant<const Info<u32>*, const Info<bool>*> config_info;
   SysConf::Entry::Type type;
 };
 
-extern const std::array<SYSCONFSetting, 10> SYSCONF_SETTINGS;
+extern const std::array<SYSCONFSetting, 11> SYSCONF_SETTINGS;
 
 }  // namespace Config

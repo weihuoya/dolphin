@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -36,6 +35,14 @@ public:
   static std::unique_ptr<Platform> CreateX11Platform();
 #endif
 
+#ifdef __linux__
+  static std::unique_ptr<Platform> CreateFBDevPlatform();
+#endif
+
+#ifdef _WIN32
+  static std::unique_ptr<Platform> CreateWin32Platform();
+#endif
+
 protected:
   void UpdateRunningFlag();
 
@@ -43,6 +50,6 @@ protected:
   Common::Flag m_shutdown_requested{false};
   Common::Flag m_tried_graceful_shutdown{false};
 
-  bool m_window_focus = true;
+  bool m_window_focus = true;  // Should be made atomic if actually implemented
   bool m_window_fullscreen = false;
 };

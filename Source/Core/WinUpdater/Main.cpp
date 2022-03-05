@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <windows.h>
 #include <ShlObj.h>
@@ -10,52 +9,13 @@
 #include <string>
 #include <vector>
 
+#include "Common/CommonFuncs.h"
 #include "Common/StringUtil.h"
 
 #include "UpdaterCommon/UI.h"
 #include "UpdaterCommon/UpdaterCommon.h"
 
-namespace
-{
-std::vector<std::string> CommandLineToUtf8Argv(PCWSTR command_line)
-{
-  int nargs;
-  LPWSTR* tokenized = CommandLineToArgvW(command_line, &nargs);
-  if (!tokenized)
-    return {};
-
-  std::vector<std::string> argv(nargs);
-  for (int i = 0; i < nargs; ++i)
-  {
-    argv[i] = UTF16ToUTF8(tokenized[i]);
-  }
-
-  LocalFree(tokenized);
-  return argv;
-}
-
-std::optional<std::wstring> GetModuleName(HINSTANCE hInstance)
-{
-  std::wstring name;
-  DWORD max_size = 50;  // Start with space for 50 characters and grow if needed
-  name.resize(max_size);
-
-  DWORD size;
-  while ((size = GetModuleFileNameW(hInstance, name.data(), max_size)) == max_size &&
-         GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-  {
-    max_size *= 2;
-    name.resize(max_size);
-  }
-
-  if (size == 0)
-  {
-    return {};
-  }
-  name.resize(size);
-  return name;
-}
-};  // namespace
+// Refer to docs/autoupdate_overview.md for a detailed overview of the autoupdate process
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
 {

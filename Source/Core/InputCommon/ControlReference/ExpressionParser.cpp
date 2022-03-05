@@ -1,25 +1,77 @@
 // Copyright 2013 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <cassert>
+#include "InputCommon/ControlReference/ExpressionParser.h"
+
+#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <regex>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "Common/Assert.h"
 #include "Common/Common.h"
 #include "Common/StringUtil.h"
 
-#include "InputCommon/ControlReference/ExpressionParser.h"
 #include "InputCommon/ControlReference/FunctionExpression.h"
 
 namespace ciface::ExpressionParser
 {
 using namespace ciface::Core;
+
+class ControlExpression;
+
+class HotkeySuppressions
+{
+public:
+  using Modifiers = std::vector<std::unique_ptr<ControlExpression>>;
+
+  struct InvokingDeleter
+  {
+    template <typename T>
+    void operator()(T* func)
+    {
+      (*func)();
+    }
+  };
+
+  using Suppressor = std::unique_ptr<std::function<void()>, InvokingDeleter>;
+
+  bool IsSuppressed(Device::Input* input) const
+  {
+    // Input is suppressed if it exists in the map at all.
+    return m_suppressions.lower_bound({input, nullptr}) !=
+           m_suppressions.lower_bound({input + 1, nullptr});
+  }
+
+  bool IsSuppressedIgnoringModifiers(Device::Input* input, const Modifiers& ignore_modifiers) const;
+
+  // Suppresses each input + modifier pair.
+  // The returned object removes the suppression on destruction.
+  Suppressor MakeSuppressor(const Modifiers* modifiers,
+                            const std::unique_ptr<ControlExpression>* final_input);
+
+private:
+  using Suppression = std::pair<Device::Input*, Device::Input*>;
+  using SuppressionLevel = u16;
+
+  void RemoveSuppression(Device::Input* modifier, Device::Input* final_input)
+  {
+    auto it = m_suppressions.find({final_input, modifier});
+    if (it != m_suppressions.end() && (--it->second) == 0)
+      m_suppressions.erase(it);
+  }
+
+  // Holds counts of suppressions for each input/modifier pair.
+  std::map<Suppression, SuppressionLevel> m_suppressions;
+};
+
+static HotkeySuppressions s_hotkey_suppressions;
 
 Token::Token(TokenType type_) : type(type_)
 {
@@ -112,6 +164,8 @@ Token Lexer::NextToken()
     return Token(TOK_LPAREN);
   case ')':
     return Token(TOK_RPAREN);
+  case '@':
+    return Token(TOK_HOTKEY);
   case '&':
     return Token(TOK_AND);
   case '|':
@@ -192,13 +246,18 @@ ParseStatus Lexer::Tokenize(std::vector<Token>& tokens)
 class ControlExpression : public Expression
 {
 public:
-  // Keep a shared_ptr to the device so the control pointer doesn't become invalid.
-  std::shared_ptr<Device> m_device;
+  explicit ControlExpression(ControlQualifier qualifier) : m_qualifier(qualifier) {}
 
-  explicit ControlExpression(ControlQualifier qualifier_) : qualifier(qualifier_) {}
   ControlState GetValue() const override
   {
-    if (!input)
+    if (s_hotkey_suppressions.IsSuppressed(m_input))
+      return 0;
+    return GetValueIgnoringSuppression();
+  }
+
+  ControlState GetValueIgnoringSuppression() const
+  {
+    if (!m_input)
       return 0.0;
 
     // Note: Inputs may return negative values in situations where opposing directions are
@@ -207,26 +266,68 @@ public:
     // FYI: Clamping values greater than 1.0 is purposely not done to support unbounded values in
     // the future. (e.g. raw accelerometer/gyro data)
 
-    return std::max(0.0, input->GetState());
+    return std::max(0.0, m_input->GetState());
   }
   void SetValue(ControlState value) override
   {
-    if (output)
-      output->SetState(value);
+    if (m_output)
+      m_output->SetState(value);
   }
-  int CountNumControls() const override { return (input || output) ? 1 : 0; }
+  int CountNumControls() const override { return (m_input || m_output) ? 1 : 0; }
   void UpdateReferences(ControlEnvironment& env) override
   {
-    m_device = env.FindDevice(qualifier);
-    input = env.FindInput(qualifier);
-    output = env.FindOutput(qualifier);
+    m_device = env.FindDevice(m_qualifier);
+    m_input = env.FindInput(m_qualifier);
+    m_output = env.FindOutput(m_qualifier);
   }
 
+  Device::Input* GetInput() const { return m_input; };
+
 private:
-  ControlQualifier qualifier;
-  Device::Input* input = nullptr;
-  Device::Output* output = nullptr;
+  // Keep a shared_ptr to the device so the control pointer doesn't become invalid.
+  std::shared_ptr<Device> m_device;
+  ControlQualifier m_qualifier;
+  Device::Input* m_input = nullptr;
+  Device::Output* m_output = nullptr;
 };
+
+bool HotkeySuppressions::IsSuppressedIgnoringModifiers(Device::Input* input,
+                                                       const Modifiers& ignore_modifiers) const
+{
+  // Input is suppressed if it exists in the map with a modifier that we aren't ignoring.
+  auto it = m_suppressions.lower_bound({input, nullptr});
+  auto it_end = m_suppressions.lower_bound({input + 1, nullptr});
+
+  // We need to ignore L_Ctrl R_Ctrl when supplied Ctrl and vice-versa.
+  const auto is_same_modifier = [](Device::Input* i1, Device::Input* i2) {
+    return i1 && i2 && (i1 == i2 || i1->IsChild(i2) || i2->IsChild(i1));
+  };
+
+  return std::any_of(it, it_end, [&](auto& s) {
+    return std::none_of(begin(ignore_modifiers), end(ignore_modifiers),
+                        [&](auto& m) { return is_same_modifier(m->GetInput(), s.first.second); });
+  });
+}
+
+HotkeySuppressions::Suppressor
+HotkeySuppressions::MakeSuppressor(const Modifiers* modifiers,
+                                   const std::unique_ptr<ControlExpression>* final_input)
+{
+  for (auto& modifier : *modifiers)
+  {
+    // Inputs might be null, don't add nullptr to the map
+    if ((*final_input)->GetInput() && modifier->GetInput())
+    {
+      ++m_suppressions[{(*final_input)->GetInput(), modifier->GetInput()}];
+    }
+  }
+
+  return Suppressor(std::make_unique<std::function<void()>>([this, modifiers, final_input]() {
+                      for (auto& modifier : *modifiers)
+                        RemoveSuppression(modifier->GetInput(), (*final_input)->GetInput());
+                    }).release(),
+                    InvokingDeleter{});
+}
 
 class BinaryExpression : public Expression
 {
@@ -267,6 +368,7 @@ public:
     }
     case TOK_ASSIGN:
     {
+      // Use this carefully as it's extremely powerful and can end up in unforeseen situations
       lhs->SetValue(rhs->GetValue());
       return lhs->GetValue();
     }
@@ -287,7 +389,7 @@ public:
       return std::max(std::min(1 - lval, rval), std::min(lval, 1 - rval));
     }
     default:
-      assert(false);
+      ASSERT(false);
       return 0;
     }
   }
@@ -344,7 +446,7 @@ private:
   const ControlState m_value{};
 };
 
-ParseResult MakeLiteralExpression(Token token)
+static ParseResult MakeLiteralExpression(Token token)
 {
   ControlState val{};
   if (TryParse(token.data, &val))
@@ -358,24 +460,116 @@ class VariableExpression : public Expression
 public:
   VariableExpression(std::string name) : m_name(name) {}
 
-  ControlState GetValue() const override { return *m_value_ptr; }
+  ControlState GetValue() const override { return m_variable_ptr ? *m_variable_ptr : 0; }
 
-  void SetValue(ControlState value) override { *m_value_ptr = value; }
+  void SetValue(ControlState value) override
+  {
+    if (m_variable_ptr)
+      *m_variable_ptr = value;
+  }
 
   int CountNumControls() const override { return 1; }
 
   void UpdateReferences(ControlEnvironment& env) override
   {
-    m_value_ptr = env.GetVariablePtr(m_name);
+    m_variable_ptr = env.GetVariablePtr(m_name);
   }
 
 protected:
   const std::string m_name;
-  ControlState* m_value_ptr{};
+  std::shared_ptr<ControlState> m_variable_ptr;
+};
+
+class HotkeyExpression : public Expression
+{
+public:
+  HotkeyExpression(std::vector<std::unique_ptr<ControlExpression>> inputs)
+      : m_modifiers(std::move(inputs))
+  {
+    m_final_input = std::move(m_modifiers.back());
+    m_modifiers.pop_back();
+  }
+
+  ControlState GetValue() const override
+  {
+    // True if we have no modifiers
+    const bool modifiers_pressed = std::all_of(m_modifiers.begin(), m_modifiers.end(),
+                                               [](const std::unique_ptr<ControlExpression>& input) {
+                                                 return input->GetValue() > CONDITION_THRESHOLD;
+                                               });
+
+    const auto final_input_state = m_final_input->GetValueIgnoringSuppression();
+
+    if (modifiers_pressed)
+    {
+      // Ignore suppression of our own modifiers. This also allows superset modifiers to function.
+      const bool is_suppressed = s_hotkey_suppressions.IsSuppressedIgnoringModifiers(
+          m_final_input->GetInput(), m_modifiers);
+
+      if (final_input_state <= CONDITION_THRESHOLD)
+        m_is_blocked = false;
+
+      // If some other hotkey suppressed us, require a release of final input to be ready again.
+      if (is_suppressed)
+        m_is_blocked = true;
+
+      if (m_is_blocked)
+        return 0;
+
+      EnableSuppression();
+
+      // Our modifiers are active. Pass through the final input.
+      return final_input_state;
+    }
+    else
+    {
+      m_suppressor = {};
+      m_is_blocked = final_input_state > CONDITION_THRESHOLD;
+    }
+
+    return 0;
+  }
+
+  void SetValue(ControlState) override {}
+
+  int CountNumControls() const override
+  {
+    int result = 0;
+    for (auto& input : m_modifiers)
+      result += input->CountNumControls();
+    return result + m_final_input->CountNumControls();
+  }
+
+  void UpdateReferences(ControlEnvironment& env) override
+  {
+    for (auto& input : m_modifiers)
+      input->UpdateReferences(env);
+
+    m_final_input->UpdateReferences(env);
+
+    // We must update our suppression with valid pointers.
+    if (m_suppressor)
+      EnableSuppression(true);
+  }
+
+private:
+  void EnableSuppression(bool force = false) const
+  {
+    if (!m_suppressor || force)
+      m_suppressor = s_hotkey_suppressions.MakeSuppressor(&m_modifiers, &m_final_input);
+  }
+
+  HotkeySuppressions::Modifiers m_modifiers;
+  std::unique_ptr<ControlExpression> m_final_input;
+  mutable HotkeySuppressions::Suppressor m_suppressor;
+  mutable bool m_is_blocked = false;
 };
 
 // This class proxies all methods to its either left-hand child if it has bound controls, or its
 // right-hand child. Its intended use is for supporting old-style barewords expressions.
+// Note that if you have a keyboard device as default device and the expression is a single digit
+// number, this will usually resolve in a numerical key instead of a numerical value.
+// Though if this expression belongs to NumericSetting, it will likely be simplifed back to a value.
 class CoalesceExpression : public Expression
 {
 public:
@@ -430,9 +624,30 @@ Device::Output* ControlEnvironment::FindOutput(ControlQualifier qualifier) const
   return device->FindOutput(qualifier.control_name);
 }
 
-ControlState* ControlEnvironment::GetVariablePtr(const std::string& name)
+std::shared_ptr<ControlState> ControlEnvironment::GetVariablePtr(const std::string& name)
 {
-  return &m_variables[name];
+  // Do not accept an empty string as key, even if the expression parser already prevents this case.
+  if (name.empty())
+    return nullptr;
+  std::shared_ptr<ControlState>& variable = m_variables[name];
+  // If new, make a shared ptr
+  if (!variable)
+  {
+    variable = std::make_shared<ControlState>();
+  }
+  return variable;
+}
+
+void ControlEnvironment::CleanUnusedVariables()
+{
+  for (auto it = m_variables.begin(); it != m_variables.end();)
+  {
+    // Don't count ourselves as reference
+    if (it->second.use_count() <= 1)
+      m_variables.erase(it++);
+    else
+      ++it;
+  }
 }
 
 ParseResult ParseResult::MakeEmptyResult()
@@ -594,11 +809,18 @@ private:
     }
     case TOK_VARIABLE:
     {
-      return ParseResult::MakeSuccessfulResult(std::make_unique<VariableExpression>(tok.data));
+      if (tok.data.empty())
+        return ParseResult::MakeErrorResult(tok, _trans("Expected variable name."));
+      else
+        return ParseResult::MakeSuccessfulResult(std::make_unique<VariableExpression>(tok.data));
     }
     case TOK_LPAREN:
     {
       return ParseParens();
+    }
+    case TOK_HOTKEY:
+    {
+      return ParseHotkeys();
     }
     case TOK_SUB:
     {
@@ -638,7 +860,7 @@ private:
     case TOK_COMMA:
       return 8;
     default:
-      assert(false);
+      ASSERT(false);
       return 0;
     }
   }
@@ -684,6 +906,39 @@ private:
     return result;
   }
 
+  ParseResult ParseHotkeys()
+  {
+    Token tok = Chew();
+    if (tok.type != TOK_LPAREN)
+      return ParseResult::MakeErrorResult(tok, _trans("Expected opening paren."));
+
+    std::vector<std::unique_ptr<ControlExpression>> inputs;
+
+    while (true)
+    {
+      tok = Chew();
+
+      if (tok.type != TOK_CONTROL && tok.type != TOK_BAREWORD)
+        return ParseResult::MakeErrorResult(tok, _trans("Expected name of input."));
+
+      ControlQualifier cq;
+      cq.FromString(tok.data);
+      inputs.emplace_back(std::make_unique<ControlExpression>(std::move(cq)));
+
+      tok = Chew();
+
+      if (tok.type == TOK_ADD)
+        continue;
+
+      if (tok.type == TOK_RPAREN)
+        break;
+
+      return ParseResult::MakeErrorResult(tok, _trans("Expected + or closing paren."));
+    }
+
+    return ParseResult::MakeSuccessfulResult(std::make_unique<HotkeyExpression>(std::move(inputs)));
+  }
+
   ParseResult ParseToplevel() { return ParseBinary(); }
 };  // namespace ExpressionParser
 
@@ -719,6 +974,7 @@ static std::unique_ptr<Expression> ParseBarewordExpression(const std::string& st
   qualifier.control_name = str;
   qualifier.has_device = false;
 
+  // This control expression will only work (find the specified control) with the default device.
   return std::make_unique<ControlExpression>(qualifier);
 }
 

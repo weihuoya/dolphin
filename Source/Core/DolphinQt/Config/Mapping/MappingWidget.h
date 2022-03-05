@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -14,10 +13,11 @@ constexpr int WIDGET_MAX_WIDTH = 112;
 
 class ControlGroupBox;
 class InputConfig;
-class IOWindow;
 class MappingButton;
 class MappingNumeric;
 class MappingWindow;
+class QFormLayout;
+class QPushButton;
 class QGroupBox;
 
 namespace ControllerEmu
@@ -25,12 +25,8 @@ namespace ControllerEmu
 class Control;
 class ControlGroup;
 class EmulatedController;
+class NumericSettingBase;
 }  // namespace ControllerEmu
-
-namespace ciface::Core
-{
-class Device;
-}  // namespace ciface::Core
 
 constexpr int INDICATOR_UPDATE_FREQ = 30;
 
@@ -57,9 +53,11 @@ protected:
 
   QGroupBox* CreateGroupBox(ControllerEmu::ControlGroup* group);
   QGroupBox* CreateGroupBox(const QString& name, ControllerEmu::ControlGroup* group);
+  QGroupBox* CreateControlsBox(const QString& name, ControllerEmu::ControlGroup* group,
+                               int columns);
+  void CreateControl(const ControllerEmu::Control* control, QFormLayout* layout, bool indicator);
+  QPushButton* CreateSettingAdvancedMappingButton(ControllerEmu::NumericSettingBase& setting);
 
 private:
   MappingWindow* m_parent;
-  bool m_first = true;
-  std::vector<MappingButton*> m_buttons;
 };

@@ -1,7 +1,7 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
@@ -19,8 +19,10 @@
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/HLE/HLE.h"
+#include "Core/HW/DVD/DVDInterface.h"
 #include "Core/HW/EXI/EXI_DeviceIPL.h"
 #include "Core/HW/Memmap.h"
+#include "Core/IOS/DI/DI.h"
 #include "Core/IOS/ES/ES.h"
 #include "Core/IOS/ES/Formats.h"
 #include "Core/IOS/FS/FileSystem.h"
@@ -31,7 +33,8 @@
 #include "Core/PowerPC/PowerPC.h"
 
 #include "DiscIO/Enums.h"
-#include "DiscIO/Volume.h"
+#include "DiscIO/RiivolutionPatcher.h"
+#include "DiscIO/VolumeDisc.h"
 
 namespace
 {
@@ -85,7 +88,8 @@ void CBoot::SetupBAT(bool is_wii)
   PowerPC::IBATUpdated();
 }
 
-bool CBoot::RunApploader(bool is_wii, const DiscIO::VolumeDisc& volume)
+bool CBoot::RunApploader(bool is_wii, const DiscIO::VolumeDisc& volume,
+                         const std::vector<DiscIO::Riivolution::Patch>& riivolution_patches)
 {
   const DiscIO::Partition partition = volume.GetGamePartition();
 
@@ -95,9 +99,9 @@ bool CBoot::RunApploader(bool is_wii, const DiscIO::VolumeDisc& volume)
   const std::optional<u32> entry = volume.ReadSwapped<u32>(offset + 0x10, partition);
   const std::optional<u32> size = volume.ReadSwapped<u32>(offset + 0x14, partition);
   const std::optional<u32> trailer = volume.ReadSwapped<u32>(offset + 0x18, partition);
-  if (!entry || !size || !trailer || *entry == (u32)-1 || *size + *trailer == (u32)-1)
+  if (!entry || !size || !trailer || *entry == UINT32_MAX || *size + *trailer == UINT32_MAX)
   {
-    INFO_LOG(BOOT, "Invalid apploader. Your disc image is probably corrupted.");
+    INFO_LOG_FMT(BOOT, "Invalid apploader. Your disc image is probably corrupted.");
     return false;
   }
   DVDRead(volume, offset + 0x20, 0x01200000, *size + *trailer, partition);
@@ -105,7 +109,7 @@ bool CBoot::RunApploader(bool is_wii, const DiscIO::VolumeDisc& volume)
   // TODO - Make Apploader(or just RunFunction()) debuggable!!!
 
   // Call iAppLoaderEntry.
-  DEBUG_LOG(MASTER_LOG, "Call iAppLoaderEntry");
+  DEBUG_LOG_FMT(MASTER_LOG, "Call iAppLoaderEntry");
   const u32 iAppLoaderFuncAddr = is_wii ? 0x80004000 : 0x80003100;
   PowerPC::ppcState.gpr[3] = iAppLoaderFuncAddr + 0;
   PowerPC::ppcState.gpr[4] = iAppLoaderFuncAddr + 4;
@@ -116,7 +120,7 @@ bool CBoot::RunApploader(bool is_wii, const DiscIO::VolumeDisc& volume)
   const u32 iAppLoaderClose = PowerPC::Read_U32(iAppLoaderFuncAddr + 8);
 
   // iAppLoaderInit
-  DEBUG_LOG(MASTER_LOG, "Call iAppLoaderInit");
+  DEBUG_LOG_FMT(MASTER_LOG, "Call iAppLoaderInit");
   HLE::Patch(0x81300000, "AppLoaderReport");  // HLE OSReport for Apploader
   PowerPC::ppcState.gpr[3] = 0x81300000;
   RunFunction(iAppLoaderInit);
@@ -124,7 +128,7 @@ bool CBoot::RunApploader(bool is_wii, const DiscIO::VolumeDisc& volume)
   // iAppLoaderMain - Here we load the apploader, the DOL (the exe) and the FST (filesystem).
   // To give you an idea about where the stuff is located on the disc take a look at yagcd
   // ch 13.
-  DEBUG_LOG(MASTER_LOG, "Call iAppLoaderMain");
+  DEBUG_LOG_FMT(MASTER_LOG, "Call iAppLoaderMain");
 
   PowerPC::ppcState.gpr[3] = 0x81300004;
   PowerPC::ppcState.gpr[4] = 0x81300008;
@@ -138,13 +142,15 @@ bool CBoot::RunApploader(bool is_wii, const DiscIO::VolumeDisc& volume)
   // iAppLoaderMain returns 0 when there are no more sections to copy.
   while (PowerPC::ppcState.gpr[3] != 0x00)
   {
-    u32 iRamAddress = PowerPC::Read_U32(0x81300004);
-    u32 iLength = PowerPC::Read_U32(0x81300008);
-    u32 iDVDOffset = PowerPC::Read_U32(0x8130000c) << (is_wii ? 2 : 0);
+    const u32 ram_address = PowerPC::Read_U32(0x81300004);
+    const u32 length = PowerPC::Read_U32(0x81300008);
+    const u32 dvd_offset = PowerPC::Read_U32(0x8130000c) << (is_wii ? 2 : 0);
 
-    INFO_LOG(MASTER_LOG, "DVDRead: offset: %08x   memOffset: %08x   length: %i", iDVDOffset,
-             iRamAddress, iLength);
-    DVDRead(volume, iDVDOffset, iRamAddress, iLength, partition);
+    INFO_LOG_FMT(MASTER_LOG, "DVDRead: offset: {:08x}   memOffset: {:08x}   length: {}", dvd_offset,
+                 ram_address, length);
+    DVDRead(volume, dvd_offset, ram_address, length, partition);
+
+    DiscIO::Riivolution::ApplyApploaderMemoryPatches(riivolution_patches, ram_address, length);
 
     PowerPC::ppcState.gpr[3] = 0x81300004;
     PowerPC::ppcState.gpr[4] = 0x81300008;
@@ -154,7 +160,7 @@ bool CBoot::RunApploader(bool is_wii, const DiscIO::VolumeDisc& volume)
   }
 
   // iAppLoaderClose
-  DEBUG_LOG(MASTER_LOG, "call iAppLoaderClose");
+  DEBUG_LOG_FMT(MASTER_LOG, "call iAppLoaderClose");
   RunFunction(iAppLoaderClose);
   HLE::UnPatch("AppLoaderReport");
 
@@ -170,12 +176,13 @@ void CBoot::SetupGCMemory()
   PowerPC::HostWrite_U32(0x0D15EA5E, 0x80000020);
 
   // Physical Memory Size (24MB on retail)
-  PowerPC::HostWrite_U32(Memory::REALRAM_SIZE, 0x80000028);
+  PowerPC::HostWrite_U32(Memory::GetRamSizeReal(), 0x80000028);
 
   // Console type - DevKit  (retail ID == 0x00000003) see YAGCD 4.2.1.1.2
   // TODO: determine why some games fail when using a retail ID.
   // (Seem to take different EXI paths, see Ikaruga for example)
-  PowerPC::HostWrite_U32(0x10000006, 0x8000002C);
+  const u32 console_type = static_cast<u32>(Core::ConsoleType::LatestDevkit);
+  PowerPC::HostWrite_U32(console_type, 0x8000002C);
 
   // Fake the VI Init of the IPL (YAGCD 4.2.1.4)
   PowerPC::HostWrite_U32(DiscIO::IsNTSC(SConfig::GetInstance().m_region) ? 0 : 1, 0x800000CC);
@@ -200,16 +207,32 @@ void CBoot::SetupGCMemory()
 // GameCube Bootstrap 2 HLE:
 // copy the apploader to 0x81200000
 // execute the apploader, function by function, using the above utility.
-bool CBoot::EmulatedBS2_GC(const DiscIO::VolumeDisc& volume)
+bool CBoot::EmulatedBS2_GC(const DiscIO::VolumeDisc& volume,
+                           const std::vector<DiscIO::Riivolution::Patch>& riivolution_patches)
 {
-  INFO_LOG(BOOT, "Faking GC BS2...");
+  INFO_LOG_FMT(BOOT, "Faking GC BS2...");
 
   SetupMSR();
   SetupBAT(/*is_wii*/ false);
 
   SetupGCMemory();
 
-  DVDRead(volume, /*offset*/ 0x00000000, /*address*/ 0x00000000, 0x20, DiscIO::PARTITION_NONE);
+  DVDReadDiscID(volume, 0x00000000);
+
+  bool streaming = Memory::Read_U8(0x80000008);
+  if (streaming)
+  {
+    u8 streaming_size = Memory::Read_U8(0x80000009);
+    // If the streaming buffer size is 0, then BS2 uses a default size of 10 instead.
+    // No known game uses a size other than the default.
+    if (streaming_size == 0)
+      streaming_size = 10;
+    DVDInterface::AudioBufferConfig(true, streaming_size);
+  }
+  else
+  {
+    DVDInterface::AudioBufferConfig(false, 0);
+  }
 
   const bool ntsc = DiscIO::IsNTSC(SConfig::GetInstance().m_region);
 
@@ -222,21 +245,46 @@ bool CBoot::EmulatedBS2_GC(const DiscIO::VolumeDisc& volume)
   // Global pointer to Small Data Area Base (Luigi's Mansion's apploader uses it)
   PowerPC::ppcState.gpr[13] = ntsc ? 0x81465320 : 0x814b4fc0;
 
-  return RunApploader(/*is_wii*/ false, volume);
+  return RunApploader(/*is_wii*/ false, volume, riivolution_patches);
+}
+
+static DiscIO::Region CodeRegion(char c)
+{
+  switch (c)
+  {
+  case 'J':  // Japan
+  case 'T':  // Taiwan
+    return DiscIO::Region::NTSC_J;
+  case 'B':  // Brazil
+  case 'M':  // Middle East
+  case 'R':  // Argentina
+  case 'S':  // ???
+  case 'U':  // USA
+  case 'W':  // ???
+    return DiscIO::Region::NTSC_U;
+  case 'A':  // Australia
+  case 'E':  // Europe
+    return DiscIO::Region::PAL;
+  case 'K':  // Korea
+    return DiscIO::Region::NTSC_K;
+  default:
+    return DiscIO::Region::Unknown;
+  }
 }
 
 bool CBoot::SetupWiiMemory(IOS::HLE::IOSC::ConsoleType console_type)
 {
   static const std::map<DiscIO::Region, const RegionSetting> region_settings = {
-      {DiscIO::Region::NTSC_J, {"JPN", "NTSC", "JP", "LJ"}},
+      {DiscIO::Region::NTSC_J, {"JPN", "NTSC", "JP", "LJH"}},
       {DiscIO::Region::NTSC_U, {"USA", "NTSC", "US", "LU"}},
-      {DiscIO::Region::PAL, {"EUR", "PAL", "EU", "LE"}},
+      {DiscIO::Region::PAL, {"EUR", "PAL", "EU", "LEH"}},
       {DiscIO::Region::NTSC_K, {"KOR", "NTSC", "KR", "LKH"}}};
   auto entryPos = region_settings.find(SConfig::GetInstance().m_region);
-  const RegionSetting& region_setting = entryPos->second;
+  RegionSetting region_setting = entryPos->second;
 
   Common::SettingsHandler gen;
   std::string serno;
+  std::string model = "RVL-001(" + region_setting.area + ")";
   CreateSystemMenuTitleDirs();
   const std::string settings_file_path(Common::GetTitleDataPath(Titles::SYSTEM_MENU) +
                                        "/" WII_SETTING);
@@ -250,6 +298,32 @@ bool CBoot::SetupWiiMemory(IOS::HLE::IOSC::ConsoleType console_type)
     {
       gen.SetBytes(std::move(data));
       serno = gen.GetValue("SERNO");
+      model = gen.GetValue("MODEL");
+
+      bool region_matches = false;
+      if (SConfig::GetInstance().bOverrideRegionSettings)
+      {
+        region_matches = true;
+      }
+      else
+      {
+        const std::string code = gen.GetValue("CODE");
+        if (code.size() >= 2 && CodeRegion(code[1]) == SConfig::GetInstance().m_region)
+          region_matches = true;
+      }
+
+      if (region_matches)
+      {
+        region_setting = RegionSetting{gen.GetValue("AREA"), gen.GetValue("VIDEO"),
+                                       gen.GetValue("GAME"), gen.GetValue("CODE")};
+      }
+      else
+      {
+        const size_t parenthesis_pos = model.find('(');
+        if (parenthesis_pos != std::string::npos)
+          model = model.substr(0, parenthesis_pos) + '(' + region_setting.area + ')';
+      }
+
       gen.Reset();
     }
   }
@@ -261,14 +335,13 @@ bool CBoot::SetupWiiMemory(IOS::HLE::IOSC::ConsoleType console_type)
       serno = "123456789";
     else
       serno = Common::SettingsHandler::GenerateSerialNumber();
-    INFO_LOG(BOOT, "No previous serial number found, generated one instead: %s", serno.c_str());
+    INFO_LOG_FMT(BOOT, "No previous serial number found, generated one instead: {}", serno);
   }
   else
   {
-    INFO_LOG(BOOT, "Using serial number: %s", serno.c_str());
+    INFO_LOG_FMT(BOOT, "Using serial number: {}", serno);
   }
 
-  std::string model = "RVL-001(" + region_setting.area + ")";
   gen.AddSetting("AREA", region_setting.area);
   gen.AddSetting("MODEL", model);
   gen.AddSetting("DVD", "0");
@@ -283,14 +356,14 @@ bool CBoot::SetupWiiMemory(IOS::HLE::IOSC::ConsoleType console_type)
                                                    settings_file_path, {rw_mode, rw_mode, rw_mode});
   if (!settings_file || !settings_file->Write(gen.GetBytes().data(), gen.GetBytes().size()))
   {
-    PanicAlertT("SetupWiiMemory: Can't create setting.txt file");
+    PanicAlertFmtT("SetupWiiMemory: Can't create setting.txt file");
     return false;
   }
 
   // Write the 256 byte setting.txt to memory.
   Memory::CopyToEmu(0x3800, gen.GetBytes().data(), gen.GetBytes().size());
 
-  INFO_LOG(BOOT, "Setup Wii Memory...");
+  INFO_LOG_FMT(BOOT, "Setup Wii Memory...");
 
   /*
   Set hardcoded global variables to Wii memory. These are partly collected from
@@ -302,26 +375,28 @@ bool CBoot::SetupWiiMemory(IOS::HLE::IOSC::ConsoleType console_type)
   0x80000060  Copyright code
   */
 
-  Memory::Write_U32(0x0D15EA5E, 0x00000020);            // Another magic word
-  Memory::Write_U32(0x00000001, 0x00000024);            // Unknown
-  Memory::Write_U32(Memory::REALRAM_SIZE, 0x00000028);  // MEM1 size 24MB
-  u32 board_model = console_type == IOS::HLE::IOSC::ConsoleType::RVT ? 0x10000021 : 0x00000023;
-  Memory::Write_U32(board_model, 0x0000002c);  // Board Model
-  Memory::Write_U32(0x00000000, 0x00000030);   // Init
-  Memory::Write_U32(0x817FEC60, 0x00000034);   // Init
+  Memory::Write_U32(0x0D15EA5E, 0x00000020);                // Another magic word
+  Memory::Write_U32(0x00000001, 0x00000024);                // Unknown
+  Memory::Write_U32(Memory::GetRamSizeReal(), 0x00000028);  // MEM1 size 24MB
+  const Core::ConsoleType board_model = console_type == IOS::HLE::IOSC::ConsoleType::RVT ?
+                                            Core::ConsoleType::NDEV2_1 :
+                                            Core::ConsoleType::RVL_Retail3;
+  Memory::Write_U32(static_cast<u32>(board_model), 0x0000002c);  // Board Model
+  Memory::Write_U32(0x00000000, 0x00000030);                     // Init
+  Memory::Write_U32(0x817FEC60, 0x00000034);                     // Init
   // 38, 3C should get start, size of FST through apploader
-  Memory::Write_U32(0x8008f7b8, 0x000000e4);            // Thread Init
-  Memory::Write_U32(Memory::REALRAM_SIZE, 0x000000f0);  // "Simulated memory size" (debug mode?)
-  Memory::Write_U32(0x8179b500, 0x000000f4);            // __start
-  Memory::Write_U32(0x0e7be2c0, 0x000000f8);            // Bus speed
-  Memory::Write_U32(0x2B73A840, 0x000000fc);            // CPU speed
-  Memory::Write_U16(0x0000, 0x000030e6);                // Console type
-  Memory::Write_U32(0x00000000, 0x000030c0);            // EXI
-  Memory::Write_U32(0x00000000, 0x000030c4);            // EXI
-  Memory::Write_U32(0x00000000, 0x000030dc);            // Time
-  Memory::Write_U32(0xffffffff, 0x000030d8);            // Unknown, set by any official NAND title
-  Memory::Write_U16(0x8201, 0x000030e6);                // Dev console / debug capable
-  Memory::Write_U32(0x00000000, 0x000030f0);            // Apploader
+  Memory::Write_U32(0x8008f7b8, 0x000000e4);                // Thread Init
+  Memory::Write_U32(Memory::GetRamSizeReal(), 0x000000f0);  // "Simulated memory size" (debug mode?)
+  Memory::Write_U32(0x8179b500, 0x000000f4);                // __start
+  Memory::Write_U32(0x0e7be2c0, 0x000000f8);                // Bus speed
+  Memory::Write_U32(0x2B73A840, 0x000000fc);                // CPU speed
+  Memory::Write_U16(0x0000, 0x000030e6);                    // Console type
+  Memory::Write_U32(0x00000000, 0x000030c0);                // EXI
+  Memory::Write_U32(0x00000000, 0x000030c4);                // EXI
+  Memory::Write_U32(0x00000000, 0x000030dc);                // Time
+  Memory::Write_U32(0xffffffff, 0x000030d8);  // Unknown, set by any official NAND title
+  Memory::Write_U16(0x8201, 0x000030e6);      // Dev console / debug capable
+  Memory::Write_U32(0x00000000, 0x000030f0);  // Apploader
 
   // During the boot process, 0x315c is first set to 0xdeadbeef by IOS
   // in the boot_ppc syscall. The value is then partly overwritten by SDK titles.
@@ -366,9 +441,10 @@ static void WriteEmptyPlayRecord()
 // Wii Bootstrap 2 HLE:
 // copy the apploader to 0x81200000
 // execute the apploader
-bool CBoot::EmulatedBS2_Wii(const DiscIO::VolumeDisc& volume)
+bool CBoot::EmulatedBS2_Wii(const DiscIO::VolumeDisc& volume,
+                            const std::vector<DiscIO::Riivolution::Patch>& riivolution_patches)
 {
-  INFO_LOG(BOOT, "Faking Wii BS2...");
+  INFO_LOG_FMT(BOOT, "Faking Wii BS2...");
   if (volume.GetVolumeType() != DiscIO::Platform::WiiDisc)
     return false;
 
@@ -385,6 +461,9 @@ bool CBoot::EmulatedBS2_Wii(const DiscIO::VolumeDisc& volume)
     state->discstate = 0x01;
   });
 
+  // The system menu clears the RTC flags
+  ExpansionInterface::g_rtc_flags.m_hex = 0;
+
   // While reading a disc, the system menu reads the first partition table
   // (0x20 bytes from 0x00040020) and stores a pointer to the data partition entry.
   // When launching the disc game, it copies the partition type and offset to 0x3194
@@ -397,7 +476,13 @@ bool CBoot::EmulatedBS2_Wii(const DiscIO::VolumeDisc& volume)
   if (!SetupWiiMemory(console_type) || !IOS::HLE::GetIOS()->BootIOS(tmd.GetIOSId()))
     return false;
 
-  DVDRead(volume, 0x00000000, 0x00000000, 0x20, DiscIO::PARTITION_NONE);  // Game Code
+  auto di =
+      std::static_pointer_cast<IOS::HLE::DIDevice>(IOS::HLE::GetIOS()->GetDeviceByName("/dev/di"));
+
+  di->InitializeIfFirstTime();
+  di->ChangePartition(data_partition);
+
+  DVDReadDiscID(volume, 0x00000000);
 
   // This is some kind of consistency check that is compared to the 0x00
   // values as the game boots. This location keeps the 4 byte ID for as long
@@ -414,8 +499,11 @@ bool CBoot::EmulatedBS2_Wii(const DiscIO::VolumeDisc& volume)
 
   PowerPC::ppcState.gpr[1] = 0x816ffff0;  // StackPointer
 
-  if (!RunApploader(/*is_wii*/ true, volume))
+  if (!RunApploader(/*is_wii*/ true, volume, riivolution_patches))
     return false;
+
+  // The Apploader probably just overwrote values needed for RAM Override.  Run this again!
+  IOS::HLE::RAMOverrideForIOSMemoryValues(IOS::HLE::MemorySetupType::IOSReload);
 
   // Warning: This call will set incorrect running game metadata if our volume parameter
   // doesn't point to the same disc as the one that's inserted in the emulated disc drive!
@@ -426,7 +514,9 @@ bool CBoot::EmulatedBS2_Wii(const DiscIO::VolumeDisc& volume)
 
 // Returns true if apploader has run successfully. If is_wii is true, the disc
 // that volume refers to must currently be inserted into the emulated disc drive.
-bool CBoot::EmulatedBS2(bool is_wii, const DiscIO::VolumeDisc& volume)
+bool CBoot::EmulatedBS2(bool is_wii, const DiscIO::VolumeDisc& volume,
+                        const std::vector<DiscIO::Riivolution::Patch>& riivolution_patches)
 {
-  return is_wii ? EmulatedBS2_Wii(volume) : EmulatedBS2_GC(volume);
+  return is_wii ? EmulatedBS2_Wii(volume, riivolution_patches) :
+                  EmulatedBS2_GC(volume, riivolution_patches);
 }

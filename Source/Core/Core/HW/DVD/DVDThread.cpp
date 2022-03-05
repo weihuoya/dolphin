@@ -1,10 +1,8 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/DVD/DVDThread.h"
 
-#include <cinttypes>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -39,26 +37,26 @@ namespace DVDThread
 {
 struct ReadRequest
 {
-  bool copy_to_ram;
-  u32 output_address;
-  u64 dvd_offset;
-  u32 length;
-  DiscIO::Partition partition;
+  bool copy_to_ram = false;
+  u32 output_address = 0;
+  u64 dvd_offset = 0;
+  u32 length = 0;
+  DiscIO::Partition partition{};
 
   // This determines which code DVDInterface will run to reply
   // to the emulated software. We can't use callbacks,
   // because function pointers can't be stored in savestates.
-  DVDInterface::ReplyType reply_type;
+  DVDInterface::ReplyType reply_type = DVDInterface::ReplyType::NoReply;
 
   // IDs are used to uniquely identify a request. They must not be
   // identical to IDs of any other requests that currently exist, but
   // it's fine to re-use IDs of requests that have existed in the past.
-  u64 id;
+  u64 id = 0;
 
   // Only used for logging
-  u64 time_started_ticks;
-  u64 realtime_started_us;
-  u64 realtime_done_us;
+  u64 time_started_ticks = 0;
+  u64 realtime_started_us = 0;
+  u64 realtime_done_us = 0;
 };
 
 using ReadResult = std::pair<ReadRequest, std::vector<u8>>;
@@ -159,7 +157,7 @@ void DoState(PointerWrap& p)
   if (had_disc != HasDisc())
   {
     if (had_disc)
-      PanicAlertT("An inserted disc was expected but not found.");
+      PanicAlertFmtT("An inserted disc was expected but not found.");
     else
       s_disc.reset();
   }
@@ -333,29 +331,34 @@ static void FinishRead(u64 id, s64 cycles_late)
   const ReadRequest& request = result.first;
   const std::vector<u8>& buffer = result.second;
 
-  DEBUG_LOG(DVDINTERFACE,
-            "Disc has been read. Real time: %" PRIu64 " us. "
-            "Real time including delay: %" PRIu64 " us. "
-            "Emulated time including delay: %" PRIu64 " us.",
-            request.realtime_done_us - request.realtime_started_us,
-            Common::Timer::GetTimeUs() - request.realtime_started_us,
-            (CoreTiming::GetTicks() - request.time_started_ticks) /
-                (SystemTimers::GetTicksPerSecond() / 1000000));
+  DEBUG_LOG_FMT(DVDINTERFACE,
+                "Disc has been read. Real time: {} us. "
+                "Real time including delay: {} us. "
+                "Emulated time including delay: {} us.",
+                request.realtime_done_us - request.realtime_started_us,
+                Common::Timer::GetTimeUs() - request.realtime_started_us,
+                (CoreTiming::GetTicks() - request.time_started_ticks) /
+                    (SystemTimers::GetTicksPerSecond() / 1000000));
 
+  DVDInterface::DIInterruptType interrupt;
   if (buffer.size() != request.length)
   {
-    PanicAlertT("The disc could not be read (at 0x%" PRIx64 " - 0x%" PRIx64 ").",
-                request.dvd_offset, request.dvd_offset + request.length);
+    PanicAlertFmtT("The disc could not be read (at {0:#x} - {1:#x}).", request.dvd_offset,
+                   request.dvd_offset + request.length);
+
+    DVDInterface::SetDriveError(DVDInterface::DriveError::ReadError);
+    interrupt = DVDInterface::DIInterruptType::DEINT;
   }
   else
   {
     if (request.copy_to_ram)
       Memory::CopyToEmu(request.output_address, buffer.data(), request.length);
+
+    interrupt = DVDInterface::DIInterruptType::TCINT;
   }
 
   // Notify the emulated software that the command has been executed
-  DVDInterface::FinishExecutingCommand(request.reply_type, DVDInterface::INT_TCINT, cycles_late,
-                                       buffer);
+  DVDInterface::FinishExecutingCommand(request.reply_type, interrupt, cycles_late, buffer);
 }
 
 static void DVDThread()

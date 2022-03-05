@@ -3,38 +3,48 @@
       xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/menu_settings_core"
-        android:title="@string/grid_menu_config"
-        android:icon="@drawable/ic_settings_core"
+        android:id="@+id/menu_add_directory"
+        android:title="@string/add_directory_title"
+        android:icon="@drawable/ic_add"
         app:showAsAction="ifRoom"/>
 
     <item
-        android:id="@+id/menu_settings_graphics"
-        android:title="@string/grid_menu_graphics_settings"
+        android:id="@+id/menu_toggle_gamelist"
+        android:title="@string/grid_menu_toggle_gamelist"
         android:icon="@drawable/ic_settings_graphics"
         app:showAsAction="ifRoom"/>
 
     <item
-        android:id="@+id/menu_settings_gcpad"
-        android:title="@string/grid_menu_gcpad_settings"
-        android:icon="@drawable/ic_settings_gcpad"
-        app:showAsAction="ifRoom"/>
-
-    <item
-        android:id="@+id/menu_settings_wiimote"
-        android:title="@string/grid_menu_wiimote_settings"
-        android:icon="@drawable/ic_settings_wiimote"
-        app:showAsAction="ifRoom"/>
+        android:id="@+id/menu_settings"
+        android:title="@string/grid_menu_settings"
+        android:icon="@drawable/ic_settings"
+        app:showAsAction="never"/>
 
     <item
         android:id="@+id/menu_refresh"
         android:title="@string/grid_menu_refresh"
         android:icon="@drawable/ic_refresh"
-        app:showAsAction="ifRoom"/>
+        app:showAsAction="never"/>
+
     <item
         android:id="@+id/menu_open_file"
         android:icon="@android:drawable/ic_media_play"
-        android:title="Open File"
-        app:showAsAction="ifRoom" />
+        android:title="@string/grid_menu_open_file"
+        app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/menu_install_wad"
+        android:title="@string/grid_menu_install_wad"
+        app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/menu_import_wii_save"
+        android:title="@string/grid_menu_import_wii_save"
+        app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/menu_import_nand_backup"
+        android:title="@string/grid_menu_import_nand_backup"
+        app:showAsAction="never"/>
 
 </menu>

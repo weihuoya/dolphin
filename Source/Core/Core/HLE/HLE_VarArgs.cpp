@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HLE/HLE_VarArgs.h"
 
@@ -42,7 +41,7 @@ u32 HLE::SystemVABI::VAListStruct::GetGPR(u32 gpr) const
 {
   if (gpr < 3 || gpr > 10)
   {
-    ERROR_LOG(OSHLE, "VAListStruct at %08x doesn't have GPR%d!", m_address, gpr);
+    ERROR_LOG_FMT(OSHLE, "VAListStruct at {:08x} doesn't have GPR{}!", m_address, gpr);
     return 0;
   }
   const u32 gpr_address = Common::AlignUp(GetGPRArea() + 4 * (gpr - 3), 4);
@@ -53,7 +52,7 @@ double HLE::SystemVABI::VAListStruct::GetFPR(u32 fpr) const
 {
   if (!m_has_fpr_area || fpr < 1 || fpr > 8)
   {
-    ERROR_LOG(OSHLE, "VAListStruct at %08x doesn't have FPR%d!", m_address, fpr);
+    ERROR_LOG_FMT(OSHLE, "VAListStruct at {:08x} doesn't have FPR{}!", m_address, fpr);
     return 0.0;
   }
   const u32 fpr_address = Common::AlignUp(GetFPRArea() + 8 * (fpr - 1), 8);

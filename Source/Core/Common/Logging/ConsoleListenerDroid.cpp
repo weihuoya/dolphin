@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <android/log.h>
 
@@ -14,26 +13,26 @@ ConsoleListener::~ConsoleListener()
 {
 }
 
-void ConsoleListener::Log(LogTypes::LOG_LEVELS level, const char* text)
+void ConsoleListener::Log(Common::Log::LogLevel level, const char* text)
 {
   android_LogPriority logLevel = ANDROID_LOG_UNKNOWN;
 
   // Map dolphin's log levels to android's
   switch (level)
   {
-  case LogTypes::LOG_LEVELS::LDEBUG:
+  case Common::Log::LogLevel::LDEBUG:
     logLevel = ANDROID_LOG_DEBUG;
     break;
-  case LogTypes::LOG_LEVELS::LINFO:
+  case Common::Log::LogLevel::LINFO:
     logLevel = ANDROID_LOG_INFO;
     break;
-  case LogTypes::LOG_LEVELS::LWARNING:
+  case Common::Log::LogLevel::LWARNING:
     logLevel = ANDROID_LOG_WARN;
     break;
-  case LogTypes::LOG_LEVELS::LERROR:
+  case Common::Log::LogLevel::LERROR:
     logLevel = ANDROID_LOG_ERROR;
     break;
-  case LogTypes::LOG_LEVELS::LNOTICE:
+  case Common::Log::LogLevel::LNOTICE:
     logLevel = ANDROID_LOG_INFO;
     break;
   }

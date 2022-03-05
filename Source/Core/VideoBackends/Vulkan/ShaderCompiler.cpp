@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoBackends/Vulkan/ShaderCompiler.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
@@ -14,6 +13,7 @@
 
 // glslang includes
 #include "GlslangToSpv.h"
+#include "ResourceLimits.h"
 #include "ShaderLang.h"
 #include "disassemble.h"
 
@@ -21,7 +21,9 @@
 #include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
 #include "Common/StringUtil.h"
+#include "Common/Version.h"
 
+#include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
 
 namespace Vulkan::ShaderCompiler
@@ -100,13 +102,15 @@ static const char SUBGROUP_HELPER_HEADER[] = R"(
   #define SUPPORTS_SUBGROUP_REDUCTION 1
   #define CAN_USE_SUBGROUP_REDUCTION true
   #define IS_HELPER_INVOCATION gl_HelperInvocation
-  #define IS_FIRST_ACTIVE_INVOCATION (gl_SubgroupInvocationID == subgroupBallotFindLSB(subgroupBallot(true)))
+  #define IS_FIRST_ACTIVE_INVOCATION (gl_SubgroupInvocationID == subgroupBallotFindLSB(subgroupBallot(!gl_HelperInvocation)))
   #define SUBGROUP_MIN(value) value = subgroupMin(value)
   #define SUBGROUP_MAX(value) value = subgroupMax(value)
 )";
 
-std::optional<SPIRVCodeVector> CompileShaderToSPV(EShLanguage stage, const char* stage_filename,
-                                                  std::string_view source, std::string_view header)
+static std::optional<SPIRVCodeVector> CompileShaderToSPV(EShLanguage stage,
+                                                         const char* stage_filename,
+                                                         std::string_view source,
+                                                         std::string_view header)
 {
   if (!InitializeGlslang())
     return std::nullopt;
@@ -142,9 +146,7 @@ std::optional<SPIRVCodeVector> CompileShaderToSPV(EShLanguage stage, const char*
 
   auto DumpBadShader = [&](const char* msg) {
     static int counter = 0;
-    std::string filename = StringFromFormat(
-        "%sbad_%s_%04i.txt", File::GetUserPath(D_DUMP_IDX).c_str(), stage_filename, counter++);
-
+    std::string filename = VideoBackendBase::BadShaderFilename(stage_filename, counter++);
     std::ofstream stream;
     File::OpenFStream(stream, filename, std::ios_base::out);
     if (stream.good())
@@ -162,7 +164,11 @@ std::optional<SPIRVCodeVector> CompileShaderToSPV(EShLanguage stage, const char*
       }
     }
 
-    PanicAlert("%s (written to %s)", msg, filename.c_str());
+    stream << "\n";
+    stream << "Dolphin Version: " + Common::scm_rev_str + "\n";
+    stream << "Video Backend: " + g_video_backend->GetDisplayName();
+
+    PanicAlertFmt("{} (written to {})", msg, filename);
   };
 
   if (!shader->parse(GetCompilerResourceLimits(), default_version, profile, false, true, messages,
@@ -190,22 +196,36 @@ std::optional<SPIRVCodeVector> CompileShaderToSPV(EShLanguage stage, const char*
 
   SPIRVCodeVector out_code;
   spv::SpvBuildLogger logger;
-  glslang::GlslangToSpv(*intermediate, out_code, &logger);
+  glslang::SpvOptions options;
+
+  if (g_ActiveConfig.bEnableValidationLayer)
+  {
+    // Attach the source code to the SPIR-V for tools like RenderDoc.
+    intermediate->addSourceText(pass_source_code, pass_source_code_length);
+
+    options.generateDebugInfo = true;
+    options.disableOptimizer = true;
+    options.optimizeSize = false;
+    options.disassemble = false;
+    options.validate = true;
+  }
+
+  glslang::GlslangToSpv(*intermediate, out_code, &logger, &options);
 
   // Write out messages
   // Temporary: skip if it contains "Warning, version 450 is not yet complete; most version-specific
   // features are present, but some are missing."
   if (strlen(shader->getInfoLog()) > 108)
-    WARN_LOG(VIDEO, "Shader info log: %s", shader->getInfoLog());
+    WARN_LOG_FMT(VIDEO, "Shader info log: {}", shader->getInfoLog());
   if (strlen(shader->getInfoDebugLog()) > 0)
-    WARN_LOG(VIDEO, "Shader debug info log: %s", shader->getInfoDebugLog());
+    WARN_LOG_FMT(VIDEO, "Shader debug info log: {}", shader->getInfoDebugLog());
   if (strlen(program->getInfoLog()) > 25)
-    WARN_LOG(VIDEO, "Program info log: %s", program->getInfoLog());
+    WARN_LOG_FMT(VIDEO, "Program info log: {}", program->getInfoLog());
   if (strlen(program->getInfoDebugLog()) > 0)
-    WARN_LOG(VIDEO, "Program debug info log: %s", program->getInfoDebugLog());
-  std::string spv_messages = logger.getAllMessages();
+    WARN_LOG_FMT(VIDEO, "Program debug info log: {}", program->getInfoDebugLog());
+  const std::string spv_messages = logger.getAllMessages();
   if (!spv_messages.empty())
-    WARN_LOG(VIDEO, "SPIR-V conversion messages: %s", spv_messages.c_str());
+    WARN_LOG_FMT(VIDEO, "SPIR-V conversion messages: {}", spv_messages);
 
   // Dump source code of shaders out to file if enabled.
   if (g_ActiveConfig.iLog & CONF_SAVESHADERS)
@@ -243,7 +263,7 @@ bool InitializeGlslang()
 
   if (!glslang::InitializeProcess())
   {
-    PanicAlert("Failed to initialize glslang shader compiler");
+    PanicAlertFmt("Failed to initialize glslang shader compiler");
     return false;
   }
 
@@ -255,103 +275,7 @@ bool InitializeGlslang()
 
 const TBuiltInResource* GetCompilerResourceLimits()
 {
-  static const TBuiltInResource limits = {/* .MaxLights = */ 32,
-                                          /* .MaxClipPlanes = */ 6,
-                                          /* .MaxTextureUnits = */ 32,
-                                          /* .MaxTextureCoords = */ 32,
-                                          /* .MaxVertexAttribs = */ 64,
-                                          /* .MaxVertexUniformComponents = */ 4096,
-                                          /* .MaxVaryingFloats = */ 64,
-                                          /* .MaxVertexTextureImageUnits = */ 32,
-                                          /* .MaxCombinedTextureImageUnits = */ 80,
-                                          /* .MaxTextureImageUnits = */ 32,
-                                          /* .MaxFragmentUniformComponents = */ 4096,
-                                          /* .MaxDrawBuffers = */ 32,
-                                          /* .MaxVertexUniformVectors = */ 128,
-                                          /* .MaxVaryingVectors = */ 8,
-                                          /* .MaxFragmentUniformVectors = */ 16,
-                                          /* .MaxVertexOutputVectors = */ 16,
-                                          /* .MaxFragmentInputVectors = */ 15,
-                                          /* .MinProgramTexelOffset = */ -8,
-                                          /* .MaxProgramTexelOffset = */ 7,
-                                          /* .MaxClipDistances = */ 8,
-                                          /* .MaxComputeWorkGroupCountX = */ 65535,
-                                          /* .MaxComputeWorkGroupCountY = */ 65535,
-                                          /* .MaxComputeWorkGroupCountZ = */ 65535,
-                                          /* .MaxComputeWorkGroupSizeX = */ 1024,
-                                          /* .MaxComputeWorkGroupSizeY = */ 1024,
-                                          /* .MaxComputeWorkGroupSizeZ = */ 64,
-                                          /* .MaxComputeUniformComponents = */ 1024,
-                                          /* .MaxComputeTextureImageUnits = */ 16,
-                                          /* .MaxComputeImageUniforms = */ 8,
-                                          /* .MaxComputeAtomicCounters = */ 8,
-                                          /* .MaxComputeAtomicCounterBuffers = */ 1,
-                                          /* .MaxVaryingComponents = */ 60,
-                                          /* .MaxVertexOutputComponents = */ 64,
-                                          /* .MaxGeometryInputComponents = */ 64,
-                                          /* .MaxGeometryOutputComponents = */ 128,
-                                          /* .MaxFragmentInputComponents = */ 128,
-                                          /* .MaxImageUnits = */ 8,
-                                          /* .MaxCombinedImageUnitsAndFragmentOutputs = */ 8,
-                                          /* .MaxCombinedShaderOutputResources = */ 8,
-                                          /* .MaxImageSamples = */ 0,
-                                          /* .MaxVertexImageUniforms = */ 0,
-                                          /* .MaxTessControlImageUniforms = */ 0,
-                                          /* .MaxTessEvaluationImageUniforms = */ 0,
-                                          /* .MaxGeometryImageUniforms = */ 0,
-                                          /* .MaxFragmentImageUniforms = */ 8,
-                                          /* .MaxCombinedImageUniforms = */ 8,
-                                          /* .MaxGeometryTextureImageUnits = */ 16,
-                                          /* .MaxGeometryOutputVertices = */ 256,
-                                          /* .MaxGeometryTotalOutputComponents = */ 1024,
-                                          /* .MaxGeometryUniformComponents = */ 1024,
-                                          /* .MaxGeometryVaryingComponents = */ 64,
-                                          /* .MaxTessControlInputComponents = */ 128,
-                                          /* .MaxTessControlOutputComponents = */ 128,
-                                          /* .MaxTessControlTextureImageUnits = */ 16,
-                                          /* .MaxTessControlUniformComponents = */ 1024,
-                                          /* .MaxTessControlTotalOutputComponents = */ 4096,
-                                          /* .MaxTessEvaluationInputComponents = */ 128,
-                                          /* .MaxTessEvaluationOutputComponents = */ 128,
-                                          /* .MaxTessEvaluationTextureImageUnits = */ 16,
-                                          /* .MaxTessEvaluationUniformComponents = */ 1024,
-                                          /* .MaxTessPatchComponents = */ 120,
-                                          /* .MaxPatchVertices = */ 32,
-                                          /* .MaxTessGenLevel = */ 64,
-                                          /* .MaxViewports = */ 16,
-                                          /* .MaxVertexAtomicCounters = */ 0,
-                                          /* .MaxTessControlAtomicCounters = */ 0,
-                                          /* .MaxTessEvaluationAtomicCounters = */ 0,
-                                          /* .MaxGeometryAtomicCounters = */ 0,
-                                          /* .MaxFragmentAtomicCounters = */ 8,
-                                          /* .MaxCombinedAtomicCounters = */ 8,
-                                          /* .MaxAtomicCounterBindings = */ 1,
-                                          /* .MaxVertexAtomicCounterBuffers = */ 0,
-                                          /* .MaxTessControlAtomicCounterBuffers = */ 0,
-                                          /* .MaxTessEvaluationAtomicCounterBuffers = */ 0,
-                                          /* .MaxGeometryAtomicCounterBuffers = */ 0,
-                                          /* .MaxFragmentAtomicCounterBuffers = */ 1,
-                                          /* .MaxCombinedAtomicCounterBuffers = */ 1,
-                                          /* .MaxAtomicCounterBufferSize = */ 16384,
-                                          /* .MaxTransformFeedbackBuffers = */ 4,
-                                          /* .MaxTransformFeedbackInterleavedComponents = */ 64,
-                                          /* .MaxCullDistances = */ 8,
-                                          /* .MaxCombinedClipAndCullDistances = */ 8,
-                                          /* .MaxSamples = */ 4,
-                                          /* .limits = */
-                                          {
-                                              /* .nonInductiveForLoops = */ 1,
-                                              /* .whileLoops = */ 1,
-                                              /* .doWhileLoops = */ 1,
-                                              /* .generalUniformIndexing = */ 1,
-                                              /* .generalAttributeMatrixVectorIndexing = */ 1,
-                                              /* .generalVaryingIndexing = */ 1,
-                                              /* .generalSamplerIndexing = */ 1,
-                                              /* .generalVariableIndexing = */ 1,
-                                              /* .generalConstantMatrixVectorIndexing = */ 1,
-                                          }};
-
-  return &limits;
+  return &glslang::DefaultTBuiltInResource;
 }
 
 std::optional<SPIRVCodeVector> CompileVertexShader(std::string_view source_code)

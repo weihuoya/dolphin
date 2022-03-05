@@ -1,13 +1,12 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <memory>
 #include <string>
 
-class ControlReference;
+#include "InputCommon/ControlReference/ControlReference.h"
 
 namespace ControllerEmu
 {
@@ -22,15 +21,21 @@ class Control
 public:
   virtual ~Control();
 
+  template <typename T = ControlState>
+  T GetState() const
+  {
+    return control_ref->GetState<T>();
+  }
+
   std::unique_ptr<ControlReference> const control_ref;
   const Translatability translate;
   const std::string name;
   const std::string ui_name;
 
 protected:
-  Control(std::unique_ptr<ControlReference> ref, Translatability translate, const std::string& name,
-          const std::string& ui_name);
-  Control(std::unique_ptr<ControlReference> ref, Translatability translate,
-          const std::string& name);
+  Control(std::unique_ptr<ControlReference> ref, Translatability translate, std::string name,
+          std::string ui_name);
+  Control(std::unique_ptr<ControlReference> ref, Translatability translate, std::string name);
 };
+
 }  // namespace ControllerEmu

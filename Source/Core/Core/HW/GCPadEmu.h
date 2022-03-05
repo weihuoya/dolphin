@@ -1,6 +1,5 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -46,8 +45,9 @@ public:
 
   void LoadDefaults(const ControllerInterface& ciface) override;
 
-  static const u8 MAIN_STICK_GATE_RADIUS = 87;
-  static const u8 C_STICK_GATE_RADIUS = 74;
+  // Values averaged from multiple genuine GameCube controllers.
+  static constexpr ControlState MAIN_STICK_GATE_RADIUS = 0.7937125;
+  static constexpr ControlState C_STICK_GATE_RADIUS = 0.7221375;
 
 private:
   ControllerEmu::Buttons* m_buttons;

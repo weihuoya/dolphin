@@ -1,6 +1,5 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 /* $VER: ppc_disasm.c V1.5 (27.05.2009)
  *
@@ -1470,7 +1469,7 @@ u32* GekkoDisassembler::DoDisassembly(bool big_endian)
     break;
 
   case 30:
-    switch (in & 0x1c)
+    switch ((in >> 2) & 0x7)
     {
     case 0:
       rld(in, "icl", 0);  // rldicl

@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Config/Graphics/SoftwareRendererWidget.h"
 
@@ -12,11 +11,13 @@
 #include <QVBoxLayout>
 
 #include "Core/Config/GraphicsSettings.h"
+#include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 
 #include "DolphinQt/Config/Graphics/GraphicsBool.h"
 #include "DolphinQt/Config/Graphics/GraphicsWindow.h"
+#include "DolphinQt/Config/ToolTipControls/ToolTipComboBox.h"
 #include "DolphinQt/Settings.h"
 
 #include "UICommon/VideoUtils.h"
@@ -24,13 +25,13 @@
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
 
-SoftwareRendererWidget::SoftwareRendererWidget(GraphicsWindow* parent) : GraphicsWidget(parent)
+SoftwareRendererWidget::SoftwareRendererWidget(GraphicsWindow* parent)
 {
   CreateWidgets();
   LoadSettings();
   ConnectWidgets();
   AddDescriptions();
-  emit BackendChanged(QString::fromStdString(SConfig::GetInstance().m_strVideoBackend));
+  emit BackendChanged(QString::fromStdString(Config::Get(Config::MAIN_GFX_BACKEND)));
 
   connect(parent, &GraphicsWindow::BackendChanged, [this] { LoadSettings(); });
   connect(&Settings::Instance(), &Settings::EmulationStateChanged, this,
@@ -44,13 +45,13 @@ void SoftwareRendererWidget::CreateWidgets()
 
   auto* rendering_box = new QGroupBox(tr("Rendering"));
   auto* rendering_layout = new QGridLayout();
-  m_backend_combo = new QComboBox();
+  m_backend_combo = new ToolTipComboBox();
 
   rendering_box->setLayout(rendering_layout);
   rendering_layout->addWidget(new QLabel(tr("Backend:")), 1, 1);
   rendering_layout->addWidget(m_backend_combo, 1, 2);
 
-  for (const auto& backend : g_available_video_backends)
+  for (const auto& backend : VideoBackendBase::GetAvailableBackends())
     m_backend_combo->addItem(tr(backend->GetDisplayName().c_str()));
 
   auto* overlay_box = new QGroupBox(tr("Overlay Information"));
@@ -111,21 +112,23 @@ void SoftwareRendererWidget::CreateWidgets()
 
 void SoftwareRendererWidget::ConnectWidgets()
 {
-  connect(m_backend_combo, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+  connect(m_backend_combo, qOverload<int>(&QComboBox::currentIndexChanged),
           [this](int) { SaveSettings(); });
-  connect(m_object_range_min, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
+  connect(m_object_range_min, qOverload<int>(&QSpinBox::valueChanged),
           [this](int) { SaveSettings(); });
-  connect(m_object_range_max, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
+  connect(m_object_range_max, qOverload<int>(&QSpinBox::valueChanged),
           [this](int) { SaveSettings(); });
 }
 
 void SoftwareRendererWidget::LoadSettings()
 {
-  for (const auto& backend : g_available_video_backends)
+  for (const auto& backend : VideoBackendBase::GetAvailableBackends())
   {
-    if (backend->GetName() == SConfig::GetInstance().m_strVideoBackend)
+    if (backend->GetName() == Config::Get(Config::MAIN_GFX_BACKEND))
+    {
       m_backend_combo->setCurrentIndex(
           m_backend_combo->findText(tr(backend->GetDisplayName().c_str())));
+    }
   }
 
   m_object_range_min->setValue(Config::Get(Config::GFX_SW_DRAW_START));
@@ -134,12 +137,12 @@ void SoftwareRendererWidget::LoadSettings()
 
 void SoftwareRendererWidget::SaveSettings()
 {
-  for (const auto& backend : g_available_video_backends)
+  for (const auto& backend : VideoBackendBase::GetAvailableBackends())
   {
     if (tr(backend->GetDisplayName().c_str()) == m_backend_combo->currentText())
     {
       const auto backend_name = backend->GetName();
-      if (backend_name != SConfig::GetInstance().m_strVideoBackend)
+      if (backend_name != Config::Get(Config::MAIN_GFX_BACKEND))
         emit BackendChanged(QString::fromStdString(backend_name));
       break;
     }
@@ -151,38 +154,37 @@ void SoftwareRendererWidget::SaveSettings()
 
 void SoftwareRendererWidget::AddDescriptions()
 {
-  static const char TR_BACKEND_DESCRIPTION[] =
-      QT_TR_NOOP("Selects what graphics API to use internally.\nThe software renderer is extremely "
-                 "slow and only useful for debugging, so you'll want to use either Direct3D or "
-                 "OpenGL. Different games and different GPUs will behave differently on each "
-                 "backend, so for the best emulation experience it's recommended to try both and "
-                 "choose the one that's less problematic.\n\nIf unsure, select OpenGL.");
-
+  static const char TR_BACKEND_DESCRIPTION[] = QT_TR_NOOP(
+      "Selects what graphics API to use internally.<br>The software renderer is extremely "
+      "slow and only useful for debugging, so you'll want to use either Direct3D or "
+      "OpenGL. Different games and different GPUs will behave differently on each "
+      "backend, so for the best emulation experience it's recommended to try both and "
+      "choose the one that's less problematic.<br><br><dolphin_emphasis>If unsure, select "
+      "OpenGL.</dolphin_emphasis>");
   static const char TR_SHOW_STATISTICS_DESCRIPTION[] =
-      QT_TR_NOOP("Show various rendering statistics.\n\nIf unsure, leave this unchecked.");
-
+      QT_TR_NOOP("Show various rendering statistics.<br><br><dolphin_emphasis>If unsure, leave "
+                 "this unchecked.</dolphin_emphasis>");
   static const char TR_DUMP_TEXTURES_DESCRIPTION[] =
-      QT_TR_NOOP("Dump decoded game textures to User/Dump/Textures/<game_id>/.\n\nIf unsure, leave "
-                 "this unchecked.");
-
+      QT_TR_NOOP("Dump decoded game textures to "
+                 "User/Dump/Textures/&lt;game_id&gt;/.<br><br><dolphin_emphasis>If unsure, leave "
+                 "this unchecked.</dolphin_emphasis>");
   static const char TR_DUMP_OBJECTS_DESCRIPTION[] =
-      QT_TR_NOOP("Dump objects to User/Dump/Objects/.\n\nIf unsure, leave "
-                 "this unchecked.");
-
+      QT_TR_NOOP("Dump objects to User/Dump/Objects/.<br><br><dolphin_emphasis>If unsure, leave "
+                 "this unchecked.</dolphin_emphasis>");
   static const char TR_DUMP_TEV_STAGES_DESCRIPTION[] =
-      QT_TR_NOOP("Dump TEV Stages to User/Dump/Objects/.\n\nIf unsure, leave "
-                 "this unchecked.");
+      QT_TR_NOOP("Dump TEV Stages to User/Dump/Objects/.<br><br><dolphin_emphasis>If unsure, leave "
+                 "this unchecked.</dolphin_emphasis>");
+  static const char TR_DUMP_TEV_FETCHES_DESCRIPTION[] = QT_TR_NOOP(
+      "Dump Texture Fetches to User/Dump/Objects/.<br><br><dolphin_emphasis>If unsure, leave "
+      "this unchecked.</dolphin_emphasis>");
 
-  static const char TR_DUMP_TEV_FETCHES_DESCRIPTION[] =
-      QT_TR_NOOP("Dump Texture Fetches to User/Dump/Objects/.\n\nIf unsure, leave "
-                 "this unchecked.");
-
-  AddDescription(m_backend_combo, TR_BACKEND_DESCRIPTION);
-  AddDescription(m_show_statistics, TR_SHOW_STATISTICS_DESCRIPTION);
-  AddDescription(m_dump_textures, TR_DUMP_TEXTURES_DESCRIPTION);
-  AddDescription(m_dump_objects, TR_DUMP_OBJECTS_DESCRIPTION);
-  AddDescription(m_dump_tev_stages, TR_DUMP_TEV_STAGES_DESCRIPTION);
-  AddDescription(m_dump_tev_fetches, TR_DUMP_TEV_FETCHES_DESCRIPTION);
+  m_backend_combo->SetTitle(tr("Backend"));
+  m_backend_combo->SetDescription(tr(TR_BACKEND_DESCRIPTION));
+  m_show_statistics->SetDescription(tr(TR_SHOW_STATISTICS_DESCRIPTION));
+  m_dump_textures->SetDescription(tr(TR_DUMP_TEXTURES_DESCRIPTION));
+  m_dump_objects->SetDescription(tr(TR_DUMP_OBJECTS_DESCRIPTION));
+  m_dump_tev_stages->SetDescription(tr(TR_DUMP_TEV_STAGES_DESCRIPTION));
+  m_dump_tev_fetches->SetDescription(tr(TR_DUMP_TEV_FETCHES_DESCRIPTION));
 }
 
 void SoftwareRendererWidget::OnEmulationStateChanged(bool running)

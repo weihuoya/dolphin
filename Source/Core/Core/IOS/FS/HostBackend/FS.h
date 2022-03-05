@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -11,7 +10,7 @@
 #include <vector>
 
 #include "Common/CommonTypes.h"
-#include "Common/File.h"
+#include "Common/IOFile.h"
 #include "Core/IOS/FS/FileSystem.h"
 
 namespace IOS::HLE::FS
@@ -23,7 +22,7 @@ namespace IOS::HLE::FS
 class HostFileSystem final : public FileSystem
 {
 public:
-  HostFileSystem(const std::string& root_path);
+  HostFileSystem(const std::string& root_path, std::vector<NandRedirect> nand_redirects = {});
   ~HostFileSystem();
 
   void DoState(PointerWrap& p) override;
@@ -57,7 +56,23 @@ public:
   Result<NandStats> GetNandStats() override;
   Result<DirectoryStats> GetDirectoryStats(const std::string& path) override;
 
+  void SetNandRedirects(std::vector<NandRedirect> nand_redirects) override;
+
 private:
+  struct FstEntry
+  {
+    bool CheckPermission(Uid uid, Gid gid, Mode requested_mode) const;
+
+    std::string name;
+    Metadata data{};
+    /// Children of this FST entry. Only valid for directories.
+    ///
+    /// We use a vector rather than a list here because iterating over children
+    /// happens a lot more often than removals.
+    /// Newly created entries are added at the end.
+    std::vector<FstEntry> children;
+  };
+
   struct Handle
   {
     bool opened = false;
@@ -70,12 +85,43 @@ private:
   Handle* GetHandleFromFd(Fd fd);
   Fd ConvertHandleToFd(const Handle* handle) const;
 
-  std::string BuildFilename(const std::string& wii_path) const;
+  struct HostFilename
+  {
+    std::string host_path;
+    bool is_redirect;
+  };
+  HostFilename BuildFilename(const std::string& wii_path) const;
   std::shared_ptr<File::IOFile> OpenHostFile(const std::string& host_path);
 
+  ResultCode CreateFileOrDirectory(Uid uid, Gid gid, const std::string& path,
+                                   FileAttribute attribute, Modes modes, bool is_file);
+  bool IsFileOpened(const std::string& path) const;
+  bool IsDirectoryInUse(const std::string& path) const;
+
+  std::string GetFstFilePath() const;
+  void ResetFst();
+  void LoadFst();
+  void SaveFst();
+  /// Get the FST entry for a file (or directory).
+  /// Automatically creates fallback entries for parents if they do not exist.
+  /// Returns nullptr if the path is invalid or the file does not exist.
+  FstEntry* GetFstEntryForPath(const std::string& path);
+
+  /// FST entry for the filesystem root.
+  ///
+  /// Note that unlike a real Wii's FST, ours is the single source of truth only for
+  /// filesystem metadata and ordering. File existence must be checked by querying
+  /// the host filesystem.
+  /// The reasons for this design are twofold: existing users do not have a FST
+  /// and we do not want FS to break if the user adds or removes files in their
+  /// filesystem root manually.
+  FstEntry m_root_entry{};
   std::string m_root_path;
   std::map<std::string, std::weak_ptr<File::IOFile>> m_open_files;
   std::array<Handle, 16> m_handles{};
+
+  FstEntry m_redirect_fst{};
+  std::vector<NandRedirect> m_nand_redirects;
 };
 
 }  // namespace IOS::HLE::FS

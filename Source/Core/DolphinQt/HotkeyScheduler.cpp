@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/HotkeyScheduler.h"
 
@@ -8,6 +7,7 @@
 #include <cmath>
 #include <thread>
 
+#include <QApplication>
 #include <QCoreApplication>
 
 #include "AudioCommon/AudioCommon.h"
@@ -15,16 +15,28 @@
 #include "Common/Config/Config.h"
 #include "Common/Thread.h"
 
+#include "Core/Config/FreeLookSettings.h"
 #include "Core/Config/GraphicsSettings.h"
+#include "Core/Config/MainSettings.h"
+#include "Core/Config/UISettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
+#include "Core/FreeLookManager.h"
+#include "Core/Host.h"
 #include "Core/HotkeyManager.h"
 #include "Core/IOS/IOS.h"
 #include "Core/IOS/USB/Bluetooth/BTBase.h"
+#include "Core/IOS/USB/Bluetooth/BTReal.h"
 #include "Core/State.h"
+#include "Core/WiiUtils.h"
 
+#ifdef HAS_LIBMGBA
+#include "DolphinQt/GBAWidget.h"
+#endif
+#include "DolphinQt/QtUtils/QueueOnObject.h"
 #include "DolphinQt/Settings.h"
 
+#include "InputCommon/ControlReference/ControlReference.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 
 #include "VideoCommon/OnScreenDisplay.h"
@@ -77,13 +89,13 @@ static void HandleFrameStepHotkeys()
 
   if (IsHotkey(HK_FRAME_ADVANCE_INCREASE_SPEED))
   {
-    frame_step_delay = std::min(frame_step_delay + 1, MAX_FRAME_STEP_DELAY);
+    frame_step_delay = std::max(frame_step_delay - 1, 0);
     return;
   }
 
   if (IsHotkey(HK_FRAME_ADVANCE_DECREASE_SPEED))
   {
-    frame_step_delay = std::max(frame_step_delay - 1, 0);
+    frame_step_delay = std::min(frame_step_delay + 1, MAX_FRAME_STEP_DELAY);
     return;
   }
 
@@ -130,25 +142,58 @@ static void HandleFrameStepHotkeys()
 
 void HotkeyScheduler::Run()
 {
+  Common::SetCurrentThreadName("HotkeyScheduler");
+
   while (!m_stop_requested.IsSet())
   {
-    Common::SleepCurrentThread(1000 / 60);
+    Common::SleepCurrentThread(5);
+
+    g_controller_interface.SetCurrentInputChannel(ciface::InputChannel::FreeLook);
+    g_controller_interface.UpdateInput();
+    FreeLook::UpdateInput();
+
+    g_controller_interface.SetCurrentInputChannel(ciface::InputChannel::Host);
+    g_controller_interface.UpdateInput();
 
     if (!HotkeyManagerEmu::IsEnabled())
       continue;
 
-    if (Core::GetState() == Core::State::Uninitialized || Core::GetState() == Core::State::Paused)
-      g_controller_interface.UpdateInput();
-
     if (Core::GetState() != Core::State::Stopping)
     {
-      HotkeyManagerEmu::GetStatus();
+      // Obey window focus (config permitting) before checking hotkeys.
+      Core::UpdateInputGate(Config::Get(Config::MAIN_FOCUSED_HOTKEYS));
 
-      if (!Core::IsRunningAndStarted())
-        continue;
+      HotkeyManagerEmu::GetStatus(false);
 
+      // Everything else on the host thread (controller config dialog) should always get input.
+      ControlReference::SetInputGate(true);
+
+      HotkeyManagerEmu::GetStatus(true);
+
+      // Open
       if (IsHotkey(HK_OPEN))
         emit Open();
+
+      // Refresh Game List
+      if (IsHotkey(HK_REFRESH_LIST))
+        emit RefreshGameListHotkey();
+
+      // Recording
+      if (IsHotkey(HK_START_RECORDING))
+        emit StartRecording();
+
+      // Exit
+      if (IsHotkey(HK_EXIT))
+        emit ExitHotkey();
+
+      if (!Core::IsRunningAndStarted())
+      {
+        // Only check for Play Recording hotkey when no game is running
+        if (IsHotkey(HK_PLAY_RECORDING))
+          emit PlayRecording();
+
+        continue;
+      }
 
       // Disc
 
@@ -166,10 +211,6 @@ void HotkeyScheduler::Run()
         // Prevent fullscreen from getting toggled too often
         Common::SleepCurrentThread(100);
       }
-
-      // Refresh Game List
-      if (IsHotkey(HK_REFRESH_LIST))
-        emit RefreshGameListHotkey();
 
       // Pause and Unpause
       if (IsHotkey(HK_PLAY_PAUSE))
@@ -190,9 +231,9 @@ void HotkeyScheduler::Run()
       if (IsHotkey(HK_SCREENSHOT))
         emit ScreenShotHotkey();
 
-      // Exit
-      if (IsHotkey(HK_EXIT))
-        emit ExitHotkey();
+      // Unlock Cursor
+      if (IsHotkey(HK_UNLOCK_CURSOR))
+        emit UnlockCursor();
 
       auto& settings = Settings::Instance();
 
@@ -203,10 +244,6 @@ void HotkeyScheduler::Run()
       if (IsHotkey(HK_REQUEST_GOLF_CONTROL))
         emit RequestGolfControl();
 
-      // Recording
-      if (IsHotkey(HK_START_RECORDING))
-        emit StartRecording();
-
       if (IsHotkey(HK_EXPORT_RECORDING))
         emit ExportRecording();
 
@@ -214,15 +251,8 @@ void HotkeyScheduler::Run()
         emit ToggleReadOnlyMode();
 
       // Wiimote
-      if (SConfig::GetInstance().m_bt_passthrough_enabled)
-      {
-        const auto ios = IOS::HLE::GetIOS();
-        auto device = ios ? ios->GetDeviceByName("/dev/usb/oh1/57e/305") : nullptr;
-
-        if (device != nullptr)
-          std::static_pointer_cast<IOS::HLE::Device::BluetoothBase>(device)->UpdateSyncButtonState(
-              IsHotkey(HK_TRIGGER_SYNC_BUTTON, true));
-      }
+      if (auto bt = WiiUtils::GetBluetoothRealDevice())
+        bt->UpdateSyncButtonState(IsHotkey(HK_TRIGGER_SYNC_BUTTON, true));
 
       if (SConfig::GetInstance().bEnableDebugging)
       {
@@ -300,9 +330,9 @@ void HotkeyScheduler::Run()
 
       auto ShowVolume = []() {
         OSD::AddMessage(std::string("Volume: ") +
-                        (SConfig::GetInstance().m_IsMuted ?
+                        (Config::Get(Config::MAIN_AUDIO_MUTED) ?
                              "Muted" :
-                             std::to_string(SConfig::GetInstance().m_Volume) + "%"));
+                             std::to_string(Config::Get(Config::MAIN_AUDIO_VOLUME)) + "%"));
       };
 
       // Volume
@@ -379,6 +409,15 @@ void HotkeyScheduler::Run()
           break;
         }
       }
+
+      if (IsHotkey(HK_TOGGLE_SKIP_EFB_ACCESS))
+      {
+        const bool new_value = !Config::Get(Config::GFX_HACK_EFB_ACCESS_ENABLE);
+        Config::SetCurrent(Config::GFX_HACK_EFB_ACCESS_ENABLE, new_value);
+        OSD::AddMessage(
+            StringFromFormat("%s EFB Access from CPU", new_value ? "Skip" : "Don't skip"));
+      }
+
       if (IsHotkey(HK_TOGGLE_EFBCOPIES))
       {
         const bool new_value = !Config::Get(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM);
@@ -496,15 +535,18 @@ void HotkeyScheduler::Run()
           Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
         }
       }
+
+      CheckGBAHotkeys();
     }
 
     const auto stereo_depth = Config::Get(Config::GFX_STEREO_DEPTH);
 
     if (IsHotkey(HK_DECREASE_DEPTH, true))
-      Config::SetCurrent(Config::GFX_STEREO_DEPTH, std::min(stereo_depth - 1, 0));
+      Config::SetCurrent(Config::GFX_STEREO_DEPTH, std::max(stereo_depth - 1, 0));
 
     if (IsHotkey(HK_INCREASE_DEPTH, true))
-      Config::SetCurrent(Config::GFX_STEREO_DEPTH, std::min(stereo_depth + 1, 100));
+      Config::SetCurrent(Config::GFX_STEREO_DEPTH,
+                         std::min(stereo_depth + 1, Config::GFX_STEREO_DEPTH_MAXIMUM));
 
     const auto stereo_convergence = Config::Get(Config::GFX_STEREO_CONVERGENCE);
 
@@ -512,40 +554,16 @@ void HotkeyScheduler::Run()
       Config::SetCurrent(Config::GFX_STEREO_CONVERGENCE, std::max(stereo_convergence - 5, 0));
 
     if (IsHotkey(HK_INCREASE_CONVERGENCE, true))
-      Config::SetCurrent(Config::GFX_STEREO_CONVERGENCE, std::min(stereo_convergence + 5, 500));
+      Config::SetCurrent(Config::GFX_STEREO_CONVERGENCE,
+                         std::min(stereo_convergence + 5, Config::GFX_STEREO_CONVERGENCE_MAXIMUM));
 
-    // Freelook
-    static float fl_speed = 1.0;
-
-    if (IsHotkey(HK_FREELOOK_DECREASE_SPEED, true))
-      fl_speed /= 1.1f;
-
-    if (IsHotkey(HK_FREELOOK_INCREASE_SPEED, true))
-      fl_speed *= 1.1f;
-
-    if (IsHotkey(HK_FREELOOK_RESET_SPEED, true))
-      fl_speed = 1.0;
-
-    if (IsHotkey(HK_FREELOOK_UP, true))
-      VertexShaderManager::TranslateView(0.0, 0.0, -fl_speed);
-
-    if (IsHotkey(HK_FREELOOK_DOWN, true))
-      VertexShaderManager::TranslateView(0.0, 0.0, fl_speed);
-
-    if (IsHotkey(HK_FREELOOK_LEFT, true))
-      VertexShaderManager::TranslateView(fl_speed, 0.0);
-
-    if (IsHotkey(HK_FREELOOK_RIGHT, true))
-      VertexShaderManager::TranslateView(-fl_speed, 0.0);
-
-    if (IsHotkey(HK_FREELOOK_ZOOM_IN, true))
-      VertexShaderManager::TranslateView(0.0, fl_speed);
-
-    if (IsHotkey(HK_FREELOOK_ZOOM_OUT, true))
-      VertexShaderManager::TranslateView(0.0, -fl_speed);
-
-    if (IsHotkey(HK_FREELOOK_RESET, true))
-      VertexShaderManager::ResetView();
+    // Free Look
+    if (IsHotkey(HK_FREELOOK_TOGGLE))
+    {
+      const bool new_value = !Config::Get(Config::FREE_LOOK_ENABLED);
+      Config::SetCurrent(Config::FREE_LOOK_ENABLED, new_value);
+      OSD::AddMessage(StringFromFormat("Free Look: %s", new_value ? "Enabled" : "Disabled"));
+    }
 
     // Savestates
     for (u32 i = 0; i < State::NUM_STATES; i++)
@@ -605,4 +623,43 @@ void HotkeyScheduler::CheckDebuggingHotkeys()
 
   if (IsHotkey(HK_BP_ADD))
     emit AddBreakpoint();
+}
+
+void HotkeyScheduler::CheckGBAHotkeys()
+{
+#ifdef HAS_LIBMGBA
+  GBAWidget* gba_widget = qobject_cast<GBAWidget*>(QApplication::activeWindow());
+  if (!gba_widget)
+    return;
+
+  if (IsHotkey(HK_GBA_LOAD))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->LoadROM(); });
+
+  if (IsHotkey(HK_GBA_UNLOAD))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->UnloadROM(); });
+
+  if (IsHotkey(HK_GBA_RESET))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->ResetCore(); });
+
+  if (IsHotkey(HK_GBA_VOLUME_DOWN))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->VolumeDown(); });
+
+  if (IsHotkey(HK_GBA_VOLUME_UP))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->VolumeUp(); });
+
+  if (IsHotkey(HK_GBA_TOGGLE_MUTE))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->ToggleMute(); });
+
+  if (IsHotkey(HK_GBA_1X))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->Resize(1); });
+
+  if (IsHotkey(HK_GBA_2X))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->Resize(2); });
+
+  if (IsHotkey(HK_GBA_3X))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->Resize(3); });
+
+  if (IsHotkey(HK_GBA_4X))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->Resize(4); });
+#endif
 }

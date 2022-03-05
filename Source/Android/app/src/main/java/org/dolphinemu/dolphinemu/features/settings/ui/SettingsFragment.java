@@ -1,18 +1,21 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.features.settings.ui;
 
-import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
-import android.support.annotation.Nullable;
-import android.support.v4.app.Fragment;
-import android.support.v7.widget.LinearLayoutManager;
-import android.support.v7.widget.RecyclerView;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
 import org.dolphinemu.dolphinemu.R;
-import org.dolphinemu.dolphinemu.features.settings.model.Setting;
+import org.dolphinemu.dolphinemu.features.settings.model.Settings;
 import org.dolphinemu.dolphinemu.features.settings.model.view.SettingsItem;
 import org.dolphinemu.dolphinemu.ui.DividerItemDecoration;
 
@@ -25,7 +28,7 @@ public final class SettingsFragment extends Fragment implements SettingsFragment
   private static final String ARGUMENT_MENU_TAG = "menu_tag";
   private static final String ARGUMENT_GAME_ID = "game_id";
 
-  private SettingsFragmentPresenter mPresenter = new SettingsFragmentPresenter(this);
+  private SettingsFragmentPresenter mPresenter;
   private SettingsActivityView mActivity;
 
   private SettingsAdapter mAdapter;
@@ -34,19 +37,25 @@ public final class SettingsFragment extends Fragment implements SettingsFragment
 
   static
   {
-    titles.put(MenuTag.CONFIG, R.string.preferences_settings);
+    titles.put(MenuTag.SETTINGS, R.string.settings);
+    titles.put(MenuTag.CONFIG, R.string.config);
     titles.put(MenuTag.CONFIG_GENERAL, R.string.general_submenu);
     titles.put(MenuTag.CONFIG_INTERFACE, R.string.interface_submenu);
+    titles.put(MenuTag.CONFIG_AUDIO, R.string.audio_submenu);
+    titles.put(MenuTag.CONFIG_PATHS, R.string.paths_submenu);
     titles.put(MenuTag.CONFIG_GAME_CUBE, R.string.gamecube_submenu);
     titles.put(MenuTag.CONFIG_WII, R.string.wii_submenu);
-    titles.put(MenuTag.WIIMOTE, R.string.grid_menu_wiimote_settings);
-    titles.put(MenuTag.WIIMOTE_EXTENSION, R.string.wiimote_extensions);
-    titles.put(MenuTag.GCPAD_TYPE, R.string.grid_menu_gcpad_settings);
-    titles.put(MenuTag.GRAPHICS, R.string.grid_menu_graphics_settings);
-    titles.put(MenuTag.HACKS, R.string.hacks_submenu);
+    titles.put(MenuTag.CONFIG_ADVANCED, R.string.advanced_submenu);
     titles.put(MenuTag.DEBUG, R.string.debug_submenu);
+    titles.put(MenuTag.GRAPHICS, R.string.graphics_settings);
     titles.put(MenuTag.ENHANCEMENTS, R.string.enhancements_submenu);
     titles.put(MenuTag.STEREOSCOPY, R.string.stereoscopy_submenu);
+    titles.put(MenuTag.HACKS, R.string.hacks_submenu);
+    titles.put(MenuTag.ADVANCED_GRAPHICS, R.string.advanced_graphics_submenu);
+    titles.put(MenuTag.CONFIG_LOG, R.string.log_submenu);
+    titles.put(MenuTag.GCPAD_TYPE, R.string.gcpad_settings);
+    titles.put(MenuTag.WIIMOTE, R.string.wiimote_settings);
+    titles.put(MenuTag.WIIMOTE_EXTENSION, R.string.wiimote_extensions);
     titles.put(MenuTag.GCPAD_1, R.string.controller_0);
     titles.put(MenuTag.GCPAD_2, R.string.controller_1);
     titles.put(MenuTag.GCPAD_3, R.string.controller_2);
@@ -79,26 +88,11 @@ public final class SettingsFragment extends Fragment implements SettingsFragment
   }
 
   @Override
-  public void onAttach(Context context)
+  public void onAttach(@NonNull Context context)
   {
     super.onAttach(context);
 
     mActivity = (SettingsActivityView) context;
-    mPresenter.onAttach();
-  }
-
-  /**
-   * This version of onAttach is needed for versions below Marshmallow.
-   *
-   * @param activity
-   */
-  @Override
-  public void onAttach(Activity activity)
-  {
-    super.onAttach(activity);
-
-    mActivity = (SettingsActivityView) activity;
-    mPresenter.onAttach();
   }
 
   @Override
@@ -111,7 +105,8 @@ public final class SettingsFragment extends Fragment implements SettingsFragment
     MenuTag menuTag = (MenuTag) args.getSerializable(ARGUMENT_MENU_TAG);
     String gameId = getArguments().getString(ARGUMENT_GAME_ID);
 
-    mAdapter = new SettingsAdapter(this, getActivity());
+    mPresenter = new SettingsFragmentPresenter(this, getContext());
+    mAdapter = new SettingsAdapter(this, getContext());
 
     mPresenter.onCreate(menuTag, gameId, args);
   }
@@ -125,7 +120,7 @@ public final class SettingsFragment extends Fragment implements SettingsFragment
   }
 
   @Override
-  public void onViewCreated(View view, @Nullable Bundle savedInstanceState)
+  public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState)
   {
     Bundle args = getArguments();
     MenuTag menuTag = (MenuTag) args.getSerializable(ARGUMENT_MENU_TAG);
@@ -137,11 +132,11 @@ public final class SettingsFragment extends Fragment implements SettingsFragment
 
     LinearLayoutManager manager = new LinearLayoutManager(getActivity());
 
-    RecyclerView recyclerView = (RecyclerView) view.findViewById(R.id.list_settings);
+    RecyclerView recyclerView = view.findViewById(R.id.list_settings);
 
     recyclerView.setAdapter(mAdapter);
     recyclerView.setLayoutManager(manager);
-    recyclerView.addItemDecoration(new DividerItemDecoration(getActivity(), null));
+    recyclerView.addItemDecoration(new DividerItemDecoration(requireActivity(), null));
 
     SettingsActivityView activity = (SettingsActivityView) getActivity();
     mPresenter.onViewCreated(menuTag, activity.getSettings());
@@ -167,16 +162,6 @@ public final class SettingsFragment extends Fragment implements SettingsFragment
   }
 
   @Override
-  public void passSettingsToActivity(
-          org.dolphinemu.dolphinemu.features.settings.model.Settings settings)
-  {
-    if (mActivity != null)
-    {
-      mActivity.setSettings(settings);
-    }
-  }
-
-  @Override
   public void showSettingsList(ArrayList<SettingsItem> settingsList)
   {
     mAdapter.setSettings(settingsList);
@@ -186,6 +171,12 @@ public final class SettingsFragment extends Fragment implements SettingsFragment
   public void loadDefaultSettings()
   {
     mPresenter.loadDefaultSettings();
+  }
+
+  @Override
+  public SettingsAdapter getAdapter()
+  {
+    return mAdapter;
   }
 
   @Override
@@ -201,9 +192,9 @@ public final class SettingsFragment extends Fragment implements SettingsFragment
   }
 
   @Override
-  public void putSetting(Setting setting)
+  public Settings getSettings()
   {
-    mPresenter.putSetting(setting);
+    return mPresenter.getSettings();
   }
 
   @Override
@@ -229,5 +220,4 @@ public final class SettingsFragment extends Fragment implements SettingsFragment
   {
     mActivity.onExtensionSettingChanged(menuTag, value);
   }
-
 }

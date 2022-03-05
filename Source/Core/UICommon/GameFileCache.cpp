@@ -1,10 +1,10 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "UICommon/GameFileCache.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <functional>
 #include <list>
@@ -17,9 +17,9 @@
 
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
-#include "Common/File.h"
 #include "Common/FileSearch.h"
 #include "Common/FileUtil.h"
+#include "Common/IOFile.h"
 
 #include "DiscIO/DirectoryBlob.h"
 
@@ -27,13 +27,13 @@
 
 namespace UICommon
 {
-static constexpr u32 CACHE_REVISION = 15;  // Last changed in PR 7816
+static constexpr u32 CACHE_REVISION = 20;  // Last changed in PR 9461
 
 std::vector<std::string> FindAllGamePaths(const std::vector<std::string>& directories_to_scan,
                                           bool recursive_scan)
 {
   static const std::vector<std::string> search_extensions = {
-      ".gcm", ".tgc", ".iso", ".ciso", ".gcz", ".wbfs", ".wad", ".dol", ".elf"};
+      ".gcm", ".tgc", ".iso", ".ciso", ".gcz", ".wbfs", ".wia", ".rvz", ".wad", ".dol", ".elf"};
 
   // TODO: We could process paths iteratively as they are found
   return Common::DoFileSearch(directories_to_scan, search_extensions, recursive_scan);
@@ -43,13 +43,9 @@ GameFileCache::GameFileCache() : m_path(File::GetUserPath(D_CACHE_IDX) + "gameli
 {
 }
 
-GameFileCache::GameFileCache(std::string path) : m_path(std::move(path))
-{
-}
-
 void GameFileCache::ForEach(std::function<void(const std::shared_ptr<const GameFile>&)> f) const
 {
-  for (const std::shared_ptr<const GameFile>& item : m_cached_files)
+  for (const std::shared_ptr<GameFile>& item : m_cached_files)
     f(item);
 }
 
@@ -90,7 +86,8 @@ std::shared_ptr<const GameFile> GameFileCache::AddOrGet(const std::string& path,
 bool GameFileCache::Update(
     const std::vector<std::string>& all_game_paths,
     std::function<void(const std::shared_ptr<const GameFile>&)> game_added_to_cache,
-    std::function<void(const std::string&)> game_removed_from_cache)
+    std::function<void(const std::string&)> game_removed_from_cache,
+    const std::atomic_bool& processing_halted)
 {
   // Copy game paths into a set, except ones that match DiscIO::ShouldHideFromGameList.
   // TODO: Prevent DoFileSearch from looking inside /files/ directories of DirectoryBlobs at all?
@@ -113,6 +110,9 @@ bool GameFileCache::Update(
     auto end = m_cached_files.end();
     while (it != end)
     {
+      if (processing_halted)
+        break;
+
       if (game_paths.erase((*it)->GetFilePath()))
       {
         ++it;
@@ -134,6 +134,9 @@ bool GameFileCache::Update(
   // aren't in m_cached_files, so we simply add all of them to m_cached_files.
   for (const std::string& path : game_paths)
   {
+    if (processing_halted)
+      break;
+
     auto file = std::make_shared<GameFile>(path);
     if (file->IsValid())
     {
@@ -149,12 +152,16 @@ bool GameFileCache::Update(
 }
 
 bool GameFileCache::UpdateAdditionalMetadata(
-    std::function<void(const std::shared_ptr<const GameFile>&)> game_updated)
+    std::function<void(const std::shared_ptr<const GameFile>&)> game_updated,
+    const std::atomic_bool& processing_halted)
 {
   bool cache_changed = false;
 
   for (std::shared_ptr<GameFile>& file : m_cached_files)
   {
+    if (processing_halted)
+      break;
+
     const bool updated = UpdateAdditionalMetadata(&file);
     cache_changed |= updated;
     if (game_updated && updated)
@@ -166,6 +173,7 @@ bool GameFileCache::UpdateAdditionalMetadata(
 
 bool GameFileCache::UpdateAdditionalMetadata(std::shared_ptr<GameFile>* game_file)
 {
+  const bool xml_metadata_changed = (*game_file)->XMLMetadataChanged();
   const bool wii_banner_changed = (*game_file)->WiiBannerChanged();
   const bool custom_banner_changed = (*game_file)->CustomBannerChanged();
 
@@ -174,14 +182,18 @@ bool GameFileCache::UpdateAdditionalMetadata(std::shared_ptr<GameFile>* game_fil
   const bool default_cover_changed = (*game_file)->DefaultCoverChanged();
   const bool custom_cover_changed = (*game_file)->CustomCoverChanged();
 
-  if (!wii_banner_changed && !custom_banner_changed && !default_cover_changed &&
-      !custom_cover_changed)
+  if (!xml_metadata_changed && !wii_banner_changed && !custom_banner_changed &&
+      !default_cover_changed && !custom_cover_changed)
+  {
     return false;
+  }
 
   // If a cached file needs an update, apply the updates to a copy and delete the original.
   // This makes the usage of cached files in other threads safe.
 
   std::shared_ptr<GameFile> copy = std::make_shared<GameFile>(**game_file);
+  if (xml_metadata_changed)
+    copy->XMLMetadataCommit();
   if (wii_banner_changed)
     copy->WiiBannerCommit();
   if (custom_banner_changed)
@@ -191,7 +203,7 @@ bool GameFileCache::UpdateAdditionalMetadata(std::shared_ptr<GameFile>* game_fil
   if (custom_cover_changed)
     copy->CustomCoverCommit();
 
-  *game_file = std::move(copy);
+  std::atomic_store(game_file, std::move(copy));
 
   return true;
 }

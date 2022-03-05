@@ -1,56 +1,50 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.features.settings.model.view;
 
-import org.dolphinemu.dolphinemu.features.settings.model.BooleanSetting;
-import org.dolphinemu.dolphinemu.features.settings.model.Setting;
+import android.content.Context;
 
-public final class CheckBoxSetting extends SettingsItem
+import org.dolphinemu.dolphinemu.features.settings.model.AbstractBooleanSetting;
+import org.dolphinemu.dolphinemu.features.settings.model.AbstractSetting;
+import org.dolphinemu.dolphinemu.features.settings.model.Settings;
+
+public class CheckBoxSetting extends SettingsItem
 {
-  private boolean mDefaultValue;
+  protected AbstractBooleanSetting mSetting;
 
-  public CheckBoxSetting(String key, String section, int titleId, int descriptionId,
-          boolean defaultValue, Setting setting)
+  public CheckBoxSetting(Context context, AbstractBooleanSetting setting, int titleId,
+          int descriptionId)
   {
-    super(key, section, setting, titleId, descriptionId);
-    mDefaultValue = defaultValue;
+    super(context, titleId, descriptionId);
+    mSetting = setting;
   }
 
-  public boolean isChecked()
+  public CheckBoxSetting(AbstractBooleanSetting setting, CharSequence title,
+          CharSequence description)
   {
-    if (getSetting() == null)
-    {
-      return mDefaultValue;
-    }
-
-    BooleanSetting setting = (BooleanSetting) getSetting();
-    return setting.getValue();
+    super(title, description);
+    mSetting = setting;
   }
 
-  /**
-   * Write a value to the backing boolean. If that boolean was previously null,
-   * initializes a new one and returns it, so it can be added to the Hashmap.
-   *
-   * @param checked Pretty self explanatory.
-   * @return null if overwritten successfully; otherwise, a newly created BooleanSetting.
-   */
-  public BooleanSetting setChecked(boolean checked)
+  public boolean isChecked(Settings settings)
   {
-    if (getSetting() == null)
-    {
-      BooleanSetting setting = new BooleanSetting(getKey(), getSection(), checked);
-      setSetting(setting);
-      return setting;
-    }
-    else
-    {
-      BooleanSetting setting = (BooleanSetting) getSetting();
-      setting.setValue(checked);
-      return null;
-    }
+    return mSetting.getBoolean(settings);
+  }
+
+  public void setChecked(Settings settings, boolean checked)
+  {
+    mSetting.setBoolean(settings, checked);
   }
 
   @Override
   public int getType()
   {
     return TYPE_CHECKBOX;
+  }
+
+  @Override
+  public AbstractSetting getSetting()
+  {
+    return mSetting;
   }
 }

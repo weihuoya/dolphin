@@ -1,6 +1,5 @@
 // Copyright 2011 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/FifoPlayer/FifoDataFile.h"
 
@@ -10,13 +9,19 @@
 #include <string>
 #include <vector>
 
-#include "Common/File.h"
+#include "Common/IOFile.h"
+#include "Common/MsgHandler.h"
+#include "Core/Config/MainSettings.h"
+#include "Core/HW/Memmap.h"
 
 enum
 {
   FILE_ID = 0x0d01f1f0,
-  VERSION_NUMBER = 4,
+  VERSION_NUMBER = 5,
   MIN_LOADER_VERSION = 1,
+  // This value is only used if the DFF file was created with overridden RAM sizes.
+  // If the MIN_LOADER_VERSION ever exceeds this, it's alright to remove it.
+  MIN_LOADER_VERSION_FOR_RAM_OVERRIDE = 5,
 };
 
 #pragma pack(push, 1)
@@ -39,7 +44,11 @@ struct FileHeader
   u32 flags;
   u64 texMemOffset;
   u32 texMemSize;
-  u8 reserved[40];
+  // These are for overriden RAM sizes.  Otherwise the FIFO Player
+  // will crash and burn with mismatched settings.  See PR #8722.
+  u32 mem1_size;
+  u32 mem2_size;
+  u8 reserved[32];
 };
 static_assert(sizeof(FileHeader) == 128, "FileHeader should be 128 bytes");
 
@@ -111,25 +120,29 @@ bool FifoDataFile::Save(const std::string& filename)
   PadFile(m_Frames.size() * sizeof(FileFrameInfo), file);
 
   u64 bpMemOffset = file.Tell();
-  file.WriteArray(m_BPMem, BP_MEM_SIZE);
+  file.WriteArray(m_BPMem);
 
   u64 cpMemOffset = file.Tell();
-  file.WriteArray(m_CPMem, CP_MEM_SIZE);
+  file.WriteArray(m_CPMem);
 
   u64 xfMemOffset = file.Tell();
-  file.WriteArray(m_XFMem, XF_MEM_SIZE);
+  file.WriteArray(m_XFMem);
 
   u64 xfRegsOffset = file.Tell();
-  file.WriteArray(m_XFRegs, XF_REGS_SIZE);
+  file.WriteArray(m_XFRegs);
 
   u64 texMemOffset = file.Tell();
-  file.WriteArray(m_TexMem, TEX_MEM_SIZE);
+  file.WriteArray(m_TexMem);
 
   // Write header
   FileHeader header;
   header.fileId = FILE_ID;
   header.file_version = VERSION_NUMBER;
-  header.min_loader_version = MIN_LOADER_VERSION;
+  // Maintain backwards compatability so long as the RAM sizes aren't overridden.
+  if (Config::Get(Config::MAIN_RAM_OVERRIDE_ENABLE))
+    header.min_loader_version = MIN_LOADER_VERSION_FOR_RAM_OVERRIDE;
+  else
+    header.min_loader_version = MIN_LOADER_VERSION;
 
   header.bpMemOffset = bpMemOffset;
   header.bpMemSize = BP_MEM_SIZE;
@@ -150,6 +163,9 @@ bool FifoDataFile::Save(const std::string& filename)
   header.frameCount = (u32)m_Frames.size();
 
   header.flags = m_Flags;
+
+  header.mem1_size = Memory::GetRamSizeReal();
+  header.mem2_size = Memory::GetExRamSizeReal();
 
   file.Seek(0, SEEK_SET);
   file.WriteBytes(&header, sizeof(FileHeader));
@@ -193,13 +209,43 @@ std::unique_ptr<FifoDataFile> FifoDataFile::Load(const std::string& filename, bo
   if (!file)
     return nullptr;
 
-  FileHeader header;
-  file.ReadBytes(&header, sizeof(header));
-
-  if (header.fileId != FILE_ID || header.min_loader_version > VERSION_NUMBER)
-  {
-    file.Close();
+  auto panic_failed_to_read = []() {
+    CriticalAlertFmtT("Failed to read DFF file.");
     return nullptr;
+  };
+
+  if (file.GetSize() == 0)
+  {
+    CriticalAlertFmtT("DFF file size is 0; corrupt/incomplete file?");
+    return nullptr;
+  }
+
+  FileHeader header;
+  if (!file.ReadBytes(&header, sizeof(header)))
+    return panic_failed_to_read();
+
+  if (header.fileId != FILE_ID)
+  {
+    CriticalAlertFmtT("DFF file magic number is incorrect: got {0:08x}, expected {1:08x}",
+                      header.fileId, FILE_ID);
+    return nullptr;
+  }
+
+  if (header.min_loader_version > VERSION_NUMBER)
+  {
+    CriticalAlertFmtT(
+        "The DFF's minimum loader version ({0}) exceeds the version of this FIFO Player ({1})",
+        header.min_loader_version, VERSION_NUMBER);
+    return nullptr;
+  }
+
+  // Official support for overridden RAM sizes was added in version 5.
+  if (header.file_version < 5)
+  {
+    // It's safe to assume FIFO Logs before PR #8722 weren't using this
+    // obscure feature, so load up these header values with the old defaults.
+    header.mem1_size = Memory::MEM1_SIZE_RETAIL;
+    header.mem2_size = Memory::MEM2_SIZE_RETAIL;
   }
 
   auto dataFile = std::make_unique<FifoDataFile>();
@@ -209,34 +255,65 @@ std::unique_ptr<FifoDataFile> FifoDataFile::Load(const std::string& filename, bo
 
   if (flagsOnly)
   {
-    file.Close();
+    // Force settings to match those used when the DFF was created.  This is sort of a hack.
+    // It only works because this function gets called twice, and the first time (flagsOnly mode)
+    // happens to be before HW::Init().  But the convenience is hard to deny!
+    Config::SetCurrent(Config::MAIN_RAM_OVERRIDE_ENABLE, true);
+    Config::SetCurrent(Config::MAIN_MEM1_SIZE, header.mem1_size);
+    Config::SetCurrent(Config::MAIN_MEM2_SIZE, header.mem2_size);
+
     return dataFile;
+  }
+
+  // To make up for such a hacky thing, here is a catch-all failsafe in case if the above code
+  // stops working or is otherwise removed.  As it is, this should never end up running.
+  // It should be noted, however, that Dolphin *will still crash* from the nullptr being returned
+  // in a non-flagsOnly context, so if this code becomes necessary, it should be moved above the
+  // prior conditional.
+  if (header.mem1_size != Memory::GetRamSizeReal() ||
+      header.mem2_size != Memory::GetExRamSizeReal())
+  {
+    CriticalAlertFmtT("Emulated memory size mismatch!\n"
+                      "Current: MEM1 {0:08X} ({1} MiB), MEM2 {2:08X} ({3} MiB)\n"
+                      "DFF: MEM1 {4:08X} ({5} MiB), MEM2 {6:08X} ({7} MiB)",
+                      Memory::GetRamSizeReal(), Memory::GetRamSizeReal() / 0x100000,
+                      Memory::GetExRamSizeReal(), Memory::GetExRamSizeReal() / 0x100000,
+                      header.mem1_size, header.mem1_size / 0x100000, header.mem2_size,
+                      header.mem2_size / 0x100000);
+    return nullptr;
   }
 
   u32 size = std::min<u32>(BP_MEM_SIZE, header.bpMemSize);
   file.Seek(header.bpMemOffset, SEEK_SET);
-  file.ReadArray(dataFile->m_BPMem, size);
+  file.ReadArray(&dataFile->m_BPMem);
 
   size = std::min<u32>(CP_MEM_SIZE, header.cpMemSize);
   file.Seek(header.cpMemOffset, SEEK_SET);
-  file.ReadArray(dataFile->m_CPMem, size);
+  file.ReadArray(&dataFile->m_CPMem);
 
   size = std::min<u32>(XF_MEM_SIZE, header.xfMemSize);
   file.Seek(header.xfMemOffset, SEEK_SET);
-  file.ReadArray(dataFile->m_XFMem, size);
+  file.ReadArray(&dataFile->m_XFMem);
 
   size = std::min<u32>(XF_REGS_SIZE, header.xfRegsSize);
   file.Seek(header.xfRegsOffset, SEEK_SET);
-  file.ReadArray(dataFile->m_XFRegs, size);
+  file.ReadArray(&dataFile->m_XFRegs);
 
   // Texture memory saving was added in version 4.
-  std::memset(dataFile->m_TexMem, 0, TEX_MEM_SIZE);
+  dataFile->m_TexMem.fill(0);
   if (dataFile->m_Version >= 4)
   {
     size = std::min<u32>(TEX_MEM_SIZE, header.texMemSize);
     file.Seek(header.texMemOffset, SEEK_SET);
-    file.ReadArray(dataFile->m_TexMem, size);
+    file.ReadArray(&dataFile->m_TexMem);
   }
+
+  if (!file.IsGood())
+    return panic_failed_to_read();
+
+  // idk what else these could be used for, but it'd be a shame to not make them available.
+  dataFile->m_ram_size_real = header.mem1_size;
+  dataFile->m_exram_size_real = header.mem2_size;
 
   // Read frames
   for (u32 i = 0; i < header.frameCount; ++i)
@@ -244,7 +321,8 @@ std::unique_ptr<FifoDataFile> FifoDataFile::Load(const std::string& filename, bo
     u64 frameOffset = header.frameListOffset + (i * sizeof(FileFrameInfo));
     file.Seek(frameOffset, SEEK_SET);
     FileFrameInfo srcFrame;
-    file.ReadBytes(&srcFrame, sizeof(FileFrameInfo));
+    if (!file.ReadBytes(&srcFrame, sizeof(FileFrameInfo)))
+      return panic_failed_to_read();
 
     FifoFrameInfo dstFrame;
     dstFrame.fifoData.resize(srcFrame.fifoDataSize);
@@ -257,10 +335,11 @@ std::unique_ptr<FifoDataFile> FifoDataFile::Load(const std::string& filename, bo
     ReadMemoryUpdates(srcFrame.memoryUpdatesOffset, srcFrame.numMemoryUpdates,
                       dstFrame.memoryUpdates, file);
 
+    if (!file.IsGood())
+      return panic_failed_to_read();
+
     dataFile->AddFrame(dstFrame);
   }
-
-  file.Close();
 
   return dataFile;
 }

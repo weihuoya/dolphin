@@ -1,27 +1,24 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.adapters;
 
-import android.app.AlertDialog;
-import android.content.DialogInterface;
+import android.content.Context;
 import android.graphics.Rect;
-import android.support.v4.app.FragmentActivity;
-import android.support.v7.widget.RecyclerView;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.fragment.app.FragmentActivity;
+import androidx.recyclerview.widget.RecyclerView;
 
 import org.dolphinemu.dolphinemu.R;
 import org.dolphinemu.dolphinemu.activities.EmulationActivity;
-import org.dolphinemu.dolphinemu.dialogs.GameSettingsDialog;
-import org.dolphinemu.dolphinemu.features.settings.ui.MenuTag;
-import org.dolphinemu.dolphinemu.features.settings.ui.SettingsActivity;
+import org.dolphinemu.dolphinemu.dialogs.GamePropertiesDialog;
 import org.dolphinemu.dolphinemu.model.GameFile;
-import org.dolphinemu.dolphinemu.utils.DirectoryInitialization;
-import org.dolphinemu.dolphinemu.ui.platform.Platform;
-import org.dolphinemu.dolphinemu.utils.PicassoUtils;
+import org.dolphinemu.dolphinemu.services.GameFileCacheManager;
 import org.dolphinemu.dolphinemu.viewholders.GameViewHolder;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,6 +26,7 @@ public final class GameAdapter extends RecyclerView.Adapter<GameViewHolder> impl
         View.OnClickListener,
         View.OnLongClickListener
 {
+  private int mResourceId;
   private List<GameFile> mGameFiles;
 
   /**
@@ -44,7 +42,7 @@ public final class GameAdapter extends RecyclerView.Adapter<GameViewHolder> impl
    * Called by the LayoutManager when it is necessary to create a new view.
    *
    * @param parent   The RecyclerView (I think?) the created view will be thrown into.
-   * @param viewType Not used here, but useful when more than one type of child will be used in the RecyclerView.
+   * @param viewType Useful when more than one type of child will be used in the RecyclerView.
    * @return The created ViewHolder with references to all the child view's members.
    */
   @Override
@@ -52,13 +50,19 @@ public final class GameAdapter extends RecyclerView.Adapter<GameViewHolder> impl
   {
     // Create a new view.
     View gameCard = LayoutInflater.from(parent.getContext())
-            .inflate(R.layout.card_game, parent, false);
+            .inflate(viewType, parent, false);
 
     gameCard.setOnClickListener(this);
     gameCard.setOnLongClickListener(this);
 
     // Use that view to create a ViewHolder.
     return new GameViewHolder(gameCard);
+  }
+
+  @Override
+  public int getItemViewType(int position)
+  {
+    return mResourceId;
   }
 
   /**
@@ -73,10 +77,17 @@ public final class GameAdapter extends RecyclerView.Adapter<GameViewHolder> impl
   public void onBindViewHolder(GameViewHolder holder, int position)
   {
     GameFile gameFile = mGameFiles.get(position);
-    PicassoUtils.loadGameBanner(holder.imageScreenshot, gameFile);
-
+    gameFile.loadGameBanner(holder.imageScreenshot);
     holder.textGameTitle.setText(gameFile.getTitle());
     holder.textCompany.setText(gameFile.getCompany());
+
+    final int[] platforms =
+            {R.string.game_platform_ngc, R.string.game_platform_wii, R.string.game_platform_ware};
+    Context context = holder.textPlatform.getContext();
+    String[] countryNames = context.getResources().getStringArray(R.array.countryNames);
+    String platform = context.getString(platforms[gameFile.getPlatform()],
+            countryNames[gameFile.getCountry()]);
+    holder.textPlatform.setText(platform);
 
     holder.gameFile = gameFile;
   }
@@ -113,6 +124,19 @@ public final class GameAdapter extends RecyclerView.Adapter<GameViewHolder> impl
     notifyDataSetChanged();
   }
 
+  public void setResourceId(int resId)
+  {
+    mResourceId = resId;
+  }
+
+  /**
+   * Re-fetches game metadata from the game file cache.
+   */
+  public void refetchMetadata()
+  {
+    notifyItemRangeChanged(0, getItemCount());
+  }
+
   /**
    * Launches the game that was clicked on.
    *
@@ -123,7 +147,8 @@ public final class GameAdapter extends RecyclerView.Adapter<GameViewHolder> impl
   {
     GameViewHolder holder = (GameViewHolder) view.getTag();
 
-    EmulationActivity.launch((FragmentActivity) view.getContext(), holder.gameFile);
+    String[] paths = GameFileCacheManager.findSecondDiscAndGetPaths(holder.gameFile);
+    EmulationActivity.launch((FragmentActivity) view.getContext(), paths, false);
   }
 
   /**
@@ -139,20 +164,10 @@ public final class GameAdapter extends RecyclerView.Adapter<GameViewHolder> impl
     GameViewHolder holder = (GameViewHolder) view.getTag();
     String gameId = holder.gameFile.getGameId();
 
-    if (gameId.isEmpty())
-    {
-      AlertDialog.Builder builder = new AlertDialog.Builder(activity);
-      builder.setTitle("Game Settings");
-      builder.setMessage("Files without game IDs don't support game-specific settings.");
-
-      builder.show();
-      return true;
-    }
-
-    GameSettingsDialog fragment =
-            GameSettingsDialog.newInstance(gameId, holder.gameFile.getPlatform());
+    GamePropertiesDialog fragment = GamePropertiesDialog.newInstance(holder.gameFile);
     ((FragmentActivity) view.getContext()).getSupportFragmentManager().beginTransaction()
-            .add(fragment, GameSettingsDialog.TAG).commit();
+            .add(fragment, GamePropertiesDialog.TAG).commit();
+
     return true;
   }
 
@@ -166,8 +181,9 @@ public final class GameAdapter extends RecyclerView.Adapter<GameViewHolder> impl
     }
 
     @Override
-    public void getItemOffsets(Rect outRect, View view, RecyclerView parent,
-            RecyclerView.State state)
+    public void getItemOffsets(@NonNull Rect outRect, @NonNull View view,
+            @NonNull RecyclerView parent,
+            @NonNull RecyclerView.State state)
     {
       outRect.left = space;
       outRect.right = space;

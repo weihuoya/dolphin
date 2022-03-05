@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -26,7 +25,7 @@ class WiimoteWindows final : public Wiimote
 public:
   WiimoteWindows(const std::basic_string<TCHAR>& path, WinWriteMethod initial_write_method);
   ~WiimoteWindows() override;
-  std::string GetId() const override { return UTF16ToUTF8(m_devicepath); }
+  std::string GetId() const override { return WStringToUTF8(m_devicepath); }
 
 protected:
   bool ConnectInternal() override;
@@ -52,6 +51,7 @@ public:
   bool IsReady() const override;
   void FindWiimotes(std::vector<Wiimote*>&, Wiimote*&) override;
   void Update() override;
+  void RequestStopSearching() override {}
 };
 }  // namespace WiimoteReal
 

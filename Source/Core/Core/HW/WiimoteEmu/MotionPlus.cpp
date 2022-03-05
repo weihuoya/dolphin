@@ -1,6 +1,5 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WiimoteEmu/MotionPlus.h"
 
@@ -16,7 +15,6 @@
 #include "Common/Logging/Log.h"
 #include "Common/MathUtil.h"
 #include "Common/MsgHandler.h"
-#include "Common/Swap.h"
 
 #include "Core/HW/Wiimote.h"
 #include "Core/HW/WiimoteEmu/Dynamics.h"
@@ -56,6 +54,41 @@ struct MPI : mbedtls_mpi
 
 namespace WiimoteEmu
 {
+Common::Vec3 MotionPlus::DataFormat::Data::GetAngularVelocity(const CalibrationBlocks& blocks) const
+{
+  // Each axis may be using either slow or fast calibration.
+  const auto calibration = blocks.GetRelevantCalibration(is_slow);
+
+  // It seems M+ calibration data does not follow the "right-hand rule".
+  const auto sign_fix = Common::Vec3(-1, +1, -1);
+
+  // Adjust deg/s to rad/s.
+  constexpr auto scalar = float(MathUtil::TAU / 360);
+
+  return gyro.GetNormalizedValue(calibration.value) * sign_fix * Common::Vec3(calibration.degrees) *
+         scalar;
+}
+
+auto MotionPlus::CalibrationBlocks::GetRelevantCalibration(SlowType is_slow) const
+    -> RelevantCalibration
+{
+  RelevantCalibration result;
+
+  const auto& pitch_block = is_slow.x ? slow : fast;
+  const auto& roll_block = is_slow.y ? slow : fast;
+  const auto& yaw_block = is_slow.z ? slow : fast;
+
+  result.value.max = {pitch_block.pitch_scale, roll_block.roll_scale, yaw_block.yaw_scale};
+
+  result.value.zero = {pitch_block.pitch_zero, roll_block.roll_zero, yaw_block.yaw_zero};
+
+  result.degrees.x = pitch_block.degrees_div_6 * 6;
+  result.degrees.y = roll_block.degrees_div_6 * 6;
+  result.degrees.z = yaw_block.degrees_div_6 * 6;
+
+  return result;
+}
+
 MotionPlus::MotionPlus() : Extension("MotionPlus")
 {
 }
@@ -82,35 +115,20 @@ void MotionPlus::Reset()
   constexpr u16 ROLL_SCALE = CALIBRATION_ZERO + CALIBRATION_SCALE_OFFSET;
   constexpr u16 PITCH_SCALE = CALIBRATION_ZERO - CALIBRATION_SCALE_OFFSET;
 
-#pragma pack(push, 1)
-  struct CalibrationBlock
-  {
-    u16 yaw_zero = Common::swap16(CALIBRATION_ZERO);
-    u16 roll_zero = Common::swap16(CALIBRATION_ZERO);
-    u16 pitch_zero = Common::swap16(CALIBRATION_ZERO);
-    u16 yaw_scale = Common::swap16(YAW_SCALE);
-    u16 roll_scale = Common::swap16(ROLL_SCALE);
-    u16 pitch_scale = Common::swap16(PITCH_SCALE);
-    u8 degrees_div_6;
-  };
-
-  struct CalibrationData
-  {
-    CalibrationBlock fast;
-    u8 uid_1;
-    Common::BigEndianValue<u16> crc32_msb;
-    CalibrationBlock slow;
-    u8 uid_2;
-    Common::BigEndianValue<u16> crc32_lsb;
-  };
-#pragma pack(pop)
-
   static_assert(sizeof(CalibrationData) == 0x20, "Bad size.");
 
   static_assert(CALIBRATION_FAST_SCALE_DEGREES % 6 == 0, "Value should be divisible by 6.");
   static_assert(CALIBRATION_SLOW_SCALE_DEGREES % 6 == 0, "Value should be divisible by 6.");
 
   CalibrationData calibration;
+  calibration.fast.yaw_zero = calibration.slow.yaw_zero = CALIBRATION_ZERO;
+  calibration.fast.roll_zero = calibration.slow.roll_zero = CALIBRATION_ZERO;
+  calibration.fast.pitch_zero = calibration.slow.pitch_zero = CALIBRATION_ZERO;
+
+  calibration.fast.yaw_scale = calibration.slow.yaw_scale = YAW_SCALE;
+  calibration.fast.roll_scale = calibration.slow.roll_scale = ROLL_SCALE;
+  calibration.fast.pitch_scale = calibration.slow.pitch_scale = PITCH_SCALE;
+
   calibration.fast.degrees_div_6 = CALIBRATION_FAST_SCALE_DEGREES / 6;
   calibration.slow.degrees_div_6 = CALIBRATION_SLOW_SCALE_DEGREES / 6;
 
@@ -120,15 +138,20 @@ void MotionPlus::Reset()
   calibration.uid_1 = 0x0b;
   calibration.uid_2 = 0xe9;
 
-  // Update checksum (crc32 of all data other than the checksum itself):
-  auto crc_result = crc32(0, Z_NULL, 0);
-  crc_result = crc32(crc_result, reinterpret_cast<const Bytef*>(&calibration), 0xe);
-  crc_result = crc32(crc_result, reinterpret_cast<const Bytef*>(&calibration) + 0x10, 0xe);
-
-  calibration.crc32_lsb = u16(crc_result);
-  calibration.crc32_msb = u16(crc_result >> 16);
+  calibration.UpdateChecksum();
 
   Common::BitCastPtr<CalibrationData>(m_reg_data.calibration_data.data()) = calibration;
+}
+
+void MotionPlus::CalibrationData::UpdateChecksum()
+{
+  // Checksum is crc32 of all data other than the checksum itself.
+  auto crc_result = crc32(0, Z_NULL, 0);
+  crc_result = crc32(crc_result, reinterpret_cast<const Bytef*>(this), 0xe);
+  crc_result = crc32(crc_result, reinterpret_cast<const Bytef*>(this) + 0x10, 0xe);
+
+  crc32_lsb = u16(crc_result);
+  crc32_msb = u16(crc_result >> 16);
 }
 
 void MotionPlus::DoState(PointerWrap& p)
@@ -210,7 +233,7 @@ int MotionPlus::BusWrite(u8 slave_addr, u8 addr, int count, const u8* data_in)
       return m_i2c_bus.BusWrite(slave_addr, addr, count, data_in);
     }
 
-    DEBUG_LOG(WIIMOTE, "Inactive M+ write 0x%x : %s", addr, ArrayToString(data_in, count).c_str());
+    DEBUG_LOG_FMT(WIIMOTE, "Inactive M+ write {:#x} : {}", addr, ArrayToString(data_in, count));
 
     auto const result = RawWrite(&m_reg_data, addr, count, data_in);
 
@@ -231,7 +254,7 @@ int MotionPlus::BusWrite(u8 slave_addr, u8 addr, int count, const u8* data_in)
       return 0;
     }
 
-    DEBUG_LOG(WIIMOTE, "Active M+ write 0x%x : %s", addr, ArrayToString(data_in, count).c_str());
+    DEBUG_LOG_FMT(WIIMOTE, "Active M+ write {:#x} : {}", addr, ArrayToString(data_in, count));
 
     auto const result = RawWrite(&m_reg_data, addr, count, data_in);
 
@@ -249,7 +272,7 @@ int MotionPlus::BusWrite(u8 slave_addr, u8 addr, int count, const u8* data_in)
     case offsetof(Register, challenge_type):
       if (ChallengeState::ParameterXReady == m_reg_data.challenge_state)
       {
-        DEBUG_LOG(WIIMOTE, "M+ challenge: 0x%x", m_reg_data.challenge_type);
+        DEBUG_LOG_FMT(WIIMOTE, "M+ challenge: {:#x}", m_reg_data.challenge_type);
 
         // After games read parameter x they write here to request y0 or y1.
         if (0 == m_reg_data.challenge_type)
@@ -277,7 +300,7 @@ int MotionPlus::BusWrite(u8 slave_addr, u8 addr, int count, const u8* data_in)
 
     case offsetof(Register, calibration_trigger):
       // Games seem to invoke this to start and stop calibration. Exact consequences unknown.
-      DEBUG_LOG(WIIMOTE, "M+ calibration trigger: 0x%x", m_reg_data.calibration_trigger);
+      DEBUG_LOG_FMT(WIIMOTE, "M+ calibration trigger: {:#x}", m_reg_data.calibration_trigger);
       break;
 
     case PASSTHROUGH_MODE_OFFSET:
@@ -319,7 +342,7 @@ void MotionPlus::OnPassthroughModeWrite()
 
 void MotionPlus::Activate()
 {
-  DEBUG_LOG(WIIMOTE, "M+ has been activated.");
+  DEBUG_LOG_FMT(WIIMOTE, "M+ has been activated.");
 
   m_reg_data.ext_identifier[2] = ACTIVE_DEVICE_ADDR << 1;
 
@@ -336,7 +359,7 @@ void MotionPlus::Activate()
 
 void MotionPlus::Deactivate()
 {
-  DEBUG_LOG(WIIMOTE, "M+ has been deactivated.");
+  DEBUG_LOG_FMT(WIIMOTE, "M+ has been deactivated.");
 
   m_reg_data.ext_identifier[2] = INACTIVE_DEVICE_ADDR << 1;
 
@@ -362,11 +385,6 @@ bool MotionPlus::ReadDeviceDetectPin() const
   case ActivationStatus::Deactivating:
     return false;
   }
-}
-
-bool MotionPlus::IsButtonPressed() const
-{
-  return false;
 }
 
 void MotionPlus::Update()
@@ -402,7 +420,7 @@ void MotionPlus::Update()
   {
     if (is_ext_connected)
     {
-      DEBUG_LOG(WIIMOTE, "M+ initializing new extension.");
+      DEBUG_LOG_FMT(WIIMOTE, "M+ initializing new extension.");
 
       // The M+ automatically initializes an extension when attached.
 
@@ -469,7 +487,7 @@ void MotionPlus::Update()
     // Big-int little endian parameter x.
     param_x.WriteLittleEndianBinary(&m_reg_data.challenge_data);
 
-    DEBUG_LOG(WIIMOTE, "M+ parameter x ready.");
+    DEBUG_LOG_FMT(WIIMOTE, "M+ parameter x ready.");
     m_reg_data.challenge_state = ChallengeState::ParameterXReady;
     break;
   }
@@ -495,7 +513,7 @@ void MotionPlus::Update()
       param_y1.WriteLittleEndianBinary(&m_reg_data.challenge_data);
     }
 
-    DEBUG_LOG(WIIMOTE, "M+ parameter y ready.");
+    DEBUG_LOG_FMT(WIIMOTE, "M+ parameter y ready.");
     m_reg_data.challenge_state = ChallengeState::ParameterYReady;
     break;
 
@@ -547,47 +565,10 @@ void MotionPlus::PrepareInput(const Common::Vec3& angular_velocity)
       break;
     }
     case PassthroughMode::Nunchuk:
-    {
-      if (EXT_AMT == m_i2c_bus.BusRead(EXT_SLAVE, EXT_ADDR, EXT_AMT, data))
-      {
-        // Passthrough data modifications via wiibrew.org
-        // Verified on real hardware via a test of every bit.
-        // Data passing through drops the least significant bit of the three accelerometer values.
-        // Bit 7 of byte 5 is moved to bit 6 of byte 5, overwriting it
-        Common::SetBit(data[5], 6, Common::ExtractBit(data[5], 7));
-        // Bit 0 of byte 4 is moved to bit 7 of byte 5
-        Common::SetBit(data[5], 7, Common::ExtractBit(data[4], 0));
-        // Bit 3 of byte 5 is moved to  bit 4 of byte 5, overwriting it
-        Common::SetBit(data[5], 4, Common::ExtractBit(data[5], 3));
-        // Bit 1 of byte 5 is moved to bit 3 of byte 5
-        Common::SetBit(data[5], 3, Common::ExtractBit(data[5], 1));
-        // Bit 0 of byte 5 is moved to bit 2 of byte 5, overwriting it
-        Common::SetBit(data[5], 2, Common::ExtractBit(data[5], 0));
-
-        mplus_data = Common::BitCastPtr<DataFormat>(data);
-
-        // Bit 0 and 1 of byte 5 contain a M+ flag and a zero bit which is set below.
-        mplus_data.is_mp_data = false;
-      }
-      else
-      {
-        // Read failed (extension unplugged), Send M+ data instead
-        mplus_data.is_mp_data = true;
-      }
-      break;
-    }
     case PassthroughMode::Classic:
-    {
       if (EXT_AMT == m_i2c_bus.BusRead(EXT_SLAVE, EXT_ADDR, EXT_AMT, data))
       {
-        // Passthrough data modifications via wiibrew.org
-        // Verified on real hardware via a test of every bit.
-        // Data passing through drops the least significant bit of the axes of the left (or only)
-        // joystick Bit 0 of Byte 4 is overwritten [by the 'extension_connected' flag] Bits 0 and
-        // 1 of Byte 5 are moved to bit 0 of Bytes 0 and 1, overwriting what was there before.
-        Common::SetBit(data[0], 0, Common::ExtractBit(data[5], 0));
-        Common::SetBit(data[1], 0, Common::ExtractBit(data[5], 1));
-
+        ApplyPassthroughModifications(GetPassthroughMode(), data);
         mplus_data = Common::BitCastPtr<DataFormat>(data);
 
         // Bit 0 and 1 of byte 5 contain a M+ flag and a zero bit which is set below.
@@ -599,10 +580,9 @@ void MotionPlus::PrepareInput(const Common::Vec3& angular_velocity)
         mplus_data.is_mp_data = true;
       }
       break;
-    }
     default:
       // This really shouldn't happen as the M+ deactivates on an invalid mode write.
-      ERROR_LOG(WIIMOTE, "M+ unknown passthrough-mode %d", int(GetPassthroughMode()));
+      ERROR_LOG_FMT(WIIMOTE, "M+ unknown passthrough-mode {}", GetPassthroughMode());
       mplus_data.is_mp_data = true;
       break;
     }
@@ -662,6 +642,68 @@ void MotionPlus::PrepareInput(const Common::Vec3& angular_velocity)
   mplus_data.zero = 0;
 
   Common::BitCastPtr<DataFormat>(data) = mplus_data;
+}
+
+void MotionPlus::ApplyPassthroughModifications(PassthroughMode mode, u8* data)
+{
+  if (mode == PassthroughMode::Nunchuk)
+  {
+    // Passthrough data modifications via wiibrew.org
+    // Verified on real hardware via a test of every bit.
+    // Data passing through drops the least significant bit of the three accelerometer values.
+    // Bit 7 of byte 5 is moved to bit 6 of byte 5, overwriting it
+    Common::SetBit<6>(data[5], Common::ExtractBit<7>(data[5]));
+    // Bit 0 of byte 4 is moved to bit 7 of byte 5
+    Common::SetBit<7>(data[5], Common::ExtractBit<0>(data[4]));
+    // Bit 3 of byte 5 is moved to  bit 4 of byte 5, overwriting it
+    Common::SetBit<4>(data[5], Common::ExtractBit<3>(data[5]));
+    // Bit 1 of byte 5 is moved to bit 3 of byte 5
+    Common::SetBit<3>(data[5], Common::ExtractBit<1>(data[5]));
+    // Bit 0 of byte 5 is moved to bit 2 of byte 5, overwriting it
+    Common::SetBit<2>(data[5], Common::ExtractBit<0>(data[5]));
+  }
+  else if (mode == PassthroughMode::Classic)
+  {
+    // Passthrough data modifications via wiibrew.org
+    // Verified on real hardware via a test of every bit.
+    // Data passing through drops the least significant bit of the axes of the left (or only)
+    // joystick Bit 0 of Byte 4 is overwritten [by the 'extension_connected' flag] Bits 0 and
+    // 1 of Byte 5 are moved to bit 0 of Bytes 0 and 1, overwriting what was there before.
+    Common::SetBit<0>(data[0], Common::ExtractBit<0>(data[5]));
+    Common::SetBit<0>(data[1], Common::ExtractBit<1>(data[5]));
+  }
+}
+
+void MotionPlus::ReversePassthroughModifications(PassthroughMode mode, u8* data)
+{
+  if (mode == PassthroughMode::Nunchuk)
+  {
+    // Undo M+'s "nunchuk passthrough" modifications.
+    Common::SetBit<0>(data[5], Common::ExtractBit<2>(data[5]));
+    Common::SetBit<1>(data[5], Common::ExtractBit<3>(data[5]));
+    Common::SetBit<3>(data[5], Common::ExtractBit<4>(data[5]));
+    Common::SetBit<0>(data[4], Common::ExtractBit<7>(data[5]));
+    Common::SetBit<7>(data[5], Common::ExtractBit<6>(data[5]));
+
+    // Set the overwritten bits from the next LSB.
+    Common::SetBit<2>(data[5], Common::ExtractBit<3>(data[5]));
+    Common::SetBit<4>(data[5], Common::ExtractBit<5>(data[5]));
+    Common::SetBit<6>(data[5], Common::ExtractBit<7>(data[5]));
+  }
+  else if (mode == PassthroughMode::Classic)
+  {
+    // Undo M+'s "classic controller passthrough" modifications.
+    Common::SetBit<0>(data[5], Common::ExtractBit<0>(data[0]));
+    Common::SetBit<1>(data[5], Common::ExtractBit<0>(data[1]));
+
+    // Set the overwritten bits from the next LSB.
+    Common::SetBit<0>(data[0], Common::ExtractBit<1>(data[0]));
+    Common::SetBit<0>(data[1], Common::ExtractBit<1>(data[1]));
+
+    // This is an overwritten unused button bit on the Classic Controller.
+    // Note it's a significant bit on the DJ Hero Turntable. (passthrough not feasible)
+    Common::SetBit<0>(data[4], 1);
+  }
 }
 
 }  // namespace WiimoteEmu

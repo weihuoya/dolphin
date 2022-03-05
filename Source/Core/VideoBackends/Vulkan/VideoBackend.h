@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -15,9 +14,11 @@ public:
   bool Initialize(const WindowSystemInfo& wsi) override;
   void Shutdown() override;
 
-  std::string GetName() const override { return "Vulkan"; }
+  std::string GetName() const override { return NAME; }
   std::string GetDisplayName() const override { return _trans("Vulkan"); }
   void InitBackendInfo() override;
-  void PrepareWindow(const WindowSystemInfo& wsi) override;
+  void PrepareWindow(WindowSystemInfo& wsi) override;
+
+  static constexpr const char* NAME = "Vulkan";
 };
 }  // namespace Vulkan

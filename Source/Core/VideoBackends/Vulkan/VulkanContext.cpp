@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
 #include <array>
@@ -81,7 +80,7 @@ bool VulkanContext::CheckValidationLayerAvailablility()
                          return strcmp(it.extensionName, VK_EXT_DEBUG_REPORT_EXTENSION_NAME) == 0;
                        }) != extension_list.end() &&
           std::find_if(layer_list.begin(), layer_list.end(), [](const auto& it) {
-            return strcmp(it.layerName, "VK_LAYER_LUNARG_standard_validation") == 0;
+            return strcmp(it.layerName, "VK_LAYER_KHRONOS_validation") == 0;
           }) != layer_list.end());
 }
 
@@ -127,7 +126,7 @@ VkInstance VulkanContext::CreateVulkanInstance(WindowSystemType wstype, bool ena
   // Enable debug layer on debug builds
   if (enable_validation_layer)
   {
-    static const char* layer_names[] = {"VK_LAYER_LUNARG_standard_validation"};
+    static const char* layer_names[] = {"VK_LAYER_KHRONOS_validation"};
     instance_create_info.enabledLayerCount = 1;
     instance_create_info.ppEnabledLayerNames = layer_names;
   }
@@ -156,7 +155,7 @@ bool VulkanContext::SelectInstanceExtensions(std::vector<const char*>* extension
 
   if (extension_count == 0)
   {
-    ERROR_LOG(VIDEO, "Vulkan: No extensions supported by instance.");
+    ERROR_LOG_FMT(VIDEO, "Vulkan: No extensions supported by instance.");
     return false;
   }
 
@@ -166,7 +165,7 @@ bool VulkanContext::SelectInstanceExtensions(std::vector<const char*>* extension
   ASSERT(res == VK_SUCCESS);
 
   for (const auto& extension_properties : available_extension_list)
-    INFO_LOG(VIDEO, "Available extension: %s", extension_properties.extensionName);
+    INFO_LOG_FMT(VIDEO, "Available extension: {}", extension_properties.extensionName);
 
   auto AddExtension = [&](const char* name, bool required) {
     if (std::find_if(available_extension_list.begin(), available_extension_list.end(),
@@ -174,13 +173,13 @@ bool VulkanContext::SelectInstanceExtensions(std::vector<const char*>* extension
                        return !strcmp(name, properties.extensionName);
                      }) != available_extension_list.end())
     {
-      INFO_LOG(VIDEO, "Enabling extension: %s", name);
+      INFO_LOG_FMT(VIDEO, "Enabling extension: {}", name);
       extension_list->push_back(name);
       return true;
     }
 
     if (required)
-      ERROR_LOG(VIDEO, "Vulkan: Missing required extension %s.", name);
+      ERROR_LOG_FMT(VIDEO, "Vulkan: Missing required extension {}.", name);
 
     return false;
   };
@@ -211,8 +210,8 @@ bool VulkanContext::SelectInstanceExtensions(std::vector<const char*>* extension
     return false;
   }
 #endif
-#if defined(VK_USE_PLATFORM_MACOS_MVK)
-  if (wstype == WindowSystemType::MacOS && !AddExtension(VK_MVK_MACOS_SURFACE_EXTENSION_NAME, true))
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+  if (wstype == WindowSystemType::MacOS && !AddExtension(VK_EXT_METAL_SURFACE_EXTENSION_NAME, true))
   {
     return false;
   }
@@ -220,10 +219,11 @@ bool VulkanContext::SelectInstanceExtensions(std::vector<const char*>* extension
 
   // VK_EXT_debug_report
   if (enable_debug_report && !AddExtension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME, false))
-    WARN_LOG(VIDEO, "Vulkan: Debug report requested, but extension is not available.");
+    WARN_LOG_FMT(VIDEO, "Vulkan: Debug report requested, but extension is not available.");
 
   AddExtension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME, false);
   AddExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME, false);
+  AddExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, false);
 
   return true;
 }
@@ -257,7 +257,6 @@ void VulkanContext::PopulateBackendInfo(VideoConfig* config)
   config->backend_info.bSupports3DVision = false;                  // D3D-exclusive.
   config->backend_info.bSupportsOversizedViewports = true;         // Assumed support.
   config->backend_info.bSupportsEarlyZ = true;                     // Assumed support.
-  config->backend_info.bSupportsPrimitiveRestart = true;           // Assumed support.
   config->backend_info.bSupportsBindingLayout = false;             // Assumed support.
   config->backend_info.bSupportsPaletteConversion = true;          // Assumed support.
   config->backend_info.bSupportsClipControl = true;                // Assumed support.
@@ -286,6 +285,8 @@ void VulkanContext::PopulateBackendInfo(VideoConfig* config)
   config->backend_info.bSupportsLogicOp = false;                   // Dependent on features.
   config->backend_info.bSupportsLargePoints = false;               // Dependent on features.
   config->backend_info.bSupportsFramebufferFetch = false;          // No support.
+  config->backend_info.bSupportsCoarseDerivatives = true;          // Assumed support.
+  config->backend_info.bSupportsTextureQueryLevels = true;         // Assumed support.
 }
 
 void VulkanContext::PopulateBackendInfoAdapters(VideoConfig* config, const GPUList& gpu_list)
@@ -336,11 +337,6 @@ void VulkanContext::PopulateBackendInfoFeatures(VideoConfig* config, VkPhysicalD
   config->backend_info.bSupportsLargePoints = features.largePoints &&
                                               properties.limits.pointSizeRange[0] <= 1.0f &&
                                               properties.limits.pointSizeRange[1] >= 16;
-
-  // Our usage of primitive restart appears to be broken on AMD's binary drivers.
-  // Seems to be fine on GCN Gen 1-2, unconfirmed on GCN Gen 3, causes driver resets on GCN Gen 4.
-  if (DriverDetails::HasBug(DriverDetails::BUG_PRIMITIVE_RESTART))
-    config->backend_info.bSupportsPrimitiveRestart = false;
 
   // Reversed depth range is broken on some drivers, or is broken when used in combination
   // with depth clamping. Fall back to inverted depth range for these.
@@ -437,7 +433,7 @@ bool VulkanContext::SelectDeviceExtensions(bool enable_surface)
 
   if (extension_count == 0)
   {
-    ERROR_LOG(VIDEO, "Vulkan: No extensions supported by device.");
+    ERROR_LOG_FMT(VIDEO, "Vulkan: No extensions supported by device.");
     return false;
   }
 
@@ -447,7 +443,7 @@ bool VulkanContext::SelectDeviceExtensions(bool enable_surface)
   ASSERT(res == VK_SUCCESS);
 
   for (const auto& extension_properties : available_extension_list)
-    INFO_LOG(VIDEO, "Available extension: %s", extension_properties.extensionName);
+    INFO_LOG_FMT(VIDEO, "Available extension: {}", extension_properties.extensionName);
 
   auto AddExtension = [&](const char* name, bool required) {
     if (std::find_if(available_extension_list.begin(), available_extension_list.end(),
@@ -455,13 +451,13 @@ bool VulkanContext::SelectDeviceExtensions(bool enable_surface)
                        return !strcmp(name, properties.extensionName);
                      }) != available_extension_list.end())
     {
-      INFO_LOG(VIDEO, "Enabling extension: %s", name);
+      INFO_LOG_FMT(VIDEO, "Enabling extension: {}", name);
       m_device_extensions.push_back(name);
       return true;
     }
 
     if (required)
-      ERROR_LOG(VIDEO, "Vulkan: Missing required extension %s.", name);
+      ERROR_LOG_FMT(VIDEO, "Vulkan: Missing required extension {}.", name);
 
     return false;
   };
@@ -472,7 +468,7 @@ bool VulkanContext::SelectDeviceExtensions(bool enable_surface)
 #ifdef SUPPORTS_VULKAN_EXCLUSIVE_FULLSCREEN
   // VK_EXT_full_screen_exclusive
   if (AddExtension(VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME, true))
-    INFO_LOG(VIDEO, "Using VK_EXT_full_screen_exclusive for exclusive fullscreen.");
+    INFO_LOG_FMT(VIDEO, "Using VK_EXT_full_screen_exclusive for exclusive fullscreen.");
 #endif
 
   return true;
@@ -488,12 +484,14 @@ bool VulkanContext::SelectDeviceFeatures()
 
   // Not having geometry shaders or wide lines will cause issues with rendering.
   if (!available_features.geometryShader && !available_features.wideLines)
-    WARN_LOG(VIDEO, "Vulkan: Missing both geometryShader and wideLines features.");
+    WARN_LOG_FMT(VIDEO, "Vulkan: Missing both geometryShader and wideLines features.");
   if (!available_features.largePoints)
-    WARN_LOG(VIDEO, "Vulkan: Missing large points feature. CPU EFB writes will be slower.");
+    WARN_LOG_FMT(VIDEO, "Vulkan: Missing large points feature. CPU EFB writes will be slower.");
   if (!available_features.occlusionQueryPrecise)
-    WARN_LOG(VIDEO, "Vulkan: Missing precise occlusion queries. Perf queries will be inaccurate.");
-
+  {
+    WARN_LOG_FMT(VIDEO,
+                 "Vulkan: Missing precise occlusion queries. Perf queries will be inaccurate.");
+  }
   // Enable the features we use.
   m_device_features.dualSrcBlend = available_features.dualSrcBlend;
   m_device_features.geometryShader = available_features.geometryShader;
@@ -519,14 +517,14 @@ bool VulkanContext::CreateDevice(VkSurfaceKHR surface, bool enable_validation_la
   vkGetPhysicalDeviceQueueFamilyProperties(m_physical_device, &queue_family_count, nullptr);
   if (queue_family_count == 0)
   {
-    ERROR_LOG(VIDEO, "No queue families found on specified vulkan physical device.");
+    ERROR_LOG_FMT(VIDEO, "No queue families found on specified vulkan physical device.");
     return false;
   }
 
   std::vector<VkQueueFamilyProperties> queue_family_properties(queue_family_count);
   vkGetPhysicalDeviceQueueFamilyProperties(m_physical_device, &queue_family_count,
                                            queue_family_properties.data());
-  INFO_LOG(VIDEO, "%u vulkan queue families", queue_family_count);
+  INFO_LOG_FMT(VIDEO, "{} vulkan queue families", queue_family_count);
 
   // Find graphics and present queues.
   m_graphics_queue_family_index = queue_family_count;
@@ -569,12 +567,12 @@ bool VulkanContext::CreateDevice(VkSurfaceKHR surface, bool enable_validation_la
   }
   if (m_graphics_queue_family_index == queue_family_count)
   {
-    ERROR_LOG(VIDEO, "Vulkan: Failed to find an acceptable graphics queue.");
+    ERROR_LOG_FMT(VIDEO, "Vulkan: Failed to find an acceptable graphics queue.");
     return false;
   }
   if (surface && m_present_queue_family_index == queue_family_count)
   {
-    ERROR_LOG(VIDEO, "Vulkan: Failed to find an acceptable present queue.");
+    ERROR_LOG_FMT(VIDEO, "Vulkan: Failed to find an acceptable present queue.");
     return false;
   }
 
@@ -666,16 +664,16 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugReportCallback(VkDebugReportFlagsEXT 
                                                           const char* pLayerPrefix,
                                                           const char* pMessage, void* pUserData)
 {
-  std::string log_message =
-      StringFromFormat("Vulkan debug report: (%s) %s", pLayerPrefix ? pLayerPrefix : "", pMessage);
+  const std::string log_message =
+      fmt::format("Vulkan debug report: ({}) {}", pLayerPrefix ? pLayerPrefix : "", pMessage);
   if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
-    GENERIC_LOG(LogTypes::HOST_GPU, LogTypes::LERROR, "%s", log_message.c_str());
+    ERROR_LOG_FMT(HOST_GPU, "{}", log_message);
   else if (flags & (VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT))
-    GENERIC_LOG(LogTypes::HOST_GPU, LogTypes::LWARNING, "%s", log_message.c_str());
+    WARN_LOG_FMT(HOST_GPU, "{}", log_message);
   else if (flags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
-    GENERIC_LOG(LogTypes::HOST_GPU, LogTypes::LINFO, "%s", log_message.c_str());
+    INFO_LOG_FMT(HOST_GPU, "{}", log_message);
   else
-    GENERIC_LOG(LogTypes::HOST_GPU, LogTypes::LDEBUG, "%s", log_message.c_str());
+    DEBUG_LOG_FMT(HOST_GPU, "{}", log_message);
 
   return VK_FALSE;
 }
@@ -720,6 +718,187 @@ void VulkanContext::DisableDebugReports()
   }
 }
 
+void VulkanContext::GetImageMemoryRequirements(VkImage image, VkMemoryRequirements* mem_reqs,
+                                               bool* dedicated)
+{
+  bool KHR_dedicated_allocation = false;
+  if (KHR_dedicated_allocation)
+  {
+    VkImageMemoryRequirementsInfo2KHR memReqInfo2{
+        VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR};
+    memReqInfo2.image = image;
+
+    VkMemoryRequirements2KHR memReq2 = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR};
+    VkMemoryDedicatedRequirementsKHR memDedicatedReq{
+        VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR};
+    memReq2.pNext = &memDedicatedReq;
+
+    vkGetImageMemoryRequirements2KHR(GetDevice(), &memReqInfo2, &memReq2);
+
+    *mem_reqs = memReq2.memoryRequirements;
+    *dedicated = (memDedicatedReq.requiresDedicatedAllocation != VK_FALSE) ||
+                           (memDedicatedReq.prefersDedicatedAllocation != VK_FALSE);
+  }
+  else
+  {
+    vkGetImageMemoryRequirements(GetDevice(), image, mem_reqs);
+    *dedicated = false;
+  }
+}
+
+void VulkanContext::GetBufferMemoryRequirements(VkBuffer buffer, VkMemoryRequirements* mem_reqs,
+                                                bool* dedicated)
+{
+  bool KHR_dedicated_allocation = false;
+  if (KHR_dedicated_allocation)
+  {
+    VkBufferMemoryRequirementsInfo2KHR memReqInfo2{
+        VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2};
+    memReqInfo2.buffer = buffer;
+
+    VkMemoryRequirements2KHR memReq2 = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR};
+    VkMemoryDedicatedRequirementsKHR memDedicatedReq{
+        VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR};
+    memReq2.pNext = &memDedicatedReq;
+
+    vkGetBufferMemoryRequirements2KHR(GetDevice(), &memReqInfo2, &memReq2);
+
+    *mem_reqs = memReq2.memoryRequirements;
+    *dedicated = (memDedicatedReq.requiresDedicatedAllocation != VK_FALSE) ||
+                 (memDedicatedReq.prefersDedicatedAllocation != VK_FALSE);
+  }
+  else
+  {
+    vkGetBufferMemoryRequirements(GetDevice(), buffer, mem_reqs);
+    *dedicated = false;
+  }
+}
+
+VkResult VulkanContext::Allocate(const VkImageCreateInfo* create_info, VkImage* out_image,
+                                 VkDeviceMemory* out_memory)
+{
+  VkImage image = VK_NULL_HANDLE;
+  VkResult res = vkCreateImage(GetDevice(), create_info, nullptr, &image);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkCreateImage failed: ");
+    return res;
+  }
+
+  // Allocate memory to back this texture, we want device local memory in this case
+  VkMemoryRequirements memory_requirements;
+  VkMemoryDedicatedAllocateInfoKHR dedicatedAllocateInfo{
+      VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR};
+  bool dedicatedAllocation = false;
+  GetImageMemoryRequirements(image, &memory_requirements, &dedicatedAllocation);
+
+  VkMemoryAllocateInfo memory_info = {
+      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, memory_requirements.size,
+      GetMemoryType(memory_requirements.memoryTypeBits,
+                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false)
+                                      .value_or(0)};
+  if (dedicatedAllocation)
+  {
+    dedicatedAllocateInfo.image = image;
+    memory_info.pNext = &dedicatedAllocateInfo;
+  }
+
+  VkDeviceMemory device_memory;
+  res = vkAllocateMemory(GetDevice(), &memory_info, nullptr, &device_memory);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkAllocateMemory failed: ");
+    vkDestroyImage(GetDevice(), image, nullptr);
+    return res;
+  }
+
+  res = vkBindImageMemory(GetDevice(), image, device_memory, 0);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkBindImageMemory failed: ");
+    vkDestroyImage(GetDevice(), image, nullptr);
+    vkFreeMemory(GetDevice(), device_memory, nullptr);
+    return res;
+  }
+
+  *out_image = image;
+  *out_memory = device_memory;
+  return res;
+}
+
+VkResult VulkanContext::Allocate(const VkBufferCreateInfo* create_info, VkBuffer* out_buffer,
+                                 VkDeviceMemory* out_memory, STAGING_BUFFER_TYPE type,
+                                 bool* out_coherent)
+{
+  VkBuffer buffer;
+  VkResult res = vkCreateBuffer(GetDevice(), create_info, nullptr, &buffer);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkCreateBuffer failed: ");
+    return res;
+  }
+
+  VkMemoryRequirements memory_requirements;
+  VkMemoryDedicatedAllocateInfoKHR dedicatedAllocateInfo{
+      VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR};
+  bool dedicatedAllocation = false;
+  GetBufferMemoryRequirements(buffer, &memory_requirements, &dedicatedAllocation);
+
+  uint32_t type_index = 0;
+  switch (type)
+  {
+  case STAGING_BUFFER_TYPE_UPLOAD:
+    type_index =
+        g_vulkan_context->GetUploadMemoryType(memory_requirements.memoryTypeBits, out_coherent);
+    break;
+  case STAGING_BUFFER_TYPE_READBACK:
+    type_index =
+        g_vulkan_context->GetReadbackMemoryType(memory_requirements.memoryTypeBits, out_coherent);
+    break;
+  case STAGING_BUFFER_TYPE_NONE:
+    type_index = g_vulkan_context->GetMemoryType(memory_requirements.memoryTypeBits,
+                                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false)
+                                                 .value_or(0);
+    break;
+  }
+
+  VkMemoryAllocateInfo memory_allocate_info = {
+      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,  // VkStructureType    sType
+      nullptr,                                 // const void*        pNext
+      memory_requirements.size,                // VkDeviceSize       allocationSize
+      type_index                               // uint32_t           memoryTypeIndex
+  };
+  if (dedicatedAllocation)
+  {
+    dedicatedAllocateInfo.buffer = buffer;
+    memory_allocate_info.pNext = &dedicatedAllocateInfo;
+  }
+
+  VkDeviceMemory memory;
+  res = vkAllocateMemory(GetDevice(), &memory_allocate_info, nullptr, &memory);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkAllocateMemory failed: ");
+    vkDestroyBuffer(GetDevice(), buffer, nullptr);
+    return res;
+  }
+
+  res = vkBindBufferMemory(GetDevice(), buffer, memory, 0);
+  if (res != VK_SUCCESS)
+  {
+    LOG_VULKAN_ERROR(res, "vkBindBufferMemory failed: ");
+    vkDestroyBuffer(GetDevice(), buffer, nullptr);
+    vkFreeMemory(GetDevice(), memory, nullptr);
+    return res;
+  }
+
+  *out_buffer = buffer;
+  *out_memory = memory;
+  return res;
+}
+
+
+
 std::optional<u32> VulkanContext::GetMemoryType(u32 bits, VkMemoryPropertyFlags properties,
                                                 bool strict, bool* is_coherent)
 {
@@ -763,13 +942,13 @@ u32 VulkanContext::GetUploadMemoryType(u32 bits, bool* is_coherent)
   type_index = GetMemoryType(bits, COHERENT_FLAGS, false, is_coherent);
   if (type_index)
   {
-    WARN_LOG(VIDEO,
-             "Strict check for upload memory properties failed, this may affect performance");
+    WARN_LOG_FMT(VIDEO,
+                 "Strict check for upload memory properties failed, this may affect performance");
     return type_index.value();
   }
 
   // Fall back to non-coherent memory.
-  WARN_LOG(
+  WARN_LOG_FMT(
       VIDEO,
       "Vulkan: Failed to find a coherent memory type for uploads, this will affect performance.");
   type_index = GetMemoryType(bits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false, is_coherent);
@@ -777,7 +956,7 @@ u32 VulkanContext::GetUploadMemoryType(u32 bits, bool* is_coherent)
     return type_index.value();
 
   // Shouldn't happen, there should be at least one host-visible heap.
-  PanicAlert("Unable to get memory type for upload.");
+  PanicAlertFmt("Unable to get memory type for upload.");
   return 0;
 }
 
@@ -811,15 +990,15 @@ u32 VulkanContext::GetReadbackMemoryType(u32 bits, bool* is_coherent)
   if (type_index)
     return type_index.value();
 
-  WARN_LOG(VIDEO, "Vulkan: Failed to find a cached memory type for readbacks, this will affect "
-                  "performance.");
+  WARN_LOG_FMT(VIDEO, "Vulkan: Failed to find a cached memory type for readbacks, this will affect "
+                      "performance.");
   type_index = GetMemoryType(bits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false, is_coherent);
   *is_coherent = false;
   if (type_index)
     return type_index.value();
 
   // We should have at least one host visible memory type...
-  PanicAlert("Unable to get memory type for upload.");
+  PanicAlertFmt("Unable to get memory type for upload.");
   return 0;
 }
 
@@ -867,8 +1046,8 @@ void VulkanContext::InitDriverDetails()
   {
 // Apart from the driver version, Intel does not appear to provide a way to
 // differentiate between anv and the binary driver (Skylake+). Assume to be
-// using anv if we not running on Windows.
-#ifdef WIN32
+// using anv if we're not running on Windows or macOS.
+#if defined(WIN32) || defined(__APPLE__)
     vendor = DriverDetails::VENDOR_INTEL;
     driver = DriverDetails::DRIVER_INTEL;
 #else
@@ -896,8 +1075,8 @@ void VulkanContext::InitDriverDetails()
   }
   else
   {
-    WARN_LOG(VIDEO, "Unknown Vulkan driver vendor, please report it to us.");
-    WARN_LOG(VIDEO, "Vendor ID: 0x%X, Device Name: %s", vendor_id, device_name.c_str());
+    WARN_LOG_FMT(VIDEO, "Unknown Vulkan driver vendor, please report it to us.");
+    WARN_LOG_FMT(VIDEO, "Vendor ID: {:#X}, Device Name: {}", vendor_id, device_name);
     vendor = DriverDetails::VENDOR_UNKNOWN;
     driver = DriverDetails::DRIVER_UNKNOWN;
   }
@@ -942,7 +1121,8 @@ void VulkanContext::PopulateShaderSubgroupSupport()
                                                          VK_SUBGROUP_FEATURE_BALLOT_BIT;
   m_supports_shader_subgroup_operations =
       (subgroup_properties.supportedOperations & required_operations) == required_operations &&
-      subgroup_properties.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT;
+      subgroup_properties.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT &&
+      !DriverDetails::HasBug(DriverDetails::BUG_BROKEN_SUBGROUP_INVOCATION_ID);
 }
 
 bool VulkanContext::SupportsExclusiveFullscreen(const WindowSystemInfo& wsi, VkSurfaceKHR surface)

@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoBackends/Vulkan/ObjectCache.h"
 
@@ -10,6 +9,7 @@
 
 #include "Common/Assert.h"
 #include "Common/CommonFuncs.h"
+#include "Common/FileUtil.h"
 #include "Common/LinearDiskCache.h"
 #include "Common/MsgHandler.h"
 
@@ -17,11 +17,11 @@
 
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 #include "VideoBackends/Vulkan/ShaderCompiler.h"
-#include "VideoBackends/Vulkan/StreamBuffer.h"
+#include "VideoBackends/Vulkan/VKStreamBuffer.h"
 #include "VideoBackends/Vulkan/VKTexture.h"
-#include "VideoBackends/Vulkan/VertexFormat.h"
+#include "VideoBackends/Vulkan/VKVertexFormat.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
-#include "VideoCommon/Statistics.h"
+#include "VideoCommon/VideoCommon.h"
 
 namespace Vulkan
 {
@@ -54,7 +54,7 @@ bool ObjectCache::Initialize()
       StreamBuffer::Create(VK_BUFFER_USAGE_TRANSFER_SRC_BIT, TEXTURE_UPLOAD_BUFFER_SIZE);
   if (!m_texture_upload_buffer)
   {
-    PanicAlert("Failed to create texture upload buffer");
+    PanicAlertFmt("Failed to create texture upload buffer");
     return false;
   }
 
@@ -315,28 +315,28 @@ VkSampler ObjectCache::GetSampler(const SamplerState& info)
        VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT}};
 
   VkSamplerCreateInfo create_info = {
-      VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,               // VkStructureType         sType
-      nullptr,                                             // const void*             pNext
-      0,                                                   // VkSamplerCreateFlags    flags
-      filters[static_cast<u32>(info.mag_filter.Value())],  // VkFilter                magFilter
-      filters[static_cast<u32>(info.min_filter.Value())],  // VkFilter                minFilter
-      mipmap_modes[static_cast<u32>(info.mipmap_filter.Value())],  // VkSamplerMipmapMode mipmapMode
-      address_modes[static_cast<u32>(info.wrap_u.Value())],  // VkSamplerAddressMode    addressModeU
-      address_modes[static_cast<u32>(info.wrap_v.Value())],  // VkSamplerAddressMode    addressModeV
-      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,                 // VkSamplerAddressMode    addressModeW
-      info.lod_bias / 256.0f,                                // float                   mipLodBias
+      VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,              // VkStructureType         sType
+      nullptr,                                            // const void*             pNext
+      0,                                                  // VkSamplerCreateFlags    flags
+      filters[u32(info.tm0.mag_filter.Value())],          // VkFilter                magFilter
+      filters[u32(info.tm0.min_filter.Value())],          // VkFilter                minFilter
+      mipmap_modes[u32(info.tm0.mipmap_filter.Value())],  // VkSamplerMipmapMode mipmapMode
+      address_modes[u32(info.tm0.wrap_u.Value())],        // VkSamplerAddressMode    addressModeU
+      address_modes[u32(info.tm0.wrap_v.Value())],        // VkSamplerAddressMode    addressModeV
+      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,              // VkSamplerAddressMode    addressModeW
+      info.tm0.lod_bias / 256.0f,                         // float                   mipLodBias
       VK_FALSE,                                 // VkBool32                anisotropyEnable
       0.0f,                                     // float                   maxAnisotropy
       VK_FALSE,                                 // VkBool32                compareEnable
       VK_COMPARE_OP_ALWAYS,                     // VkCompareOp             compareOp
-      info.min_lod / 16.0f,                     // float                   minLod
-      info.max_lod / 16.0f,                     // float                   maxLod
+      info.tm1.min_lod / 16.0f,                 // float                   minLod
+      info.tm1.max_lod / 16.0f,                 // float                   maxLod
       VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,  // VkBorderColor           borderColor
       VK_FALSE                                  // VkBool32                unnormalizedCoordinates
   };
 
   // Can we use anisotropic filtering with this sampler?
-  if (info.anisotropic_filtering && g_vulkan_context->SupportsAnisotropicFiltering())
+  if (info.tm0.anisotropic_filtering && g_vulkan_context->SupportsAnisotropicFiltering())
   {
     // Cap anisotropy to device limits.
     create_info.anisotropyEnable = VK_TRUE;
@@ -542,7 +542,7 @@ bool ObjectCache::ValidatePipelineCache(const u8* data, size_t data_length)
 {
   if (data_length < sizeof(VK_PIPELINE_CACHE_HEADER))
   {
-    ERROR_LOG(VIDEO, "Pipeline cache failed validation: Invalid header");
+    ERROR_LOG_FMT(VIDEO, "Pipeline cache failed validation: Invalid header");
     return false;
   }
 
@@ -550,36 +550,36 @@ bool ObjectCache::ValidatePipelineCache(const u8* data, size_t data_length)
   std::memcpy(&header, data, sizeof(header));
   if (header.header_length < sizeof(VK_PIPELINE_CACHE_HEADER))
   {
-    ERROR_LOG(VIDEO, "Pipeline cache failed validation: Invalid header length");
+    ERROR_LOG_FMT(VIDEO, "Pipeline cache failed validation: Invalid header length");
     return false;
   }
 
   if (header.header_version != VK_PIPELINE_CACHE_HEADER_VERSION_ONE)
   {
-    ERROR_LOG(VIDEO, "Pipeline cache failed validation: Invalid header version");
+    ERROR_LOG_FMT(VIDEO, "Pipeline cache failed validation: Invalid header version");
     return false;
   }
 
   if (header.vendor_id != g_vulkan_context->GetDeviceProperties().vendorID)
   {
-    ERROR_LOG(VIDEO,
-              "Pipeline cache failed validation: Incorrect vendor ID (file: 0x%X, device: 0x%X)",
-              header.vendor_id, g_vulkan_context->GetDeviceProperties().vendorID);
+    ERROR_LOG_FMT(
+        VIDEO, "Pipeline cache failed validation: Incorrect vendor ID (file: {:#X}, device: {:#X})",
+        header.vendor_id, g_vulkan_context->GetDeviceProperties().vendorID);
     return false;
   }
 
   if (header.device_id != g_vulkan_context->GetDeviceProperties().deviceID)
   {
-    ERROR_LOG(VIDEO,
-              "Pipeline cache failed validation: Incorrect device ID (file: 0x%X, device: 0x%X)",
-              header.device_id, g_vulkan_context->GetDeviceProperties().deviceID);
+    ERROR_LOG_FMT(
+        VIDEO, "Pipeline cache failed validation: Incorrect device ID (file: {:#X}, device: {:#X})",
+        header.device_id, g_vulkan_context->GetDeviceProperties().deviceID);
     return false;
   }
 
   if (std::memcmp(header.uuid, g_vulkan_context->GetDeviceProperties().pipelineCacheUUID,
                   VK_UUID_SIZE) != 0)
   {
-    ERROR_LOG(VIDEO, "Pipeline cache failed validation: Incorrect UUID");
+    ERROR_LOG_FMT(VIDEO, "Pipeline cache failed validation: Incorrect UUID");
     return false;
   }
 

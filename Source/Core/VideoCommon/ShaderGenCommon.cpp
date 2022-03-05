@@ -1,11 +1,14 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoCommon/ShaderGenCommon.h"
-#include "Common/CommonPaths.h"
+
+#include <fmt/format.h>
+
 #include "Common/FileUtil.h"
 #include "Core/ConfigManager.h"
+#include "VideoCommon/VideoCommon.h"
+#include "VideoCommon/VideoConfig.h"
 
 ShaderHostConfig ShaderHostConfig::GetCurrent()
 {
@@ -35,6 +38,10 @@ ShaderHostConfig ShaderHostConfig::GetCurrent()
   bits.backend_shader_framebuffer_fetch = g_ActiveConfig.backend_info.bSupportsFramebufferFetch;
   bits.backend_logic_op = g_ActiveConfig.backend_info.bSupportsLogicOp;
   bits.backend_palette_conversion = g_ActiveConfig.backend_info.bSupportsPaletteConversion;
+  bits.enable_validation_layer = g_ActiveConfig.bEnableValidationLayer;
+  bits.manual_texture_sampling = !g_ActiveConfig.bFastTextureSampling;
+  bits.manual_texture_sampling_custom_texture_sizes =
+      g_ActiveConfig.ManualTextureSamplingWithHiResTextures();
   return bits;
 }
 
@@ -76,9 +83,148 @@ std::string GetDiskShaderCacheFileName(APIType api_type, const char* type, bool 
   {
     // We're using 21 bits, so 6 hex characters.
     ShaderHostConfig host_config = ShaderHostConfig::GetCurrent();
-    filename += StringFromFormat("-%06X", host_config.bits);
+    filename += fmt::format("-{:06X}", host_config.bits);
   }
 
   filename += ".cache";
   return filename;
+}
+
+void WriteIsNanHeader(ShaderCode& out, APIType api_type)
+{
+  if (api_type == APIType::D3D)
+  {
+    out.Write("bool dolphin_isnan(float f) {{\n"
+              "  // Workaround for the HLSL compiler deciding that isnan can never be true and\n"
+              "  // optimising away the call, even though the value can actually be NaN\n"
+              "  // Just look for the bit pattern that indicates NaN instead\n"
+              "  return (asint(f) & 0x7FFFFFFF) > 0x7F800000;\n"
+              "}}\n\n");
+    // If isfinite is needed, (asint(f) & 0x7F800000) != 0x7F800000 can be used
+  }
+  else
+  {
+    out.Write("#define dolphin_isnan(f) isnan(f)\n");
+  }
+}
+
+void WriteBitfieldExtractHeader(ShaderCode& out, APIType api_type,
+                                const ShaderHostConfig& host_config)
+{
+  // ==============================================
+  //  BitfieldExtract for APIs which don't have it
+  // ==============================================
+  if (!host_config.backend_bitfield)
+  {
+    out.Write("uint bitfieldExtract(uint val, int off, int size) {{\n"
+              "  // This built-in function is only supported in OpenGL 4.0+ and ES 3.1+\n"
+              "  // Microsoft's HLSL compiler automatically optimises this to a bitfield extract "
+              "instruction.\n"
+              "  uint mask = uint((1 << size) - 1);\n"
+              "  return uint(val >> off) & mask;\n"
+              "}}\n\n");
+    out.Write("int bitfieldExtract(int val, int off, int size) {{\n"
+              "  // This built-in function is only supported in OpenGL 4.0+ and ES 3.1+\n"
+              "  // Microsoft's HLSL compiler automatically optimises this to a bitfield extract "
+              "instruction.\n"
+              "  return ((val << (32 - size - off)) >> (32 - size));\n"
+              "}}\n\n");
+  }
+}
+
+static void DefineOutputMember(ShaderCode& object, APIType api_type, std::string_view qualifier,
+                               std::string_view type, std::string_view name, int var_index,
+                               std::string_view semantic = {}, int semantic_index = -1)
+{
+  object.Write("\t{} {} {}", qualifier, type, name);
+
+  if (var_index != -1)
+    object.Write("{}", var_index);
+
+  if (api_type == APIType::D3D && !semantic.empty())
+  {
+    if (semantic_index != -1)
+      object.Write(" : {}{}", semantic, semantic_index);
+    else
+      object.Write(" : {}", semantic);
+  }
+
+  object.Write(";\n");
+}
+
+void GenerateVSOutputMembers(ShaderCode& object, APIType api_type, u32 texgens,
+                             const ShaderHostConfig& host_config, std::string_view qualifier)
+{
+  DefineOutputMember(object, api_type, qualifier, "float4", "pos", -1, "SV_Position");
+  DefineOutputMember(object, api_type, qualifier, "float4", "colors_", 0, "COLOR", 0);
+  DefineOutputMember(object, api_type, qualifier, "float4", "colors_", 1, "COLOR", 1);
+
+  for (unsigned int i = 0; i < texgens; ++i)
+    DefineOutputMember(object, api_type, qualifier, "float3", "tex", i, "TEXCOORD", i);
+
+  if (!host_config.fast_depth_calc)
+    DefineOutputMember(object, api_type, qualifier, "float4", "clipPos", -1, "TEXCOORD", texgens);
+
+  if (host_config.per_pixel_lighting)
+  {
+    DefineOutputMember(object, api_type, qualifier, "float3", "Normal", -1, "TEXCOORD",
+                       texgens + 1);
+    DefineOutputMember(object, api_type, qualifier, "float3", "WorldPos", -1, "TEXCOORD",
+                       texgens + 2);
+  }
+
+  if (host_config.backend_geometry_shaders)
+  {
+    DefineOutputMember(object, api_type, qualifier, "float", "clipDist", 0, "SV_ClipDistance", 0);
+    DefineOutputMember(object, api_type, qualifier, "float", "clipDist", 1, "SV_ClipDistance", 1);
+  }
+}
+
+void AssignVSOutputMembers(ShaderCode& object, std::string_view a, std::string_view b, u32 texgens,
+                           const ShaderHostConfig& host_config)
+{
+  object.Write("\t{}.pos = {}.pos;\n", a, b);
+  object.Write("\t{}.colors_0 = {}.colors_0;\n", a, b);
+  object.Write("\t{}.colors_1 = {}.colors_1;\n", a, b);
+
+  for (unsigned int i = 0; i < texgens; ++i)
+    object.Write("\t{}.tex{} = {}.tex{};\n", a, i, b, i);
+
+  if (!host_config.fast_depth_calc)
+    object.Write("\t{}.clipPos = {}.clipPos;\n", a, b);
+
+  if (host_config.per_pixel_lighting)
+  {
+    object.Write("\t{}.Normal = {}.Normal;\n", a, b);
+    object.Write("\t{}.WorldPos = {}.WorldPos;\n", a, b);
+  }
+
+  if (host_config.backend_geometry_shaders)
+  {
+    object.Write("\t{}.clipDist0 = {}.clipDist0;\n", a, b);
+    object.Write("\t{}.clipDist1 = {}.clipDist1;\n", a, b);
+  }
+}
+
+const char* GetInterpolationQualifier(bool msaa, bool ssaa, bool in_glsl_interface_block, bool in)
+{
+  if (!msaa)
+    return "";
+
+  // Without GL_ARB_shading_language_420pack support, the interpolation qualifier must be
+  // "centroid in" and not "centroid", even within an interface block.
+  if (in_glsl_interface_block && !g_ActiveConfig.backend_info.bSupportsBindingLayout)
+  {
+    if (!ssaa)
+      return in ? "centroid in" : "centroid out";
+    else
+      return in ? "sample in" : "sample out";
+  }
+  else
+  {
+    if (!ssaa)
+      return "centroid";
+    else
+      return "sample";
+  }
 }

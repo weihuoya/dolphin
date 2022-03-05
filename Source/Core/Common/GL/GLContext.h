@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -52,7 +51,7 @@ public:
                                            bool prefer_gles = false);
 
 protected:
-  virtual bool Initialize(void* display_handle, void* window_handle, bool stereo, bool core);
+  virtual bool Initialize(const WindowSystemInfo& wsi, bool stereo, bool core);
 
   Mode m_opengl_mode = Mode::Detect;
 

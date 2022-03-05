@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoCommon/ShaderCache.h"
 
@@ -15,14 +14,17 @@
 #include "VideoCommon/Statistics.h"
 #include "VideoCommon/VertexLoaderManager.h"
 #include "VideoCommon/VertexManagerBase.h"
-
-#include "imgui.h"
+#include "VideoCommon/VideoCommon.h"
+#include "VideoCommon/VideoConfig.h"
 
 std::unique_ptr<VideoCommon::ShaderCache> g_shader_cache;
 
 namespace VideoCommon
 {
-ShaderCache::ShaderCache() = default;
+ShaderCache::ShaderCache() : m_api_type{APIType::Nothing}
+{
+}
+
 ShaderCache::~ShaderCache()
 {
   ClearCaches();
@@ -31,7 +33,7 @@ ShaderCache::~ShaderCache()
 bool ShaderCache::Initialize()
 {
   m_api_type = g_ActiveConfig.backend_info.api_type;
-  m_host_config = ShaderHostConfig::GetCurrent();
+  m_host_config.bits = ShaderHostConfig::GetCurrent().bits;
 
   if (!CompileSharedPipelines())
     return false;
@@ -71,7 +73,7 @@ void ShaderCache::Reload()
   ClearCaches();
 
   if (!CompileSharedPipelines())
-    PanicAlert("Failed to compile shared pipelines after reload.");
+    PanicAlertFmt("Failed to compile shared pipelines after reload.");
 
   if (g_ActiveConfig.bShaderCache)
     LoadCaches();
@@ -154,26 +156,7 @@ void ShaderCache::WaitForAsyncCompiler()
   while (m_async_shader_compiler->HasPendingWork() || m_async_shader_compiler->HasCompletedWork())
   {
     m_async_shader_compiler->WaitUntilCompletion([](size_t completed, size_t total) {
-      g_renderer->BeginUIFrame();
-
-      const float scale = ImGui::GetIO().DisplayFramebufferScale.x;
-
-      ImGui::SetNextWindowSize(ImVec2(400.0f * scale, 50.0f * scale), ImGuiCond_Always);
-      ImGui::SetNextWindowPosCenter(ImGuiCond_Always);
-      if (ImGui::Begin(Common::GetStringT("Compiling Shaders").c_str(), nullptr,
-                       ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs |
-                           ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoNav |
-                           ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing))
-      {
-        ImGui::Text("Compiling shaders: %zu/%zu", completed, total);
-        ImGui::ProgressBar(static_cast<float>(completed) /
-                               static_cast<float>(std::max(total, static_cast<size_t>(1))),
-                           ImVec2(-1.0f, 0.0f), "");
-      }
-      ImGui::End();
-
-      g_renderer->EndUIFrame();
+    // nothing...
     });
     m_async_shader_compiler->RetrieveWorkItems();
   }
@@ -183,7 +166,7 @@ template <typename SerializedUidType, typename UidType>
 static void SerializePipelineUid(const UidType& uid, SerializedUidType& serialized_uid)
 {
   // Convert to disk format. Ensure all padding bytes are zero.
-  std::memset(&serialized_uid, 0, sizeof(serialized_uid));
+  std::memset(reinterpret_cast<u8*>(&serialized_uid), 0, sizeof(serialized_uid));
   serialized_uid.vertex_decl = uid.vertex_format->GetVertexDeclaration();
   serialized_uid.vs_uid = uid.vs_uid;
   serialized_uid.gs_uid = uid.gs_uid;
@@ -244,7 +227,7 @@ void ShaderCache::LoadShaderCache(T& cache, APIType api_type, const char* type, 
   std::string filename = GetDiskShaderCacheFileName(api_type, type, include_gameid, true);
   CacheReader reader(cache);
   u32 count = cache.disk_cache.OpenAndRead(filename, reader);
-  INFO_LOG(VIDEO, "Loaded %u cached shaders from %s", count, filename.c_str());
+  INFO_LOG_FMT(VIDEO, "Loaded {} cached shaders from {}", count, filename);
 }
 
 template <typename T>
@@ -298,8 +281,8 @@ void ShaderCache::LoadPipelineCache(T& cache, LinearDiskCache<DiskKeyType, u8>& 
 
   std::string filename = GetDiskShaderCacheFileName(api_type, type, include_gameid, true);
   CacheReader reader(this, cache);
-  u32 count = disk_cache.OpenAndRead(filename, reader);
-  INFO_LOG(VIDEO, "Loaded %u cached pipelines from %s", count, filename.c_str());
+  const u32 count = disk_cache.OpenAndRead(filename, reader);
+  INFO_LOG_FMT(VIDEO, "Loaded {} cached pipelines from {}", count, filename);
 
   // If any of the pipelines in the cache failed to create, it's likely because of a change of
   // driver version, or system configuration. In this case, when the UID cache picks up the pipeline
@@ -307,8 +290,8 @@ void ShaderCache::LoadPipelineCache(T& cache, LinearDiskCache<DiskKeyType, u8>& 
   // the old cache data around, so discard and recreate the disk cache.
   if (reader.AnyFailed())
   {
-    WARN_LOG(VIDEO, "Failed to load one or more pipelines from cache '%s'. Discarding.",
-             filename.c_str());
+    WARN_LOG_FMT(VIDEO, "Failed to load one or more pipelines from cache '{}'. Discarding.",
+                 filename);
     disk_cache.Close();
     File::Delete(filename);
     disk_cache.OpenAndRead(filename, reader);
@@ -375,15 +358,12 @@ void ShaderCache::ClearCaches()
   m_screen_quad_vertex_shader.reset();
   m_texture_copy_vertex_shader.reset();
   m_efb_copy_vertex_shader.reset();
-  m_texcoord_geometry_shader.reset();
-  m_color_geometry_shader.reset();
   m_texture_copy_pixel_shader.reset();
   m_color_pixel_shader.reset();
 
   m_efb_copy_to_vram_pipelines.clear();
   m_efb_copy_to_ram_pipelines.clear();
   m_copy_rgba8_pipeline.reset();
-  m_rgba8_stereo_copy_pipeline.reset();
   for (auto& pipeline : m_palette_conversion_pipelines)
     pipeline.reset();
   m_texture_reinterpret_pipelines.clear();
@@ -557,11 +537,6 @@ bool ShaderCache::NeedsGeometryShader(const GeometryShaderUid& uid) const
   return m_host_config.backend_geometry_shaders && !uid.GetUidData()->IsPassthrough();
 }
 
-bool ShaderCache::UseGeometryShaderForEFBCopies() const
-{
-  return m_host_config.backend_geometry_shaders && m_host_config.stereo;
-}
-
 AbstractPipelineConfig ShaderCache::GetGXPipelineConfig(
     const NativeVertexFormat* vertex_format, const AbstractShader* vertex_shader,
     const AbstractShader* geometry_shader, const AbstractShader* pixel_shader,
@@ -581,7 +556,8 @@ AbstractPipelineConfig ShaderCache::GetGXPipelineConfig(
 
   if (config.blending_state.logicopenable && !g_ActiveConfig.backend_info.bSupportsLogicOp)
   {
-    WARN_LOG(VIDEO, "Approximating logic op with blending, this will produce incorrect rendering.");
+    WARN_LOG_FMT(VIDEO,
+                 "Approximating logic op with blending, this will produce incorrect rendering.");
     config.blending_state.ApproximateLogicOpWithBlending();
   }
 
@@ -786,8 +762,7 @@ void ShaderCache::LoadPipelineUIDCache()
     }
   }
 
-  INFO_LOG(VIDEO, "Read %u pipeline UIDs from %s",
-           static_cast<unsigned>(m_gx_pipeline_cache.size()), filename.c_str());
+  INFO_LOG_FMT(VIDEO, "Read {} pipeline UIDs from {}", m_gx_pipeline_cache.size(), filename);
 }
 
 void ShaderCache::ClosePipelineUIDCache()
@@ -819,7 +794,7 @@ void ShaderCache::AppendGXPipelineUID(const GXPipelineUid& config)
   SerializePipelineUid(config, disk_uid);
   if (!m_gx_pipeline_uid_cache_file.WriteBytes(&disk_uid, sizeof(disk_uid)))
   {
-    WARN_LOG(VIDEO, "Writing pipeline UID to cache failed, closing file.");
+    WARN_LOG_FMT(VIDEO, "Writing pipeline UID to cache failed, closing file.");
     m_gx_pipeline_uid_cache_file.Close();
   }
 }
@@ -1110,7 +1085,7 @@ void ShaderCache::QueueUberShaderPipelines()
     {
       // uint_output is only ever enabled when logic ops are enabled.
       config.blending_state.logicopenable = true;
-      config.blending_state.logicmode = BlendMode::AND;
+      config.blending_state.logicmode = LogicOp::And;
     }
 
     auto iter = m_gx_uber_pipeline_cache.find(config);
@@ -1160,8 +1135,7 @@ ShaderCache::GetEFBCopyToVRAMPipeline(const TextureConversionShaderGen::TCShader
   AbstractPipelineConfig config = {};
   config.vertex_format = nullptr;
   config.vertex_shader = m_efb_copy_vertex_shader.get();
-  config.geometry_shader =
-      UseGeometryShaderForEFBCopies() ? m_texcoord_geometry_shader.get() : nullptr;
+  config.geometry_shader = nullptr;
   config.pixel_shader = shader.get();
   config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
   config.depth_state = RenderState::GetNoDepthTestingDepthState();
@@ -1178,7 +1152,7 @@ const AbstractPipeline* ShaderCache::GetEFBCopyToRAMPipeline(const EFBCopyParams
   if (iter != m_efb_copy_to_ram_pipelines.end())
     return iter->second.get();
 
-  const char* const shader_code =
+  const std::string shader_code =
       TextureConversionShaderTiled::GenerateEncodingShader(uid, m_api_type);
   const auto shader = g_renderer->CreateShaderFromSource(ShaderStage::Pixel, shader_code);
   if (!shader)
@@ -1211,16 +1185,6 @@ bool ShaderCache::CompileSharedPipelines()
   if (!m_screen_quad_vertex_shader || !m_texture_copy_vertex_shader || !m_efb_copy_vertex_shader)
     return false;
 
-  if (UseGeometryShaderForEFBCopies())
-  {
-    m_texcoord_geometry_shader = g_renderer->CreateShaderFromSource(
-        ShaderStage::Geometry, FramebufferShaderGen::GeneratePassthroughGeometryShader(1, 0));
-    m_color_geometry_shader = g_renderer->CreateShaderFromSource(
-        ShaderStage::Geometry, FramebufferShaderGen::GeneratePassthroughGeometryShader(0, 1));
-    if (!m_texcoord_geometry_shader || !m_color_geometry_shader)
-      return false;
-  }
-
   m_texture_copy_pixel_shader = g_renderer->CreateShaderFromSource(
       ShaderStage::Pixel, FramebufferShaderGen::GenerateTextureCopyPixelShader());
   m_color_pixel_shader = g_renderer->CreateShaderFromSource(
@@ -1241,14 +1205,6 @@ bool ShaderCache::CompileSharedPipelines()
   m_copy_rgba8_pipeline = g_renderer->CreatePipeline(config);
   if (!m_copy_rgba8_pipeline)
     return false;
-
-  if (UseGeometryShaderForEFBCopies())
-  {
-    config.geometry_shader = m_texcoord_geometry_shader.get();
-    m_rgba8_stereo_copy_pipeline = g_renderer->CreatePipeline(config);
-    if (!m_rgba8_stereo_copy_pipeline)
-      return false;
-  }
 
   if (m_host_config.backend_palette_conversion)
   {

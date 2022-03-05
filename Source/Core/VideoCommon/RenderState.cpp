@@ -1,11 +1,11 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoCommon/RenderState.h"
+
 #include <algorithm>
 #include <array>
-#include "VideoCommon/SamplerCommon.h"
+
 #include "VideoCommon/TextureConfig.h"
 
 void RasterizationState::Generate(const BPMemory& bp, PrimitiveType primitive_type)
@@ -14,20 +14,14 @@ void RasterizationState::Generate(const BPMemory& bp, PrimitiveType primitive_ty
   primitive = primitive_type;
 
   // Back-face culling should be disabled for points/lines.
-  if (primitive_type != PrimitiveType::Triangles && primitive_type != PrimitiveType::TriangleStrip)
-    cullmode = GenMode::CULL_NONE;
-}
-
-RasterizationState& RasterizationState::operator=(const RasterizationState& rhs)
-{
-  hex = rhs.hex;
-  return *this;
-}
-
-FramebufferState& FramebufferState::operator=(const FramebufferState& rhs)
-{
-  hex = rhs.hex;
-  return *this;
+  if (primitive_type != PrimitiveType::Triangles)
+  {
+    cullmode = CullMode::None;
+  }
+  else if (cullmode == CullMode::Front)
+  {
+    cullmode = CullMode::Back;
+  }
 }
 
 void DepthState::Generate(const BPMemory& bp)
@@ -37,24 +31,31 @@ void DepthState::Generate(const BPMemory& bp)
   func = bp.zmode.func.Value();
 }
 
-DepthState& DepthState::operator=(const DepthState& rhs)
-{
-  hex = rhs.hex;
-  return *this;
-}
-
 // If the framebuffer format has no alpha channel, it is assumed to
 // ONE on blending. As the backends may emulate this framebuffer
 // configuration with an alpha channel, we just drop all references
 // to the destination alpha channel.
-static BlendMode::BlendFactor RemoveDstAlphaUsage(BlendMode::BlendFactor factor)
+static SrcBlendFactor RemoveDstAlphaUsage(SrcBlendFactor factor)
 {
   switch (factor)
   {
-  case BlendMode::DSTALPHA:
-    return BlendMode::ONE;
-  case BlendMode::INVDSTALPHA:
-    return BlendMode::ZERO;
+  case SrcBlendFactor::DstAlpha:
+    return SrcBlendFactor::One;
+  case SrcBlendFactor::InvDstAlpha:
+    return SrcBlendFactor::Zero;
+  default:
+    return factor;
+  }
+}
+
+static DstBlendFactor RemoveDstAlphaUsage(DstBlendFactor factor)
+{
+  switch (factor)
+  {
+  case DstBlendFactor::DstAlpha:
+    return DstBlendFactor::One;
+  case DstBlendFactor::InvDstAlpha:
+    return DstBlendFactor::Zero;
   default:
     return factor;
   }
@@ -64,14 +65,14 @@ static BlendMode::BlendFactor RemoveDstAlphaUsage(BlendMode::BlendFactor factor)
 // the alpha component, CLR and ALPHA are indentical. So just always
 // use ALPHA as this makes it easier for the backends to use the second
 // alpha value of dual source blending.
-static BlendMode::BlendFactor RemoveSrcColorUsage(BlendMode::BlendFactor factor)
+static DstBlendFactor RemoveSrcColorUsage(DstBlendFactor factor)
 {
   switch (factor)
   {
-  case BlendMode::SRCCLR:
-    return BlendMode::SRCALPHA;
-  case BlendMode::INVSRCCLR:
-    return BlendMode::INVSRCALPHA;
+  case DstBlendFactor::SrcClr:
+    return DstBlendFactor::SrcAlpha;
+  case DstBlendFactor::InvSrcClr:
+    return DstBlendFactor::InvSrcAlpha;
   default:
     return factor;
   }
@@ -79,14 +80,14 @@ static BlendMode::BlendFactor RemoveSrcColorUsage(BlendMode::BlendFactor factor)
 
 // Same as RemoveSrcColorUsage, but because of the overlapping enum,
 // this must be written as another function.
-static BlendMode::BlendFactor RemoveDstColorUsage(BlendMode::BlendFactor factor)
+static SrcBlendFactor RemoveDstColorUsage(SrcBlendFactor factor)
 {
   switch (factor)
   {
-  case BlendMode::DSTCLR:
-    return BlendMode::DSTALPHA;
-  case BlendMode::INVDSTCLR:
-    return BlendMode::INVDSTALPHA;
+  case SrcBlendFactor::DstClr:
+    return SrcBlendFactor::DstAlpha;
+  case SrcBlendFactor::InvDstClr:
+    return SrcBlendFactor::InvDstAlpha;
   default:
     return factor;
   }
@@ -97,11 +98,11 @@ void BlendingState::Generate(const BPMemory& bp)
   // Start with everything disabled.
   hex = 0;
 
-  bool target_has_alpha = bp.zcontrol.pixel_format == PEControl::RGBA6_Z24;
-  bool alpha_test_may_success = bp.alpha_test.TestResult() != AlphaTest::FAIL;
+  bool target_has_alpha = bp.zcontrol.pixel_format == PixelFormat::RGBA6_Z24;
+  bool alpha_test_may_succeed = bp.alpha_test.TestResult() != AlphaTestResult::Fail;
 
-  colorupdate = bp.blendmode.colorupdate && alpha_test_may_success;
-  alphaupdate = bp.blendmode.alphaupdate && target_has_alpha && alpha_test_may_success;
+  colorupdate = bp.blendmode.colorupdate && alpha_test_may_succeed;
+  alphaupdate = bp.blendmode.alphaupdate && target_has_alpha && alpha_test_may_succeed;
   dstalpha = bp.dstalpha.enable && alphaupdate;
   usedualsrc = true;
 
@@ -110,14 +111,14 @@ void BlendingState::Generate(const BPMemory& bp)
   {
     blendenable = true;
     subtractAlpha = subtract = true;
-    srcfactoralpha = srcfactor = BlendMode::ONE;
-    dstfactoralpha = dstfactor = BlendMode::ONE;
+    srcfactoralpha = srcfactor = SrcBlendFactor::One;
+    dstfactoralpha = dstfactor = DstBlendFactor::One;
 
     if (dstalpha)
     {
       subtractAlpha = false;
-      srcfactoralpha = BlendMode::ONE;
-      dstfactoralpha = BlendMode::ZERO;
+      srcfactoralpha = SrcBlendFactor::One;
+      dstfactoralpha = DstBlendFactor::Zero;
     }
   }
 
@@ -133,22 +134,22 @@ void BlendingState::Generate(const BPMemory& bp)
       srcfactor = RemoveDstAlphaUsage(srcfactor);
       dstfactor = RemoveDstAlphaUsage(dstfactor);
     }
-    // replaces SRCCLR with SRCALPHA and DSTCLR with DSTALPHA, it is important to
+    // replaces SrcClr with SrcAlpha and DstClr with DstAlpha, it is important to
     // use the dst function for the src factor and vice versa
     srcfactoralpha = RemoveDstColorUsage(srcfactor);
     dstfactoralpha = RemoveSrcColorUsage(dstfactor);
 
     if (dstalpha)
     {
-      srcfactoralpha = BlendMode::ONE;
-      dstfactoralpha = BlendMode::ZERO;
+      srcfactoralpha = SrcBlendFactor::One;
+      dstfactoralpha = DstBlendFactor::Zero;
     }
   }
 
   // The logicop bit has the lowest priority
   else if (bp.blendmode.logicopenable)
   {
-    if (bp.blendmode.logicmode == BlendMode::NOOP)
+    if (bp.blendmode.logicmode == LogicOp::NoOp)
     {
       // Fast path for Kirby's Return to Dreamland, they use it with dstAlpha.
       colorupdate = false;
@@ -169,75 +170,80 @@ void BlendingState::Generate(const BPMemory& bp)
 
 void BlendingState::ApproximateLogicOpWithBlending()
 {
-  // Any of these which use SRC as srcFactor or DST as dstFactor won't be correct.
-  // This is because the two are aliased to one another (see the enum).
   struct LogicOpApproximation
   {
     bool subtract;
-    BlendMode::BlendFactor srcfactor;
-    BlendMode::BlendFactor dstfactor;
+    SrcBlendFactor srcfactor;
+    DstBlendFactor dstfactor;
   };
+  // TODO: This previously had a warning about SRC and DST being aliased and not to mix them,
+  // but INVSRCCLR and INVDSTCLR were also aliased and were mixed.
+  // Thus, NOR, EQUIV, INVERT, COPY_INVERTED, and OR_INVERTED duplicate(d) other values.
   static constexpr std::array<LogicOpApproximation, 16> approximations = {{
-      {false, BlendMode::ZERO, BlendMode::ZERO},            // CLEAR
-      {false, BlendMode::DSTCLR, BlendMode::ZERO},          // AND
-      {true, BlendMode::ONE, BlendMode::INVSRCCLR},         // AND_REVERSE
-      {false, BlendMode::ONE, BlendMode::ZERO},             // COPY
-      {true, BlendMode::DSTCLR, BlendMode::ONE},            // AND_INVERTED
-      {false, BlendMode::ZERO, BlendMode::ONE},             // NOOP
-      {false, BlendMode::INVDSTCLR, BlendMode::INVSRCCLR},  // XOR
-      {false, BlendMode::INVDSTCLR, BlendMode::ONE},        // OR
-      {false, BlendMode::INVSRCCLR, BlendMode::INVDSTCLR},  // NOR
-      {false, BlendMode::INVSRCCLR, BlendMode::ZERO},       // EQUIV
-      {false, BlendMode::INVDSTCLR, BlendMode::INVDSTCLR},  // INVERT
-      {false, BlendMode::ONE, BlendMode::INVDSTALPHA},      // OR_REVERSE
-      {false, BlendMode::INVSRCCLR, BlendMode::INVSRCCLR},  // COPY_INVERTED
-      {false, BlendMode::INVSRCCLR, BlendMode::ONE},        // OR_INVERTED
-      {false, BlendMode::INVDSTCLR, BlendMode::INVSRCCLR},  // NAND
-      {false, BlendMode::ONE, BlendMode::ONE},              // SET
+      {false, SrcBlendFactor::Zero, DstBlendFactor::Zero},            // CLEAR
+      {false, SrcBlendFactor::DstClr, DstBlendFactor::Zero},          // AND
+      {true, SrcBlendFactor::One, DstBlendFactor::InvSrcClr},         // AND_REVERSE
+      {false, SrcBlendFactor::One, DstBlendFactor::Zero},             // COPY
+      {true, SrcBlendFactor::DstClr, DstBlendFactor::One},            // AND_INVERTED
+      {false, SrcBlendFactor::Zero, DstBlendFactor::One},             // NOOP
+      {false, SrcBlendFactor::InvDstClr, DstBlendFactor::InvSrcClr},  // XOR
+      {false, SrcBlendFactor::InvDstClr, DstBlendFactor::One},        // OR
+      {false, SrcBlendFactor::InvDstClr, DstBlendFactor::InvSrcClr},  // NOR
+      {false, SrcBlendFactor::InvDstClr, DstBlendFactor::Zero},       // EQUIV
+      {false, SrcBlendFactor::InvDstClr, DstBlendFactor::InvSrcClr},  // INVERT
+      {false, SrcBlendFactor::One, DstBlendFactor::InvDstAlpha},      // OR_REVERSE
+      {false, SrcBlendFactor::InvDstClr, DstBlendFactor::InvSrcClr},  // COPY_INVERTED
+      {false, SrcBlendFactor::InvDstClr, DstBlendFactor::One},        // OR_INVERTED
+      {false, SrcBlendFactor::InvDstClr, DstBlendFactor::InvSrcClr},  // NAND
+      {false, SrcBlendFactor::One, DstBlendFactor::One},              // SET
   }};
 
   logicopenable = false;
   blendenable = true;
-  subtract = approximations[logicmode].subtract;
-  srcfactor = approximations[logicmode].srcfactor;
-  dstfactor = approximations[logicmode].dstfactor;
-}
-
-BlendingState& BlendingState::operator=(const BlendingState& rhs)
-{
-  hex = rhs.hex;
-  return *this;
+  subtract = approximations[u32(logicmode.Value())].subtract;
+  srcfactor = approximations[u32(logicmode.Value())].srcfactor;
+  dstfactor = approximations[u32(logicmode.Value())].dstfactor;
 }
 
 void SamplerState::Generate(const BPMemory& bp, u32 index)
 {
-  const FourTexUnits& tex = bpmem.tex[index / 4];
-  const TexMode0& tm0 = tex.texMode0[index % 4];
-  const TexMode1& tm1 = tex.texMode1[index % 4];
+  auto tex = bp.tex.GetUnit(index);
+  const TexMode0& bp_tm0 = tex.texMode0;
+  const TexMode1& bp_tm1 = tex.texMode1;
 
   // GX can configure the mip filter to none. However, D3D and Vulkan can't express this in their
   // sampler states. Therefore, we set the min/max LOD to zero if this option is used.
-  min_filter = (tm0.min_filter & 4) != 0 ? Filter::Linear : Filter::Point;
-  mipmap_filter = (tm0.min_filter & 3) == TexMode0::TEXF_LINEAR ? Filter::Linear : Filter::Point;
-  mag_filter = tm0.mag_filter != 0 ? Filter::Linear : Filter::Point;
+  tm0.min_filter = bp_tm0.min_filter;
+  tm0.mipmap_filter =
+      bp_tm0.mipmap_filter == MipMode::Linear ? FilterMode::Linear : FilterMode::Near;
+  tm0.mag_filter = bp_tm0.mag_filter;
 
   // If mipmaps are disabled, clamp min/max lod
-  max_lod = SamplerCommon::AreBpTexMode0MipmapsEnabled(tm0) ? tm1.max_lod : 0;
-  min_lod = std::min(max_lod.Value(), static_cast<u64>(tm1.min_lod));
-  lod_bias = SamplerCommon::AreBpTexMode0MipmapsEnabled(tm0) ? tm0.lod_bias * (256 / 32) : 0;
+  if (bp_tm0.mipmap_filter == MipMode::None)
+  {
+    tm1.max_lod = 0;
+    tm1.min_lod = 0;
+    tm0.lod_bias = 0;
+  }
+  else
+  {
+    // NOTE: When comparing, max is checked first, then min; if max is less than min, max wins
+    tm1.max_lod = bp_tm1.max_lod.Value();
+    tm1.min_lod = std::min(tm1.max_lod.Value(), bp_tm1.min_lod.Value());
+    tm0.lod_bias = bp_tm0.lod_bias * (256 / 32);
+  }
 
-  // Address modes
-  static constexpr std::array<AddressMode, 4> address_modes = {
-      {AddressMode::Clamp, AddressMode::Repeat, AddressMode::MirroredRepeat, AddressMode::Repeat}};
-  wrap_u = address_modes[tm0.wrap_s];
-  wrap_v = address_modes[tm0.wrap_t];
-  anisotropic_filtering = 0;
-}
+  // Wrap modes
+  // Hardware testing indicates that wrap_mode set to 3 behaves the same as clamp.
+  auto filter_invalid_wrap = [](WrapMode mode) {
+    return (mode <= WrapMode::Mirror) ? mode : WrapMode::Clamp;
+  };
+  tm0.wrap_u = filter_invalid_wrap(bp_tm0.wrap_s);
+  tm0.wrap_v = filter_invalid_wrap(bp_tm0.wrap_t);
 
-SamplerState& SamplerState::operator=(const SamplerState& rhs)
-{
-  hex = rhs.hex;
-  return *this;
+  tm0.diag_lod = bp_tm0.diag_lod;
+  tm0.anisotropic_filtering = false;  // TODO: Respect BP anisotropic filtering mode
+  tm0.lod_clamp = bp_tm0.lod_clamp;   // TODO: What does this do?
 }
 
 namespace RenderState
@@ -252,7 +258,7 @@ RasterizationState GetInvalidRasterizationState()
 RasterizationState GetNoCullRasterizationState(PrimitiveType primitive)
 {
   RasterizationState state = {};
-  state.cullmode = GenMode::CULL_NONE;
+  state.cullmode = CullMode::Back;
   state.primitive = primitive;
   return state;
 }
@@ -260,7 +266,7 @@ RasterizationState GetNoCullRasterizationState(PrimitiveType primitive)
 RasterizationState GetCullBackFaceRasterizationState(PrimitiveType primitive)
 {
   RasterizationState state = {};
-  state.cullmode = GenMode::CULL_BACK;
+  state.cullmode = CullMode::Back;
   state.primitive = primitive;
   return state;
 }
@@ -277,7 +283,7 @@ DepthState GetNoDepthTestingDepthState()
   DepthState state = {};
   state.testenable = false;
   state.updateenable = false;
-  state.func = ZMode::ALWAYS;
+  state.func = CompareMode::Always;
   return state;
 }
 
@@ -286,7 +292,7 @@ DepthState GetAlwaysWriteDepthState()
   DepthState state = {};
   state.testenable = true;
   state.updateenable = true;
-  state.func = ZMode::ALWAYS;
+  state.func = CompareMode::Always;
   return state;
 }
 
@@ -302,10 +308,10 @@ BlendingState GetNoBlendingBlendState()
   BlendingState state = {};
   state.usedualsrc = false;
   state.blendenable = false;
-  state.srcfactor = BlendMode::ONE;
-  state.srcfactoralpha = BlendMode::ONE;
-  state.dstfactor = BlendMode::ZERO;
-  state.dstfactoralpha = BlendMode::ZERO;
+  state.srcfactor = SrcBlendFactor::One;
+  state.srcfactoralpha = SrcBlendFactor::One;
+  state.dstfactor = DstBlendFactor::Zero;
+  state.dstfactoralpha = DstBlendFactor::Zero;
   state.logicopenable = false;
   state.colorupdate = true;
   state.alphaupdate = true;
@@ -317,10 +323,10 @@ BlendingState GetNoColorWriteBlendState()
   BlendingState state = {};
   state.usedualsrc = false;
   state.blendenable = false;
-  state.srcfactor = BlendMode::ONE;
-  state.srcfactoralpha = BlendMode::ONE;
-  state.dstfactor = BlendMode::ZERO;
-  state.dstfactoralpha = BlendMode::ZERO;
+  state.srcfactor = SrcBlendFactor::One;
+  state.srcfactoralpha = SrcBlendFactor::One;
+  state.dstfactor = DstBlendFactor::Zero;
+  state.dstfactoralpha = DstBlendFactor::Zero;
   state.logicopenable = false;
   state.colorupdate = false;
   state.alphaupdate = false;
@@ -330,37 +336,42 @@ BlendingState GetNoColorWriteBlendState()
 SamplerState GetInvalidSamplerState()
 {
   SamplerState state;
-  state.hex = UINT64_C(0xFFFFFFFFFFFFFFFF);
+  state.tm0.hex = 0xFFFFFFFF;
+  state.tm1.hex = 0xFFFFFFFF;
   return state;
 }
 
 SamplerState GetPointSamplerState()
 {
   SamplerState state = {};
-  state.min_filter = SamplerState::Filter::Point;
-  state.mag_filter = SamplerState::Filter::Point;
-  state.mipmap_filter = SamplerState::Filter::Point;
-  state.wrap_u = SamplerState::AddressMode::Clamp;
-  state.wrap_v = SamplerState::AddressMode::Clamp;
-  state.min_lod = 0;
-  state.max_lod = 255;
-  state.lod_bias = 0;
-  state.anisotropic_filtering = false;
+  state.tm0.min_filter = FilterMode::Near;
+  state.tm0.mag_filter = FilterMode::Near;
+  state.tm0.mipmap_filter = FilterMode::Near;
+  state.tm0.wrap_u = WrapMode::Clamp;
+  state.tm0.wrap_v = WrapMode::Clamp;
+  state.tm1.min_lod = 0;
+  state.tm1.max_lod = 255;
+  state.tm0.lod_bias = 0;
+  state.tm0.anisotropic_filtering = false;
+  state.tm0.diag_lod = LODType::Edge;
+  state.tm0.lod_clamp = false;
   return state;
 }
 
 SamplerState GetLinearSamplerState()
 {
   SamplerState state = {};
-  state.min_filter = SamplerState::Filter::Linear;
-  state.mag_filter = SamplerState::Filter::Linear;
-  state.mipmap_filter = SamplerState::Filter::Linear;
-  state.wrap_u = SamplerState::AddressMode::Clamp;
-  state.wrap_v = SamplerState::AddressMode::Clamp;
-  state.min_lod = 0;
-  state.max_lod = 255;
-  state.lod_bias = 0;
-  state.anisotropic_filtering = false;
+  state.tm0.min_filter = FilterMode::Linear;
+  state.tm0.mag_filter = FilterMode::Linear;
+  state.tm0.mipmap_filter = FilterMode::Linear;
+  state.tm0.wrap_u = WrapMode::Clamp;
+  state.tm0.wrap_v = WrapMode::Clamp;
+  state.tm1.min_lod = 0;
+  state.tm1.max_lod = 255;
+  state.tm0.lod_bias = 0;
+  state.tm0.anisotropic_filtering = false;
+  state.tm0.diag_lod = LODType::Edge;
+  state.tm0.lod_clamp = false;
   return state;
 }
 

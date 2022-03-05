@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Config/Graphics/GraphicsSlider.h"
 
@@ -10,9 +9,8 @@
 
 #include "DolphinQt/Settings.h"
 
-GraphicsSlider::GraphicsSlider(int minimum, int maximum, const Config::ConfigInfo<int>& setting,
-                               int tick)
-    : QSlider(Qt::Horizontal), m_setting(setting)
+GraphicsSlider::GraphicsSlider(int minimum, int maximum, const Config::Info<int>& setting, int tick)
+    : ToolTipSlider(Qt::Horizontal), m_setting(setting)
 {
   setMinimum(minimum);
   setMaximum(maximum);
@@ -22,7 +20,7 @@ GraphicsSlider::GraphicsSlider(int minimum, int maximum, const Config::ConfigInf
 
   connect(this, &GraphicsSlider::valueChanged, this, &GraphicsSlider::Update);
 
-  connect(&Settings::Instance(), &Settings::ConfigChanged, [this] {
+  connect(&Settings::Instance(), &Settings::ConfigChanged, this, [this] {
     QFont bf = font();
     bf.setBold(Config::GetActiveLayerForConfig(m_setting) != Config::LayerType::Base);
     setFont(bf);

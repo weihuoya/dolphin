@@ -1,12 +1,12 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifdef _WIN32
@@ -72,10 +72,29 @@ enum class SeekMode : u32
 
 using FileAttribute = u8;
 
+struct NandRedirect
+{
+  // A Wii FS path, eg. "/title/00010000/534d4e45/data".
+  std::string source_path;
+
+  // An absolute host filesystem path the above should be redirected to.
+  std::string target_path;
+};
+
 struct Modes
 {
   Mode owner, group, other;
 };
+inline bool operator==(const Modes& lhs, const Modes& rhs)
+{
+  const auto fields = [](const Modes& obj) { return std::tie(obj.owner, obj.group, obj.other); };
+  return fields(lhs) == fields(rhs);
+}
+
+inline bool operator!=(const Modes& lhs, const Modes& rhs)
+{
+  return !(lhs == rhs);
+}
 
 struct Metadata
 {
@@ -110,6 +129,38 @@ struct FileStatus
   u32 offset;
   u32 size;
 };
+
+/// The maximum number of components a path can have.
+constexpr size_t MaxPathDepth = 8;
+/// The maximum number of characters a path can have.
+constexpr size_t MaxPathLength = 64;
+
+/// Returns whether a Wii path is valid.
+bool IsValidPath(std::string_view path);
+bool IsValidNonRootPath(std::string_view path);
+
+struct SplitPathResult
+{
+  std::string parent;
+  std::string file_name;
+};
+inline bool operator==(const SplitPathResult& lhs, const SplitPathResult& rhs)
+{
+  const auto fields = [](const SplitPathResult& obj) {
+    return std::tie(obj.parent, obj.file_name);
+  };
+  return fields(lhs) == fields(rhs);
+}
+
+inline bool operator!=(const SplitPathResult& lhs, const SplitPathResult& rhs)
+{
+  return !(lhs == rhs);
+}
+
+/// Split a path into a parent path and the file name. Takes a *valid non-root* path.
+///
+/// Example: /shared2/sys/SYSCONF => {/shared2/sys, SYSCONF}
+SplitPathResult SplitPathAndBasename(std::string_view path);
 
 class FileSystem;
 class FileHandle final
@@ -162,6 +213,7 @@ public:
   /// Reposition the file offset for a file descriptor.
   virtual Result<u32> SeekFile(Fd fd, u32 offset, SeekMode mode) = 0;
   /// Get status for a file descriptor.
+  /// Guaranteed to succeed for a valid file descriptor.
   virtual Result<FileStatus> GetFileStatus(Fd fd) = 0;
 
   /// Create a file with the specified path and metadata.
@@ -197,8 +249,7 @@ public:
   /// Get usage information about a directory (used cluster and inode counts).
   virtual Result<DirectoryStats> GetDirectoryStats(const std::string& path) = 0;
 
-protected:
-  void Init();
+  virtual void SetNandRedirects(std::vector<NandRedirect> nand_redirects) = 0;
 };
 
 template <typename T>
@@ -229,7 +280,8 @@ enum class Location
   Session,
 };
 
-std::unique_ptr<FileSystem> MakeFileSystem(Location location = Location::Session);
+std::unique_ptr<FileSystem> MakeFileSystem(Location location = Location::Session,
+                                           std::vector<NandRedirect> nand_redirects = {});
 
 /// Convert a FS result code to an IOS error code.
 IOS::HLE::ReturnCode ConvertResult(ResultCode code);

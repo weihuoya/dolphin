@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,6 +7,11 @@
 #include "Common/CommonTypes.h"
 
 class PointerWrap;
+
+namespace Memcard
+{
+struct HeaderData;
+}
 
 namespace ExpansionInterface
 {
@@ -27,6 +31,9 @@ enum TEXIDevices : int
   // Converted to EXIDEVICE_MEMORYCARD internally.
   EXIDEVICE_MEMORYCARDFOLDER,
   EXIDEVICE_AGP,
+  EXIDEVICE_ETHXLINK,
+  // Only used on Apple devices.
+  EXIDEVICE_ETHTAPSERVER,
   EXIDEVICE_NONE = 0xFF
 };
 
@@ -58,12 +65,13 @@ public:
   // For savestates. storing it here seemed cleaner than requiring each implementation to report its
   // type. I know this class is set up like an interface, but no code requires it to be strictly
   // such.
-  TEXIDevices m_device_type;
+  TEXIDevices m_device_type = TEXIDevices::EXIDEVICE_NONE;
 
 private:
   // Byte transfer function for this device
   virtual void TransferByte(u8& byte);
 };
 
-std::unique_ptr<IEXIDevice> EXIDevice_Create(TEXIDevices device_type, int channel_num);
+std::unique_ptr<IEXIDevice> EXIDevice_Create(TEXIDevices device_type, int channel_num,
+                                             const Memcard::HeaderData& memcard_header_data);
 }  // namespace ExpansionInterface
