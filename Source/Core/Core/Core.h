@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // Core
 
@@ -25,7 +24,11 @@ namespace Core
 bool GetIsThrottlerTempDisabled();
 void SetIsThrottlerTempDisabled(bool disable);
 
-void Callback_VideoCopiedToXFB(bool video_update);
+// Returns the latest emulation speed (1 is full speed) (swings a lot)
+double GetActualEmulationSpeed();
+
+void Callback_FramePresented(double actual_emulation_speed = 1.0);
+void Callback_NewField();
 
 enum class State
 {
@@ -34,6 +37,59 @@ enum class State
   Running,
   Stopping,
   Starting,
+};
+
+// Console type values based on:
+//  - YAGCD 4.2.1.1.2
+//  - OSInit (GameCube ELF from Finding Nemo)
+//  - OSReportInfo (Wii ELF from Rayman Raving Rabbids)
+enum class ConsoleType : u32
+{
+  // 0x0XXXXXXX Retail units - Gamecube
+  HW1 = 1,
+  HW2 = 2,
+  LatestProductionBoard = 3,
+  Reserved = 4,
+
+  // 0x0XXXXXXX Retail units - Wii
+  PreProductionBoard0 = 0x10,    // Pre-production board 0
+  PreProductionBoard1 = 0x11,    // Pre-production board 1
+  PreProductionBoard2_1 = 0x12,  // Pre-production board 2-1
+  PreProductionBoard2_2 = 0x20,  // Pre-production board 2-2
+  RVL_Retail1 = 0x21,
+  RVL_Retail2 = 0x22,
+  RVL_Retail3 = 0x23,
+  RVA1 = 0x100,  // Revolution Arcade
+
+  // 0x1XXXXXXX Devkits - Gamecube
+  // Emulators
+  MacEmulator = 0x10000000,  // Mac Emulator
+  PcEmulator = 0x10000001,   // PC Emulator
+
+  // Embedded PowerPC series
+  Arthur = 0x10000002,  // EPPC Arthur
+  Minnow = 0x10000003,  // EPPC Minnow
+
+  // Development HW
+  // Version = (console_type & 0x0fffffff) - 3
+  FirstDevkit = 0x10000004,
+  SecondDevkit = 0x10000005,
+  LatestDevkit = 0x10000006,
+  ReservedDevkit = 0x10000007,
+
+  // 0x1XXXXXXX Devkits - Wii
+  RevolutionEmulator = 0x10000008,  // Revolution Emulator
+  NDEV1_0 = 0x10000010,             // NDEV 1.0
+  NDEV1_1 = 0x10000011,             // NDEV 1.1
+  NDEV1_2 = 0x10000012,             // NDEV 1.2
+  NDEV2_0 = 0x10000020,             // NDEV 2.0
+  NDEV2_1 = 0x10000021,             // NDEV 2.1
+
+  // 0x2XXXXXXX TDEV-based emulation HW
+  // Version = (console_type & 0x0fffffff) - 3
+  HW2TDEVSystem = 0x20000005,
+  LatestTDEVSystem = 0x20000006,
+  ReservedTDEVSystem = 0x20000007,
 };
 
 bool Init(std::unique_ptr<BootParameters> boot, const WindowSystemInfo& wsi);
@@ -57,10 +113,17 @@ bool WantsDeterminism();
 void SetState(State state);
 State GetState();
 
-void SaveScreenShot(bool wait_for_completion = false);
-void SaveScreenShot(std::string_view name, bool wait_for_completion = false);
+struct PerformanceStatistics
+{
+  float FPS;
+  float VPS;
+  float Speed;
+};
 
-void Callback_WiimoteInterruptChannel(int number, u16 channel_id, const u8* data, u32 size);
+const PerformanceStatistics& GetPerformanceStatistics();
+
+void SaveScreenShot();
+void SaveScreenShot(std::string_view name);
 
 // This displays messages in a user-visible way.
 void DisplayMessage(std::string message, int time_in_ms);
@@ -69,9 +132,8 @@ void FrameUpdateOnCPUThread();
 void OnFrameEnd();
 
 void VideoThrottle();
-void RequestRefreshInfo();
 
-void UpdateTitle();
+void UpdateTitle(u32 ElapseTime);
 
 // Run a function as the CPU thread.
 //
@@ -88,7 +150,11 @@ void RunOnCPUThread(std::function<void()> function, bool wait_for_completion);
 
 // for calling back into UI code without introducing a dependency on it in core
 using StateChangedCallbackFunc = std::function<void(Core::State)>;
-void SetOnStateChangedCallback(StateChangedCallbackFunc callback);
+// Returns a handle
+int AddOnStateChangedCallback(StateChangedCallbackFunc callback);
+// Also invalidates the handle
+bool RemoveOnStateChangedCallback(int* handle);
+void CallOnStateChangedCallbacks(Core::State state);
 
 // Run on the Host thread when the factors change. [NOT THREADSAFE]
 void UpdateWantDeterminism(bool initial = false);
@@ -109,5 +175,7 @@ void QueueHostJob(std::function<void()> job, bool run_during_stop = false);
 void HostDispatchJobs();
 
 void DoFrameStep();
+
+void UpdateInputGate(bool require_focus, bool require_full_focus = false);
 
 }  // namespace Core

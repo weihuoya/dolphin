@@ -1,6 +1,5 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -26,7 +25,7 @@ protected:
   template <typename T>
   static int RawRead(T* reg_data, u8 addr, int count, u8* data_out)
   {
-    static_assert(std::is_pod<T>::value);
+    static_assert(std::is_standard_layout_v<T> && std::is_trivially_copyable_v<T>);
     static_assert(0x100 == sizeof(T));
 
     // TODO: addr wraps around after 0xff
@@ -42,7 +41,7 @@ protected:
   template <typename T>
   static int RawWrite(T* reg_data, u8 addr, int count, const u8* data_in)
   {
-    static_assert(std::is_pod<T>::value);
+    static_assert(std::is_standard_layout_v<T> && std::is_trivially_copyable_v<T>);
     static_assert(0x100 == sizeof(T));
 
     // TODO: addr wraps around after 0xff

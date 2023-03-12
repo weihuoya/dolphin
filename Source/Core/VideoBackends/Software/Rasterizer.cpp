@@ -1,6 +1,5 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoBackends/Software/Rasterizer.h"
 
@@ -164,31 +163,33 @@ static void InitSlope(Slope* slope, float f1, float f2, float f3, float DX31, fl
 
 static inline void CalculateLOD(s32* lodp, bool* linear, u32 texmap, u32 texcoord)
 {
-  const FourTexUnits& texUnit = bpmem.tex[(texmap >> 2) & 1];
-  const u8 subTexmap = texmap & 3;
+  auto texUnit = bpmem.tex.GetUnit(texmap);
 
   // LOD calculation requires data from the texture mode for bias, etc.
   // it does not seem to use the actual texture size
-  const TexMode0& tm0 = texUnit.texMode0[subTexmap];
-  const TexMode1& tm1 = texUnit.texMode1[subTexmap];
+  const TexMode0& tm0 = texUnit.texMode0;
+  const TexMode1& tm1 = texUnit.texMode1;
 
   float sDelta, tDelta;
-  if (tm0.diag_lod)
-  {
-    float* uv0 = rasterBlock.Pixel[0][0].Uv[texcoord];
-    float* uv1 = rasterBlock.Pixel[1][1].Uv[texcoord];
 
-    sDelta = fabsf(uv0[0] - uv1[0]);
-    tDelta = fabsf(uv0[1] - uv1[1]);
+  float* uv00 = rasterBlock.Pixel[0][0].Uv[texcoord];
+  float* uv10 = rasterBlock.Pixel[1][0].Uv[texcoord];
+  float* uv01 = rasterBlock.Pixel[0][1].Uv[texcoord];
+
+  float dudx = fabsf(uv00[0] - uv10[0]);
+  float dvdx = fabsf(uv00[1] - uv10[1]);
+  float dudy = fabsf(uv00[0] - uv01[0]);
+  float dvdy = fabsf(uv00[1] - uv01[1]);
+
+  if (tm0.diag_lod == LODType::Diagonal)
+  {
+    sDelta = dudx + dudy;
+    tDelta = dvdx + dvdy;
   }
   else
   {
-    float* uv0 = rasterBlock.Pixel[0][0].Uv[texcoord];
-    float* uv1 = rasterBlock.Pixel[1][0].Uv[texcoord];
-    float* uv2 = rasterBlock.Pixel[0][1].Uv[texcoord];
-
-    sDelta = std::max(fabsf(uv0[0] - uv1[0]), fabsf(uv0[0] - uv2[0]));
-    tDelta = std::max(fabsf(uv0[1] - uv1[1]), fabsf(uv0[1] - uv2[1]));
+    sDelta = std::max(dudx, dudy);
+    tDelta = std::max(dvdx, dvdy);
   }
 
   // get LOD in s28.4
@@ -199,7 +200,8 @@ static inline void CalculateLOD(s32* lodp, bool* linear, u32 texmap, u32 texcoor
   bias >>= 1;
   lod += bias;
 
-  *linear = ((lod > 0 && (tm0.min_filter & 4)) || (lod <= 0 && tm0.mag_filter));
+  *linear = ((lod > 0 && tm0.min_filter == FilterMode::Linear) ||
+             (lod <= 0 && tm0.mag_filter == FilterMode::Linear));
 
   // NOTE: The order of comparisons for this clamp check matters.
   if (lod > static_cast<s32>(tm1.max_lod))
@@ -228,12 +230,9 @@ static void BuildBlock(s32 blockX, s32 blockY)
       for (unsigned int i = 0; i < bpmem.genMode.numtexgens; i++)
       {
         float projection = invW;
-        if (xfmem.texMtxInfo[i].projection)
-        {
-          float q = TexSlopes[i][2].GetValue(dx, dy) * invW;
-          if (q != 0.0f)
-            projection = invW / q;
-        }
+        float q = TexSlopes[i][2].GetValue(dx, dy) * invW;
+        if (q != 0.0f)
+          projection = invW / q;
 
         pixel.Uv[i][0] = TexSlopes[i][0].GetValue(dx, dy) * projection;
         pixel.Uv[i][1] = TexSlopes[i][1].GetValue(dx, dy) * projection;
@@ -308,23 +307,23 @@ void DrawTriangleFrontFace(const OutputVertexData* v0, const OutputVertexData* v
   s32 maxy = (std::max(std::max(Y1, Y2), Y3) + 0xF) >> 4;
 
   // scissor
-  int xoff = bpmem.scissorOffset.x * 2 - 342;
-  int yoff = bpmem.scissorOffset.y * 2 - 342;
+  s32 xoff = bpmem.scissorOffset.x * 2;
+  s32 yoff = bpmem.scissorOffset.y * 2;
 
-  s32 scissorLeft = bpmem.scissorTL.x - xoff - 342;
+  s32 scissorLeft = bpmem.scissorTL.x - xoff;
   if (scissorLeft < 0)
     scissorLeft = 0;
 
-  s32 scissorTop = bpmem.scissorTL.y - yoff - 342;
+  s32 scissorTop = bpmem.scissorTL.y - yoff;
   if (scissorTop < 0)
     scissorTop = 0;
 
-  s32 scissorRight = bpmem.scissorBR.x - xoff - 341;
-  if (scissorRight > EFB_WIDTH)
+  s32 scissorRight = bpmem.scissorBR.x - xoff + 1;
+  if (scissorRight > s32(EFB_WIDTH))
     scissorRight = EFB_WIDTH;
 
-  s32 scissorBottom = bpmem.scissorBR.y - yoff - 341;
-  if (scissorBottom > EFB_HEIGHT)
+  s32 scissorBottom = bpmem.scissorBR.y - yoff + 1;
+  if (scissorBottom > s32(EFB_HEIGHT))
     scissorBottom = EFB_HEIGHT;
 
   minx = std::max(minx, scissorLeft);

@@ -1,10 +1,10 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include "Common/CommonTypes.h"
+#include "VideoCommon/DataReader.h"
 
 class DataReader;
 
@@ -53,6 +53,6 @@ enum
 void Init();
 
 template <bool is_preprocess = false>
-u8* Run(DataReader src, u32* cycles, bool in_display_list);
+u8* Run(DataReader src, u32* cycles, bool in_display_list, u32* need_size = nullptr);
 
 }  // namespace OpcodeDecoder

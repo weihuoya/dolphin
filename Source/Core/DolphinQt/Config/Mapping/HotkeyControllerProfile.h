@@ -1,12 +1,9 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include "DolphinQt/Config/Mapping/MappingWidget.h"
-
-class QHBoxLayout;
 
 class HotkeyControllerProfile final : public MappingWidget
 {
@@ -20,7 +17,4 @@ private:
   void LoadSettings() override;
   void SaveSettings() override;
   void CreateMainLayout();
-
-  // Main
-  QHBoxLayout* m_main_layout;
 };

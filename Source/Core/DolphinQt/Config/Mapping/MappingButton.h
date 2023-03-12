@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -18,7 +17,6 @@ class MappingButton : public ElidedButton
 public:
   MappingButton(MappingWidget* widget, ControlReference* ref, bool indicator);
 
-  void Detect();
   bool IsInput() const;
 
 private:
@@ -27,6 +25,7 @@ private:
   void ConfigChanged();
   void AdvancedPressed();
 
+  void Clicked();
   void mouseReleaseEvent(QMouseEvent* event) override;
 
   MappingWidget* m_parent;

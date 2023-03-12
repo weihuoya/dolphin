@@ -1,6 +1,5 @@
 // Copyright 2012 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <array>
 #include <sstream>
@@ -54,11 +53,18 @@ void GLContextGLX::SwapInterval(int Interval)
 
   // Try EXT_swap_control, then MESA_swap_control.
   if (glXSwapIntervalEXTPtr)
+  {
     glXSwapIntervalEXTPtr(m_display, m_drawable, Interval);
+  }
   else if (glXSwapIntervalMESAPtr)
+  {
     glXSwapIntervalMESAPtr(static_cast<unsigned int>(Interval));
+  }
   else
-    ERROR_LOG(VIDEO, "No support for SwapInterval (framerate clamped to monitor refresh rate).");
+  {
+    ERROR_LOG_FMT(VIDEO,
+                  "No support for SwapInterval (framerate clamped to monitor refresh rate).");
+  }
 }
 
 void* GLContextGLX::GetFuncAddress(const std::string& name)
@@ -73,9 +79,9 @@ void GLContextGLX::Swap()
 
 // Create rendering window.
 // Call browser: Core.cpp:EmuThread() > main.cpp:Video_Initialize()
-bool GLContextGLX::Initialize(void* display_handle, void* window_handle, bool stereo, bool core)
+bool GLContextGLX::Initialize(const WindowSystemInfo& wsi, bool stereo, bool core)
 {
-  m_display = static_cast<Display*>(display_handle);
+  m_display = static_cast<Display*>(wsi.display_connection);
   int screen = DefaultScreen(m_display);
 
   // checking glx version
@@ -83,8 +89,8 @@ bool GLContextGLX::Initialize(void* display_handle, void* window_handle, bool st
   glXQueryVersion(m_display, &glxMajorVersion, &glxMinorVersion);
   if (glxMajorVersion < 1 || (glxMajorVersion == 1 && glxMinorVersion < 4))
   {
-    ERROR_LOG(VIDEO, "glX-Version %d.%d detected, but need at least 1.4", glxMajorVersion,
-              glxMinorVersion);
+    ERROR_LOG_FMT(VIDEO, "glX-Version {}.{} detected, but need at least 1.4", glxMajorVersion,
+                  glxMinorVersion);
     return false;
   }
 
@@ -93,8 +99,8 @@ bool GLContextGLX::Initialize(void* display_handle, void* window_handle, bool st
       (PFNGLXCREATECONTEXTATTRIBSPROC)GetFuncAddress("glXCreateContextAttribsARB");
   if (!glXCreateContextAttribs)
   {
-    ERROR_LOG(VIDEO,
-              "glXCreateContextAttribsARB not found, do you support GLX_ARB_create_context?");
+    ERROR_LOG_FMT(VIDEO,
+                  "glXCreateContextAttribsARB not found, do you support GLX_ARB_create_context?");
     return false;
   }
 
@@ -124,7 +130,7 @@ bool GLContextGLX::Initialize(void* display_handle, void* window_handle, bool st
   GLXFBConfig* fbc = glXChooseFBConfig(m_display, screen, visual_attribs, &fbcount);
   if (!fbc || !fbcount)
   {
-    ERROR_LOG(VIDEO, "Failed to retrieve a framebuffer config");
+    ERROR_LOG_FMT(VIDEO, "Failed to retrieve a framebuffer config");
     return false;
   }
   m_fbconfig = *fbc;
@@ -150,7 +156,8 @@ bool GLContextGLX::Initialize(void* display_handle, void* window_handle, bool st
         continue;
 
       // Got a context.
-      INFO_LOG(VIDEO, "Created a GLX context with version %d.%d", version.first, version.second);
+      INFO_LOG_FMT(VIDEO, "Created a GLX context with version {}.{}", version.first,
+                   version.second);
       m_attribs.insert(m_attribs.end(), context_attribs.begin(), context_attribs.end());
       break;
     }
@@ -169,7 +176,7 @@ bool GLContextGLX::Initialize(void* display_handle, void* window_handle, bool st
   }
   if (!m_context || s_glxError)
   {
-    ERROR_LOG(VIDEO, "Unable to create GL context.");
+    ERROR_LOG_FMT(VIDEO, "Unable to create GL context.");
     XSetErrorHandler(oldHandler);
     return false;
   }
@@ -204,9 +211,9 @@ bool GLContextGLX::Initialize(void* display_handle, void* window_handle, bool st
     }
   }
 
-  if (!CreateWindowSurface(reinterpret_cast<Window>(window_handle)))
+  if (!CreateWindowSurface(reinterpret_cast<Window>(wsi.render_surface)))
   {
-    ERROR_LOG(VIDEO, "Error: CreateWindowSurface failed\n");
+    ERROR_LOG_FMT(VIDEO, "Error: CreateWindowSurface failed\n");
     XSetErrorHandler(oldHandler);
     return false;
   }
@@ -227,7 +234,7 @@ std::unique_ptr<GLContext> GLContextGLX::CreateSharedContext()
 
   if (!new_glx_context || s_glxError)
   {
-    ERROR_LOG(VIDEO, "Unable to create GL context.");
+    ERROR_LOG_FMT(VIDEO, "Unable to create GL context.");
     XSetErrorHandler(oldHandler);
     return nullptr;
   }
@@ -242,7 +249,7 @@ std::unique_ptr<GLContext> GLContextGLX::CreateSharedContext()
 
   if (m_supports_pbuffer && !new_context->CreateWindowSurface(None))
   {
-    ERROR_LOG(VIDEO, "Error: CreateWindowSurface failed");
+    ERROR_LOG_FMT(VIDEO, "Error: CreateWindowSurface failed");
     XSetErrorHandler(oldHandler);
     return nullptr;
   }

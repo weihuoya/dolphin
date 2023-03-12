@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,7 +7,7 @@
 #include <QString>
 #include <memory>
 
-#include "InputCommon/ControllerInterface/Device.h"
+#include "InputCommon/ControllerInterface/CoreDevice.h"
 
 namespace ControllerEmu
 {
@@ -35,6 +34,7 @@ public:
     // GameCube
     MAPPING_GC_BONGOS,
     MAPPING_GC_DANCEMAT,
+    MAPPING_GC_GBA,
     MAPPING_GC_KEYBOARD,
     MAPPING_GCPAD,
     MAPPING_GC_STEERINGWHEEL,
@@ -42,7 +42,9 @@ public:
     // Wii
     MAPPING_WIIMOTE_EMU,
     // Hotkeys
-    MAPPING_HOTKEYS
+    MAPPING_HOTKEYS,
+    // Freelook
+    MAPPING_FREELOOK,
   };
 
   explicit MappingWindow(QWidget* parent, Type type, int port_num);
@@ -50,6 +52,7 @@ public:
   int GetPort() const;
   ControllerEmu::EmulatedController* GetController() const;
   bool IsMappingAllDevices() const;
+  void ShowExtensionMotionTabs(bool show);
 
 signals:
   // Emitted when config has changed so widgets can update to reflect the change.
@@ -66,14 +69,18 @@ private:
   void CreateMainLayout();
   void ConnectWidgets();
 
-  void AddWidget(const QString& name, QWidget* widget);
+  QWidget* AddWidget(const QString& name, QWidget* widget);
 
   void RefreshDevices();
 
+  void OnSelectProfile(int index);
+  void OnProfileTextChanged(const QString& text);
   void OnDeleteProfilePressed();
   void OnLoadProfilePressed();
   void OnSaveProfilePressed();
   void UpdateProfileIndex();
+  void UpdateProfileButtonState();
+  void PopulateProfileSelection();
 
   void OnDefaultFieldsPressed();
   void OnClearFieldsPressed();
@@ -108,6 +115,10 @@ private:
   QPushButton* m_reset_clear;
 
   QTabWidget* m_tab_widget;
+  QWidget* m_extension_motion_input_tab;
+  QWidget* m_extension_motion_simulation_tab;
+  const QString EXTENSION_MOTION_INPUT_TAB_NAME = tr("Extension Motion Input");
+  const QString EXTENSION_MOTION_SIMULATION_TAB_NAME = tr("Extension Motion Simulation");
 
   Type m_mapping_type;
   const int m_port;

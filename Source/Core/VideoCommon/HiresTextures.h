@@ -1,32 +1,33 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "Common/CommonTypes.h"
 #include "VideoCommon/TextureConfig.h"
+#include "VideoCommon/TextureInfo.h"
 
 enum class TextureFormat;
+
+std::set<std::string> GetTextureDirectoriesWithGameId(const std::string& root_directory,
+                                                      const std::string& game_id);
 
 class HiresTexture
 {
 public:
   static void Init();
   static void Update();
+  static void Clear();
   static void Shutdown();
 
-  static std::shared_ptr<HiresTexture> Search(const u8* texture, size_t texture_size,
-                                              const u8* tlut, size_t tlut_size, u32 width,
-                                              u32 height, TextureFormat format, bool has_mipmaps);
+  static std::shared_ptr<HiresTexture> Search(TextureInfo& texture_info);
 
-  static std::string GenBaseName(const u8* texture, size_t texture_size, const u8* tlut,
-                                 size_t tlut_size, u32 width, u32 height, TextureFormat format,
-                                 bool has_mipmaps, bool dump = false);
+  static std::string GenBaseName(TextureInfo& texture_info, bool dump = false);
 
   static u32 CalculateMipCount(u32 width, u32 height);
 
@@ -53,8 +54,6 @@ private:
   static bool LoadTexture(Level& level, const std::vector<u8>& buffer);
   static void Prefetch();
 
-  static std::string GetTextureDirectory(const std::string& game_id);
-
-  HiresTexture() {}
-  bool m_has_arbitrary_mipmaps;
+  HiresTexture() = default;
+  bool m_has_arbitrary_mipmaps = false;
 };

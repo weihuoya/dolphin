@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 //
 // Copyright (C) Hector Martin "marcan" (hector@marcansoft.com)
 
@@ -12,6 +11,8 @@
 
 namespace WiimoteEmu
 {
+using SBox = std::array<u8, 256>;
+
 class EncryptionKey
 {
 public:
@@ -21,7 +22,8 @@ public:
   using RandData = std::array<u8, 10>;
   using KeyData = std::array<u8, 6>;
 
-  void GenerateTables(const RandData& rand, const KeyData& key, const u32 idx, const u8 offset);
+  void GenerateTables(const RandData& rand, const KeyData& key, const SBox& sbox_a,
+                      const SBox& sbox_b);
 
   std::array<u8, 8> ft = {};
   std::array<u8, 8> sb = {};
@@ -41,6 +43,8 @@ protected:
                                                  u32 idx) const = 0;
   virtual EncryptionKey GenerateTables(const EncryptionKey::RandData& rand,
                                        const EncryptionKey::KeyData& key, u32 idx) const = 0;
+  virtual EncryptionKey GenerateFallbackTables(const EncryptionKey::RandData& rand,
+                                               const EncryptionKey::KeyData& key) const = 0;
 };
 
 class KeyGen1stParty final : public KeyGen
@@ -50,6 +54,8 @@ private:
                                          u32 idx) const final override;
   EncryptionKey GenerateTables(const EncryptionKey::RandData& rand,
                                const EncryptionKey::KeyData& key, u32 idx) const final override;
+  EncryptionKey GenerateFallbackTables(const EncryptionKey::RandData& rand,
+                                       const EncryptionKey::KeyData& key) const final override;
 };
 
 class KeyGen3rdParty final : public KeyGen
@@ -59,6 +65,8 @@ private:
                                          u32 idx) const final override;
   EncryptionKey GenerateTables(const EncryptionKey::RandData& rand,
                                const EncryptionKey::KeyData& key, u32 idx) const final override;
+  EncryptionKey GenerateFallbackTables(const EncryptionKey::RandData& rand,
+                                       const EncryptionKey::KeyData& key) const final override;
 };
 
 }  // namespace WiimoteEmu

@@ -1,6 +1,5 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
 #include <array>
@@ -13,7 +12,7 @@
 #include "VideoBackends/D3D/D3DBase.h"
 #include "VideoBackends/D3D/D3DState.h"
 #include "VideoBackends/D3D/DXTexture.h"
-#include "VideoBackends/D3DCommon/Common.h"
+#include "VideoBackends/D3DCommon/D3DCommon.h"
 #include "VideoCommon/VideoConfig.h"
 
 namespace DX11
@@ -304,43 +303,43 @@ StateCache::~StateCache() = default;
 ID3D11SamplerState* StateCache::Get(SamplerState state)
 {
   std::lock_guard<std::mutex> guard(m_lock);
-  auto it = m_sampler.find(state.hex);
+  auto it = m_sampler.find(state);
   if (it != m_sampler.end())
     return it->second.Get();
 
   D3D11_SAMPLER_DESC sampdc = CD3D11_SAMPLER_DESC(CD3D11_DEFAULT());
-  if (state.mipmap_filter == SamplerState::Filter::Linear)
+  if (state.tm0.mipmap_filter == FilterMode::Linear)
   {
-    if (state.min_filter == SamplerState::Filter::Linear)
-      sampdc.Filter = (state.mag_filter == SamplerState::Filter::Linear) ?
+    if (state.tm0.min_filter == FilterMode::Linear)
+      sampdc.Filter = (state.tm0.mag_filter == FilterMode::Linear) ?
                           D3D11_FILTER_MIN_MAG_MIP_LINEAR :
                           D3D11_FILTER_MIN_LINEAR_MAG_POINT_MIP_LINEAR;
     else
-      sampdc.Filter = (state.mag_filter == SamplerState::Filter::Linear) ?
+      sampdc.Filter = (state.tm0.mag_filter == FilterMode::Linear) ?
                           D3D11_FILTER_MIN_POINT_MAG_MIP_LINEAR :
                           D3D11_FILTER_MIN_MAG_POINT_MIP_LINEAR;
   }
   else
   {
-    if (state.min_filter == SamplerState::Filter::Linear)
-      sampdc.Filter = (state.mag_filter == SamplerState::Filter::Linear) ?
+    if (state.tm0.min_filter == FilterMode::Linear)
+      sampdc.Filter = (state.tm0.mag_filter == FilterMode::Linear) ?
                           D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT :
                           D3D11_FILTER_MIN_LINEAR_MAG_MIP_POINT;
     else
-      sampdc.Filter = (state.mag_filter == SamplerState::Filter::Linear) ?
+      sampdc.Filter = (state.tm0.mag_filter == FilterMode::Linear) ?
                           D3D11_FILTER_MIN_POINT_MAG_LINEAR_MIP_POINT :
                           D3D11_FILTER_MIN_MAG_MIP_POINT;
   }
 
   static constexpr std::array<D3D11_TEXTURE_ADDRESS_MODE, 3> address_modes = {
       {D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_TEXTURE_ADDRESS_MIRROR}};
-  sampdc.AddressU = address_modes[static_cast<u32>(state.wrap_u.Value())];
-  sampdc.AddressV = address_modes[static_cast<u32>(state.wrap_v.Value())];
-  sampdc.MaxLOD = state.max_lod / 16.f;
-  sampdc.MinLOD = state.min_lod / 16.f;
-  sampdc.MipLODBias = (s32)state.lod_bias / 256.f;
+  sampdc.AddressU = address_modes[static_cast<u32>(state.tm0.wrap_u.Value())];
+  sampdc.AddressV = address_modes[static_cast<u32>(state.tm0.wrap_v.Value())];
+  sampdc.MaxLOD = state.tm1.max_lod / 16.f;
+  sampdc.MinLOD = state.tm1.min_lod / 16.f;
+  sampdc.MipLODBias = state.tm0.lod_bias / 256.f;
 
-  if (state.anisotropic_filtering)
+  if (state.tm0.anisotropic_filtering)
   {
     sampdc.Filter = D3D11_FILTER_ANISOTROPIC;
     sampdc.MaxAnisotropy = 1u << g_ActiveConfig.iMaxAnisotropy;
@@ -349,7 +348,7 @@ ID3D11SamplerState* StateCache::Get(SamplerState state)
   ComPtr<ID3D11SamplerState> res;
   HRESULT hr = D3D::device->CreateSamplerState(&sampdc, res.GetAddressOf());
   CHECK(SUCCEEDED(hr), "Creating D3D sampler state failed");
-  return m_sampler.emplace(state.hex, std::move(res)).first->second.Get();
+  return m_sampler.emplace(state, std::move(res)).first->second.Get();
 }
 
 ID3D11BlendState* StateCache::Get(BlendingState state)
@@ -378,7 +377,7 @@ ID3D11BlendState* StateCache::Get(BlendingState state)
          D3D11_LOGIC_OP_COPY_INVERTED, D3D11_LOGIC_OP_OR_INVERTED, D3D11_LOGIC_OP_NAND,
          D3D11_LOGIC_OP_SET}};
     tdesc.LogicOpEnable = TRUE;
-    tdesc.LogicOp = logic_ops[state.logicmode];
+    tdesc.LogicOp = logic_ops[u32(state.logicmode.Value())];
 
     ComPtr<ID3D11BlendState1> res;
     HRESULT hr = D3D::device1->CreateBlendState1(&desc, res.GetAddressOf());
@@ -386,7 +385,7 @@ ID3D11BlendState* StateCache::Get(BlendingState state)
     {
       return m_blend.emplace(state.hex, std::move(res)).first->second.Get();
     }
-    WARN_LOG(VIDEO, "Creating D3D blend state failed with an error: %x", hr);
+    WARN_LOG_FMT(VIDEO, "Creating D3D blend state failed with an error: {:08X}", hr);
   }
 
   D3D11_BLEND_DESC desc = {};
@@ -416,10 +415,10 @@ ID3D11BlendState* StateCache::Get(BlendingState state)
        use_dual_source ? D3D11_BLEND_INV_SRC1_ALPHA : D3D11_BLEND_INV_SRC_ALPHA,
        D3D11_BLEND_DEST_ALPHA, D3D11_BLEND_INV_DEST_ALPHA}};
 
-  tdesc.SrcBlend = src_factors[state.srcfactor];
-  tdesc.SrcBlendAlpha = src_factors[state.srcfactoralpha];
-  tdesc.DestBlend = dst_factors[state.dstfactor];
-  tdesc.DestBlendAlpha = dst_factors[state.dstfactoralpha];
+  tdesc.SrcBlend = src_factors[u32(state.srcfactor.Value())];
+  tdesc.SrcBlendAlpha = src_factors[u32(state.srcfactoralpha.Value())];
+  tdesc.DestBlend = dst_factors[u32(state.dstfactor.Value())];
+  tdesc.DestBlendAlpha = dst_factors[u32(state.dstfactoralpha.Value())];
   tdesc.BlendOp = state.subtract ? D3D11_BLEND_OP_REV_SUBTRACT : D3D11_BLEND_OP_ADD;
   tdesc.BlendOpAlpha = state.subtractAlpha ? D3D11_BLEND_OP_REV_SUBTRACT : D3D11_BLEND_OP_ADD;
 
@@ -441,7 +440,7 @@ ID3D11RasterizerState* StateCache::Get(RasterizationState state)
 
   D3D11_RASTERIZER_DESC desc = {};
   desc.FillMode = D3D11_FILL_SOLID;
-  desc.CullMode = cull_modes[state.cullmode];
+  desc.CullMode = cull_modes[u32(state.cullmode.Value())];
   desc.ScissorEnable = TRUE;
 
   ComPtr<ID3D11RasterizerState> res;
@@ -477,7 +476,7 @@ ID3D11DepthStencilState* StateCache::Get(DepthState state)
     depthdc.DepthEnable = TRUE;
     depthdc.DepthWriteMask =
         state.updateenable ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
-    depthdc.DepthFunc = d3dCmpFuncs[state.func];
+    depthdc.DepthFunc = d3dCmpFuncs[u32(state.func.Value())];
   }
   else
   {

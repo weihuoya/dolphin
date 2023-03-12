@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // Additional copyrights go to Duddie (c) 2005 (duddie@walla.com)
 
@@ -9,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdio>
 
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
@@ -18,9 +18,9 @@
 namespace DSP
 {
 // clang-format off
-const std::array<DSPOPCTemplate, 214> s_opcodes =
+const std::array<DSPOPCTemplate, 230> s_opcodes =
 {{
-  //                                     # of parameters----+   {type, size, loc, lshift, mask}                                        branch        reads PC       // instruction approximation
+  //              # of parameters----+   {type, size, loc, lshift, mask}                                                               branch        reads PC       // instruction approximation
   // name      opcode  mask  size-V  V   param 1                       param 2                       param 3                    extendable    uncond.       updates SR
   {"NOP",      0x0000, 0xfffc,    1, 0, {},                                                                                     false, false, false, false, false}, // no operation
 
@@ -48,7 +48,22 @@ const std::array<DSPOPCTemplate, 214> s_opcodes =
   {"RETO",     0x02de, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return if overflow
   {"RET",      0x02df, 0xffff,    1, 0, {},                                                                                     false, true, true, false, false}, // unconditional return
 
-  {"RTI",      0x02ff, 0xffff,    1, 0, {},                                                                                     false, true, true, false, false}, // return from interrupt
+  {"RTIGE",    0x02f0, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if greater or equal
+  {"RTIL",     0x02f1, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if less
+  {"RTIG",     0x02f2, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if greater
+  {"RTILE",    0x02f3, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if less or equal
+  {"RTINZ",    0x02f4, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if not zero
+  {"RTIZ",     0x02f5, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if zero
+  {"RTINC",    0x02f6, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if not carry
+  {"RTIC",     0x02f7, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if carry
+  {"RTIx8",    0x02f8, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if TODO
+  {"RTIx9",    0x02f9, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if TODO
+  {"RTIxA",    0x02fa, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if TODO
+  {"RTIxB",    0x02fb, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if TODO
+  {"RTILNZ",   0x02fc, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if logic not zero
+  {"RTILZ",    0x02fd, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if logic zero
+  {"RTIO",     0x02fe, 0xffff,    1, 0, {},                                                                                     false, true, false, true, false}, // return from interrupt if overflow
+  {"RTI",      0x02ff, 0xffff,    1, 0, {},                                                                                     false, true, true, false, false}, // return from interrupt unconditionally
 
   {"CALLGE",   0x02b0, 0xffff,    2, 1, {{P_ADDR_I, 2, 1, 0, 0xffff}},                                                          false, true, false, true, false}, // call if greater or equal
   {"CALLL",    0x02b1, 0xffff,    2, 1, {{P_ADDR_I, 2, 1, 0, 0xffff}},                                                          false, true, false, true, false}, // call if less
@@ -192,7 +207,8 @@ const std::array<DSPOPCTemplate, 214> s_opcodes =
 
   //2
   {"LRS",      0x2000, 0xf800,    1, 2, {{P_REG18, 1, 0, 8, 0x0700},   {P_MEM, 1, 0, 0, 0x00ff}},                               false, false, false, false, false}, // $(D+24) = MEM[($cr[0-7] << 8) | I]
-  {"SRS",      0x2800, 0xf800,    1, 2, {{P_MEM,   1, 0, 0, 0x00ff},   {P_REG18, 1, 0, 8, 0x0700}},                             false, false, false, false, false}, // MEM[($cr[0-7] << 8) | I] = $(S+24)
+  {"SRSH",     0x2800, 0xfe00,    1, 2, {{P_MEM,   1, 0, 0, 0x00ff},   {P_ACCH, 1, 0, 8, 0x0100}},                              false, false, false, false, false}, // MEM[($cr[0-7] << 8) | I] = $acS.h
+  {"SRS",      0x2c00, 0xfc00,    1, 2, {{P_MEM,   1, 0, 0, 0x00ff},   {P_REG1C, 1, 0, 8, 0x0300}},                             false, false, false, false, false}, // MEM[($cr[0-7] << 8) | I] = $(S+24)
 
   // opcodes that can be extended
 
@@ -450,7 +466,7 @@ const std::array<pdlabel_t, 36> regnames =
   {0x0c, "ST0",       "Call stack",},
   {0x0d, "ST1",       "Data stack",},
   {0x0e, "ST2",       "Loop addr stack",},
-  {0x0f, "ST3",       "Loop counter",},
+  {0x0f, "ST3",       "Loop counter stack",},
   {0x10, "AC0.H",     "Accu High 0",},
   {0x11, "AC1.H",     "Accu High 1",},
   {0x12, "CR",        "Config Register",},
@@ -475,9 +491,6 @@ const std::array<pdlabel_t, 36> regnames =
   {0x23, "AX1",       "Extra Accu 1",},
 }};
 // clang-format on
-
-std::array<u16, WRITEBACK_LOG_SIZE> writeBackLog;
-std::array<int, WRITEBACK_LOG_SIZE> writeBackLogIdx;
 
 const char* pdname(u16 val)
 {
@@ -591,8 +604,8 @@ void InitInstructionTable()
       // If the entry already in the table is a strict subset, allow it
       if ((s_ext_op_table[i]->opcode_mask | iter->opcode_mask) != s_ext_op_table[i]->opcode_mask)
       {
-        ERROR_LOG(DSPLLE, "opcode ext table place %zu already in use by %s when inserting %s", i,
-                  s_ext_op_table[i]->name, iter->name);
+        ERROR_LOG_FMT(DSPLLE, "opcode ext table place {} already in use by {} when inserting {}", i,
+                      s_ext_op_table[i]->name, iter->name);
       }
     }
   }
@@ -609,12 +622,7 @@ void InitInstructionTable()
     if (s_op_table[i] == &cw)
       s_op_table[i] = &*iter;
     else
-      ERROR_LOG(DSPLLE, "opcode table place %zu already in use for %s", i, iter->name);
+      ERROR_LOG_FMT(DSPLLE, "opcode table place {} already in use for {}", i, iter->name);
   }
-
-  writeBackLogIdx.fill(-1);
-
-  // Ensure the interpreter tables are all set up, as JITs also rely on them.
-  Interpreter::InitInstructionTables();
 }
 }  // namespace DSP

@@ -1,20 +1,27 @@
 // Copyright 2013 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <asm/hwcap.h>
 #include <cstring>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <thread>
+
+#if !defined(_WIN32) && !defined(__APPLE__)
+#ifndef __FreeBSD__
+#include <asm/hwcap.h>
+#endif
 #include <sys/auxv.h>
 #include <unistd.h>
+#endif
 
 #include <fmt/format.h>
 
 #include "Common/CPUDetect.h"
 #include "Common/CommonTypes.h"
 #include "Common/FileUtil.h"
+
+#ifndef WIN32
 
 const char procfile[] = "/proc/cpuinfo";
 
@@ -42,6 +49,8 @@ static std::string GetCPUString()
   return cpu_string;
 }
 
+#endif
+
 CPUInfo cpu_info;
 
 CPUInfo::CPUInfo()
@@ -53,24 +62,57 @@ CPUInfo::CPUInfo()
 void CPUInfo::Detect()
 {
   // Set some defaults here
-  // When ARMv8 CPUs come out, these need to be updated.
   HTT = false;
   OS64bit = true;
   CPU64bit = true;
   Mode64bit = true;
   vendor = CPUVendor::ARM;
+  bFMA = true;
+  bFlushToZero = true;
+  bAFP = false;
 
+#ifdef __APPLE__
+  num_cores = std::thread::hardware_concurrency();
+
+  // M-series CPUs have all of these
+  bFP = true;
+  bASIMD = true;
+  bAES = true;
+  bSHA1 = true;
+  bSHA2 = true;
+  bCRC32 = true;
+#elif defined(_WIN32)
+  num_cores = std::thread::hardware_concurrency();
+
+  // Windows does not provide any mechanism for querying the system registers on ARMv8, unlike Linux
+  // which traps the register reads and emulates them in the kernel. There are environment variables
+  // containing some of the CPU-specific values, which we could use for a lookup table in the
+  // future. For now, assume all features are present as all known devices which are Windows-on-ARM
+  // compatible also support these extensions.
+  bFP = true;
+  bASIMD = true;
+  bAES = true;
+  bCRC32 = true;
+  bSHA1 = true;
+  bSHA2 = true;
+#else
   // Get the information about the CPU
   num_cores = sysconf(_SC_NPROCESSORS_CONF);
   strncpy(cpu_string, GetCPUString().c_str(), sizeof(cpu_string));
 
+#ifdef __FreeBSD__
+  u_long hwcaps = 0;
+  elf_aux_info(AT_HWCAP, &hwcaps, sizeof(u_long));
+#else
   unsigned long hwcaps = getauxval(AT_HWCAP);
+#endif
   bFP = hwcaps & HWCAP_FP;
   bASIMD = hwcaps & HWCAP_ASIMD;
   bAES = hwcaps & HWCAP_AES;
   bCRC32 = hwcaps & HWCAP_CRC32;
   bSHA1 = hwcaps & HWCAP_SHA1;
   bSHA2 = hwcaps & HWCAP_SHA2;
+#endif
 }
 
 // Turn the CPU info into a string we can show

@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #ifdef _WIN32
 
@@ -13,7 +12,7 @@
 #include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
 #include "Common/Thread.h"
-#include "Core/ConfigManager.h"
+#include "Core/Config/MainSettings.h"
 
 static HMODULE s_openal_dll = nullptr;
 
@@ -84,7 +83,7 @@ static bool InitLibrary()
   return true;
 }
 
-bool OpenALStream::isValid()
+bool OpenALStream::IsValid()
 {
   return InitLibrary();
 }
@@ -96,17 +95,17 @@ bool OpenALStream::Init()
 {
   if (!palcIsExtensionPresent(nullptr, "ALC_ENUMERATION_EXT"))
   {
-    PanicAlertT("OpenAL: can't find sound devices");
+    PanicAlertFmtT("OpenAL: can't find sound devices");
     return false;
   }
 
   const char* default_device_dame = palcGetString(nullptr, ALC_DEFAULT_DEVICE_SPECIFIER);
-  INFO_LOG(AUDIO, "Found OpenAL device %s", default_device_dame);
+  INFO_LOG_FMT(AUDIO, "Found OpenAL device {}", default_device_dame);
 
   ALCdevice* device = palcOpenDevice(default_device_dame);
   if (!device)
   {
-    PanicAlertT("OpenAL: can't open device %s", default_device_dame);
+    PanicAlertFmtT("OpenAL: can't open device {0}", default_device_dame);
     return false;
   }
 
@@ -114,7 +113,7 @@ bool OpenALStream::Init()
   if (!context)
   {
     palcCloseDevice(device);
-    PanicAlertT("OpenAL: can't create context for device %s", default_device_dame);
+    PanicAlertFmtT("OpenAL: can't create context for device {0}", default_device_dame);
     return false;
   }
 
@@ -127,9 +126,6 @@ bool OpenALStream::Init()
 OpenALStream::~OpenALStream()
 {
   m_run_thread.Clear();
-  // kick the thread if it's waiting
-  m_sound_sync_event.Set();
-
   m_thread.join();
 
   palSourceStop(m_source);
@@ -154,11 +150,6 @@ void OpenALStream::SetVolume(int volume)
 
   if (m_source)
     palSourcef(m_source, AL_GAIN, m_volume);
-}
-
-void OpenALStream::Update()
-{
-  m_sound_sync_event.Set();
 }
 
 bool OpenALStream::SetRunning(bool running)
@@ -204,7 +195,7 @@ static ALenum CheckALError(const char* desc)
       break;
     }
 
-    ERROR_LOG(AUDIO, "Error %s: %08x %s", desc, err, type.c_str());
+    ERROR_LOG_FMT(AUDIO, "Error {}: {:08x} {}", desc, err, type);
   }
 
   return err;
@@ -221,7 +212,7 @@ void OpenALStream::SoundLoop()
 
   bool float32_capable = palIsExtensionPresent("AL_EXT_float32") != 0;
   bool surround_capable = palIsExtensionPresent("AL_EXT_MCFORMATS") || IsCreativeXFi();
-  bool use_surround = SConfig::GetInstance().bDPL2Decoder && surround_capable;
+  bool use_surround = Config::ShouldUseDPL2Decoder() && surround_capable;
 
   // As there is no extension to check for 32-bit fixed point support
   // and we know that only a X-Fi with hardware OpenAL supports it,
@@ -232,9 +223,9 @@ void OpenALStream::SoundLoop()
 
   u32 frames_per_buffer;
   // Can't have zero samples per buffer
-  if (SConfig::GetInstance().iLatency > 0)
+  if (Config::Get(Config::MAIN_AUDIO_LATENCY) > 0)
   {
-    frames_per_buffer = frequency / 1000 * SConfig::GetInstance().iLatency / OAL_BUFFERS;
+    frames_per_buffer = frequency / 1000 * Config::Get(Config::MAIN_AUDIO_LATENCY) / OAL_BUFFERS;
   }
   else
   {
@@ -246,8 +237,8 @@ void OpenALStream::SoundLoop()
     frames_per_buffer = OAL_MAX_FRAMES;
   }
 
-  INFO_LOG(AUDIO, "Using %d buffers, each with %d audio frames for a total of %d.", OAL_BUFFERS,
-           frames_per_buffer, frames_per_buffer * OAL_BUFFERS);
+  INFO_LOG_FMT(AUDIO, "Using {} buffers, each with {} audio frames for a total of {}.", OAL_BUFFERS,
+               frames_per_buffer, frames_per_buffer * OAL_BUFFERS);
 
   // Should we make these larger just in case the mixer ever sends more samples
   // than what we request?
@@ -352,8 +343,8 @@ void OpenALStream::SoundLoop()
       if (err == AL_INVALID_ENUM)
       {
         // 5.1 is not supported by the host, fallback to stereo
-        WARN_LOG(AUDIO,
-                 "Unable to set 5.1 surround mode.  Updating OpenAL Soft might fix this issue.");
+        WARN_LOG_FMT(
+            AUDIO, "Unable to set 5.1 surround mode.  Updating OpenAL Soft might fix this issue.");
         use_surround = false;
       }
     }

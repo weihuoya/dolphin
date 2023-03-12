@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoBackends/Vulkan/StateTracker.h"
 
@@ -8,11 +7,11 @@
 
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 #include "VideoBackends/Vulkan/ObjectCache.h"
-#include "VideoBackends/Vulkan/Renderer.h"
 #include "VideoBackends/Vulkan/VKPipeline.h"
+#include "VideoBackends/Vulkan/VKRenderer.h"
 #include "VideoBackends/Vulkan/VKShader.h"
 #include "VideoBackends/Vulkan/VKTexture.h"
-#include "VideoBackends/Vulkan/VertexFormat.h"
+#include "VideoBackends/Vulkan/VKVertexFormat.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
 
 namespace Vulkan
@@ -59,7 +58,7 @@ bool StateTracker::Initialize()
 {
   // Create a dummy texture which can be used in place of a real binding.
   m_dummy_texture =
-      VKTexture::Create(TextureConfig(1, 1, 1, 1, 1, AbstractTextureFormat::RGBA8, 0));
+      VKTexture::Create(TextureConfig(1, 1, 1, 1, 1, AbstractTextureFormat::RGBA8, 0), "");
   if (!m_dummy_texture)
     return false;
   m_dummy_texture->TransitionToLayout(g_command_buffer_mgr->GetCurrentInitCommandBuffer(),
@@ -351,12 +350,12 @@ bool StateTracker::Bind()
   if (!UpdateDescriptorSet())
   {
     // We can fail to allocate descriptors if we exhaust the pool for this command buffer.
-    WARN_LOG(VIDEO, "Failed to get a descriptor set, executing buffer");
+    WARN_LOG_FMT(VIDEO, "Failed to get a descriptor set, executing buffer");
     Renderer::GetInstance()->ExecuteCommandBuffer(false, false);
     if (!UpdateDescriptorSet())
     {
       // Something strange going on.
-      ERROR_LOG(VIDEO, "Failed to get descriptor set, skipping draw");
+      ERROR_LOG_FMT(VIDEO, "Failed to get descriptor set, skipping draw");
       return false;
     }
   }
@@ -405,12 +404,12 @@ bool StateTracker::BindCompute()
 
   if (!UpdateComputeDescriptorSet())
   {
-    WARN_LOG(VIDEO, "Failed to get a compute descriptor set, executing buffer");
+    WARN_LOG_FMT(VIDEO, "Failed to get a compute descriptor set, executing buffer");
     Renderer::GetInstance()->ExecuteCommandBuffer(false, false);
     if (!UpdateComputeDescriptorSet())
     {
       // Something strange going on.
-      ERROR_LOG(VIDEO, "Failed to get descriptor set, skipping dispatch");
+      ERROR_LOG_FMT(VIDEO, "Failed to get descriptor set, skipping dispatch");
       return false;
     }
   }
@@ -542,7 +541,10 @@ bool StateTracker::UpdateGXDescriptorSet()
                             g_ActiveConfig.backend_info.bSupportsBBox ?
                                 NUM_GX_DESCRIPTOR_SETS :
                                 (NUM_GX_DESCRIPTOR_SETS - 1),
-                            m_gx_descriptor_sets.data(), NUM_UBO_DESCRIPTOR_SET_BINDINGS,
+                            m_gx_descriptor_sets.data(),
+                            g_ActiveConfig.backend_info.bSupportsGeometryShaders ?
+                                NUM_UBO_DESCRIPTOR_SET_BINDINGS :
+                                (NUM_UBO_DESCRIPTOR_SET_BINDINGS - 1),
                             m_bindings.gx_ubo_offsets.data());
     m_dirty_flags &= ~(DIRTY_FLAG_DESCRIPTOR_SETS | DIRTY_FLAG_GX_UBO_OFFSETS);
   }
@@ -550,7 +552,10 @@ bool StateTracker::UpdateGXDescriptorSet()
   {
     vkCmdBindDescriptorSets(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                             VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline->GetVkPipelineLayout(), 0,
-                            1, m_gx_descriptor_sets.data(), NUM_UBO_DESCRIPTOR_SET_BINDINGS,
+                            1, m_gx_descriptor_sets.data(),
+                            g_ActiveConfig.backend_info.bSupportsGeometryShaders ?
+                                NUM_UBO_DESCRIPTOR_SET_BINDINGS :
+                                (NUM_UBO_DESCRIPTOR_SET_BINDINGS - 1),
                             m_bindings.gx_ubo_offsets.data());
     m_dirty_flags &= ~DIRTY_FLAG_GX_UBO_OFFSETS;
   }

@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 //
 #define AX_WII  // Used in AXVoice.
 
@@ -26,9 +25,9 @@ AXWiiUCode::AXWiiUCode(DSPHLE* dsphle, u32 crc) : AXUCode(dsphle, crc), m_last_m
   for (u16& volume : m_last_aux_volumes)
     volume = 0x8000;
 
-  INFO_LOG(DSPHLE, "Instantiating AXWiiUCode");
+  INFO_LOG_FMT(DSPHLE, "Instantiating AXWiiUCode");
 
-  m_old_axwii = (crc == 0xfa450138);
+  m_old_axwii = (crc == 0xfa450138) || (crc == 0x7699af32);
 }
 
 AXWiiUCode::~AXWiiUCode()
@@ -43,11 +42,6 @@ void AXWiiUCode::HandleCommandList()
   u16 volume;
 
   u32 pb_addr = 0;
-
-  // WARN_LOG(DSPHLE, "Command list:");
-  // for (u32 i = 0; m_cmdlist[i] != CMD_END; ++i)
-  //     WARN_LOG(DSPHLE, "%04x", m_cmdlist[i]);
-  // WARN_LOG(DSPHLE, "-------------");
 
   u32 curr_idx = 0;
   bool end = false;
@@ -119,11 +113,15 @@ void AXWiiUCode::HandleCommandList()
         break;
       }
 
-      // TODO(delroth): figure this one out, it's used by almost every
-      // game I've tested so far.
-      case CMD_UNK_0B_OLD:
-        curr_idx += 4;
+      case CMD_COMPRESSOR_OLD:
+      {
+        u16 threshold = m_cmdlist[curr_idx++];
+        u16 frames = m_cmdlist[curr_idx++];
+        addr_hi = m_cmdlist[curr_idx++];
+        addr_lo = m_cmdlist[curr_idx++];
+        RunCompressor(threshold, frames, HILO_TO_32(addr), 3);
         break;
+      }
 
       case CMD_OUTPUT_OLD:
       case CMD_OUTPUT_DPL2_OLD:
@@ -212,15 +210,19 @@ void AXWiiUCode::HandleCommandList()
         break;
       }
 
-      // TODO(delroth): figure this one out, it's used by almost every
-      // game I've tested so far.
-      case CMD_UNK_0A:
-        curr_idx += 4;
+      case CMD_COMPRESSOR:
+      {
+        u16 threshold = m_cmdlist[curr_idx++];
+        u16 frames = m_cmdlist[curr_idx++];
+        addr_hi = m_cmdlist[curr_idx++];
+        addr_lo = m_cmdlist[curr_idx++];
+        RunCompressor(threshold, frames, HILO_TO_32(addr), 3);
         break;
+      }
 
       case CMD_OUTPUT:
       case CMD_OUTPUT_DPL2:
-        volume = m_cmdlist[curr_idx++];
+        volume = m_crc == 0xd9c4bf34 ? 0x8000 : m_cmdlist[curr_idx++];
         addr_hi = m_cmdlist[curr_idx++];
         addr_lo = m_cmdlist[curr_idx++];
         addr2_hi = m_cmdlist[curr_idx++];
@@ -385,13 +387,13 @@ void AXWiiUCode::GenerateVolumeRamp(u16* output, u16 vol1, u16 vol2, size_t nval
 bool AXWiiUCode::ExtractUpdatesFields(AXPBWii& pb, u16* num_updates, u16* updates,
                                       u32* updates_addr)
 {
-  u16* pb_mem = (u16*)&pb;
+  auto pb_mem = Common::BitCastToArray<u16>(pb);
 
   if (!m_old_axwii)
     return false;
 
   // Copy the num_updates field.
-  memcpy(num_updates, pb_mem + 41, 6);
+  memcpy(num_updates, &pb_mem[41], 6);
 
   // Get the address of the updates data
   u16 addr_hi = pb_mem[44];
@@ -417,17 +419,19 @@ bool AXWiiUCode::ExtractUpdatesFields(AXPBWii& pb, u16* num_updates, u16* update
   }
 
   // Remove the updates data from the PB
-  memmove(pb_mem + 41, pb_mem + 46, sizeof(pb) - 2 * 46);
+  memmove(&pb_mem[41], &pb_mem[46], sizeof(pb) - 2 * 46);
+
+  Common::BitCastFromArray<u16>(pb_mem, pb);
 
   return true;
 }
 
 void AXWiiUCode::ReinjectUpdatesFields(AXPBWii& pb, u16* num_updates, u32 updates_addr)
 {
-  u16* pb_mem = (u16*)&pb;
+  auto pb_mem = Common::BitCastToArray<u16>(pb);
 
   // Make some space
-  memmove(pb_mem + 46, pb_mem + 41, sizeof(pb) - 2 * 46);
+  memmove(&pb_mem[46], &pb_mem[41], sizeof(pb) - 2 * 46);
 
   // Reinsert previous values
   pb_mem[41] = num_updates[0];
@@ -435,10 +439,16 @@ void AXWiiUCode::ReinjectUpdatesFields(AXPBWii& pb, u16* num_updates, u32 update
   pb_mem[43] = num_updates[2];
   pb_mem[44] = updates_addr >> 16;
   pb_mem[45] = updates_addr & 0xFFFF;
+
+  Common::BitCastFromArray<u16>(pb_mem, pb);
 }
 
 void AXWiiUCode::ProcessPBList(u32 pb_addr)
 {
+  // Samples per millisecond. In theory DSP sampling rate can be changed from
+  // 32KHz to 48KHz, but AX always process at 32KHz.
+  constexpr u32 spms = 32;
+
   AXPBWii pb;
 
   while (pb_addr)
@@ -460,20 +470,20 @@ void AXWiiUCode::ProcessPBList(u32 pb_addr)
     {
       for (int curr_ms = 0; curr_ms < 3; ++curr_ms)
       {
-        ApplyUpdatesForMs(curr_ms, (u16*)&pb, num_updates, updates);
-        ProcessVoice(pb, buffers, 32, ConvertMixerControl(HILO_TO_32(pb.mixer_control)),
-                     m_coeffs_available ? m_coeffs : nullptr);
+        ApplyUpdatesForMs(curr_ms, pb, num_updates, updates);
+        ProcessVoice(pb, buffers, spms, ConvertMixerControl(HILO_TO_32(pb.mixer_control)),
+                     m_coeffs_checksum ? m_coeffs.data() : nullptr);
 
         // Forward the buffers
         for (auto& ptr : buffers.ptrs)
-          ptr += 32;
+          ptr += spms;
       }
       ReinjectUpdatesFields(pb, num_updates, updates_addr);
     }
     else
     {
       ProcessVoice(pb, buffers, 96, ConvertMixerControl(HILO_TO_32(pb.mixer_control)),
-                   m_coeffs_available ? m_coeffs : nullptr);
+                   m_coeffs_checksum ? m_coeffs.data() : nullptr);
     }
 
     WritePB(pb_addr, pb, m_crc);

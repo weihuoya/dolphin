@@ -1,25 +1,60 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/SI/SI_Device.h"
 
+#include <istream>
 #include <memory>
+#include <ostream>
 #include <string>
+#include <type_traits>
+
+#include <fmt/format.h>
 
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
-#include "Common/StringUtil.h"
+#include "Common/MsgHandler.h"
 #include "Core/HW/SI/SI_DeviceDanceMat.h"
 #include "Core/HW/SI/SI_DeviceGBA.h"
+#ifdef HAS_LIBMGBA
+#include "Core/HW/SI/SI_DeviceGBAEmu.h"
+#endif
 #include "Core/HW/SI/SI_DeviceGCAdapter.h"
 #include "Core/HW/SI/SI_DeviceGCController.h"
 #include "Core/HW/SI/SI_DeviceGCSteeringWheel.h"
 #include "Core/HW/SI/SI_DeviceKeyboard.h"
 #include "Core/HW/SI/SI_DeviceNull.h"
+#include "Core/HW/SystemTimers.h"
 
 namespace SerialInterface
 {
+constexpr u64 GC_BITS_PER_SECOND = 200000;
+constexpr u64 GBA_BITS_PER_SECOND = 250000;
+constexpr u64 GC_STOP_BIT_NS = 6500;
+constexpr u64 GBA_STOP_BIT_NS = 14000;
+
+std::ostream& operator<<(std::ostream& stream, SIDevices device)
+{
+  stream << static_cast<std::underlying_type_t<SIDevices>>(device);
+  return stream;
+}
+
+std::istream& operator>>(std::istream& stream, SIDevices& device)
+{
+  std::underlying_type_t<SIDevices> value;
+
+  if (stream >> value)
+  {
+    device = static_cast<SIDevices>(value);
+  }
+  else
+  {
+    device = SIDevices::SIDEVICE_NONE;
+  }
+
+  return stream;
+}
+
 ISIDevice::ISIDevice(SIDevices device_type, int device_number)
     : m_device_number(device_number), m_device_type(device_type)
 {
@@ -40,25 +75,25 @@ SIDevices ISIDevice::GetDeviceType() const
 int ISIDevice::RunBuffer(u8* buffer, int request_length)
 {
 #ifdef _DEBUG
-  DEBUG_LOG(SERIALINTERFACE, "Send Data Device(%i) - Length(%i)   ", m_device_number,
-            request_length);
+  DEBUG_LOG_FMT(SERIALINTERFACE, "Send Data Device({}) - Length({})   ", m_device_number,
+                request_length);
 
   std::string temp;
   int num = 0;
 
   while (num < request_length)
   {
-    temp += StringFromFormat("0x%02x ", buffer[num]);
+    temp += fmt::format("0x{:02x} ", buffer[num]);
     num++;
 
     if ((num % 8) == 0)
     {
-      DEBUG_LOG(SERIALINTERFACE, "%s", temp.c_str());
+      DEBUG_LOG_FMT(SERIALINTERFACE, "{}", temp);
       temp.clear();
     }
   }
 
-  DEBUG_LOG(SERIALINTERFACE, "%s", temp.c_str());
+  DEBUG_LOG_FMT(SERIALINTERFACE, "{}", temp);
 #endif
   return 0;
 }
@@ -70,6 +105,48 @@ int ISIDevice::TransferInterval()
 
 void ISIDevice::DoState(PointerWrap& p)
 {
+}
+
+void ISIDevice::OnEvent(u64 userdata, s64 cycles_late)
+{
+}
+
+int SIDevice_GetGBATransferTime(EBufferCommands cmd)
+{
+  u64 gc_bytes_transferred = 1;
+  u64 gba_bytes_transferred = 1;
+  u64 stop_bits_ns = GC_STOP_BIT_NS + GBA_STOP_BIT_NS;
+
+  switch (cmd)
+  {
+  case EBufferCommands::CMD_RESET:
+  case EBufferCommands::CMD_STATUS:
+  {
+    gba_bytes_transferred = 3;
+    break;
+  }
+  case EBufferCommands::CMD_READ_GBA:
+  {
+    gba_bytes_transferred = 5;
+    break;
+  }
+  case EBufferCommands::CMD_WRITE_GBA:
+  {
+    gc_bytes_transferred = 5;
+    break;
+  }
+  default:
+  {
+    gba_bytes_transferred = 0;
+    break;
+  }
+  }
+
+  u64 cycles =
+      (gba_bytes_transferred * 8 * SystemTimers::GetTicksPerSecond() / GBA_BITS_PER_SECOND) +
+      (gc_bytes_transferred * 8 * SystemTimers::GetTicksPerSecond() / GC_BITS_PER_SECOND) +
+      (stop_bits_ns * SystemTimers::GetTicksPerSecond() / 1000000000LL);
+  return static_cast<int>(cycles);
 }
 
 // Check if a device class is inheriting from CSIDevice_GCController
@@ -113,6 +190,14 @@ std::unique_ptr<ISIDevice> SIDevice_Create(const SIDevices device, const int por
 
   case SIDEVICE_GC_GBA:
     return std::make_unique<CSIDevice_GBA>(device, port_number);
+
+  case SIDEVICE_GC_GBA_EMULATED:
+#ifdef HAS_LIBMGBA
+    return std::make_unique<CSIDevice_GBAEmu>(device, port_number);
+#else
+    PanicAlertT("Error: This build does not support emulated GBA controllers");
+    return std::make_unique<CSIDevice_Null>(device, port_number);
+#endif
 
   case SIDEVICE_GC_KEYBOARD:
     return std::make_unique<CSIDevice_Keyboard>(device, port_number);

@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/ResourcePackManager.h"
 
@@ -33,6 +32,7 @@ void ResourcePackManager::CreateWidgets()
   auto* layout = new QGridLayout;
 
   m_table_widget = new QTableWidget;
+  m_table_widget->setTabKeyNavigation(false);
 
   m_open_directory_button = new QPushButton(tr("Open Directory..."));
   m_change_button = new QPushButton(tr("Install"));
@@ -108,13 +108,14 @@ void ResourcePackManager::RepopulateTable()
   for (int i = 0; i < size; i++)
   {
     const auto& pack = ResourcePack::GetPacks()[size - 1 - i];
-    auto* manifest = pack.GetManifest();
+    const auto* manifest = pack.GetManifest();
+    const auto& authors = manifest->GetAuthors();
 
     auto* logo_item = new QTableWidgetItem;
     auto* name_item = new QTableWidgetItem(QString::fromStdString(manifest->GetName()));
     auto* version_item = new QTableWidgetItem(QString::fromStdString(manifest->GetVersion()));
-    auto* author_item = new QTableWidgetItem(
-        QString::fromStdString(manifest->GetAuthors().value_or("Unknown author")));
+    auto* author_item =
+        new QTableWidgetItem(authors ? QString::fromStdString(*authors) : tr("Unknown author"));
     auto* description_item =
         new QTableWidgetItem(QString::fromStdString(manifest->GetDescription().value_or("")));
     auto* website_item =
@@ -193,7 +194,7 @@ void ResourcePackManager::Install()
 
   auto& item = ResourcePack::GetPacks()[GetResourcePackIndex(items[0])];
 
-  bool success = item.Install(File::GetUserPath(D_USER_IDX));
+  bool success = item.Install(File::GetUserPath(D_LOAD_IDX));
 
   if (!success)
   {
@@ -214,7 +215,7 @@ void ResourcePackManager::Uninstall()
 
   auto& item = ResourcePack::GetPacks()[GetResourcePackIndex(items[0])];
 
-  bool success = item.Uninstall(File::GetUserPath(D_USER_IDX));
+  bool success = item.Uninstall(File::GetUserPath(D_LOAD_IDX));
 
   if (!success)
   {

@@ -1,6 +1,5 @@
 // Copyright 2011 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -47,23 +46,26 @@ public:
 
   // Prepares a native window for rendering. This is called on the main thread, or the
   // thread which owns the window.
-  virtual void PrepareWindow(const WindowSystemInfo& wsi) {}
+  virtual void PrepareWindow(WindowSystemInfo& wsi) {}
+
+  static std::string BadShaderFilename(const char* shader_stage, int counter);
 
   void Video_ExitLoop();
 
-  void Video_BeginField(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height, u64 ticks);
+  void Video_OutputXFB(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height, u64 ticks);
 
   u32 Video_AccessEFB(EFBAccessType type, u32 x, u32 y, u32 data);
   u32 Video_GetQueryResult(PerfQueryType type);
   u16 Video_GetBoundingBox(int index);
 
-  static void PopulateList();
-  static void ClearList();
+  static std::string GetDefaultBackendName();
+  static const std::vector<std::unique_ptr<VideoBackendBase>>& GetAvailableBackends();
   static void ActivateBackend(const std::string& name);
 
   // Fills the backend_info fields with the capabilities of the selected backend/device.
-  // Called by the UI thread when the graphics config is opened.
   static void PopulateBackendInfo();
+  // Called by the UI thread when the graphics config is opened.
+  static void PopulateBackendInfoFromUI();
 
   // Wrapper function which pushes the event to the GPU thread.
   void DoState(PointerWrap& p);
@@ -75,5 +77,4 @@ protected:
   bool m_initialized = false;
 };
 
-extern std::vector<std::unique_ptr<VideoBackendBase>> g_available_video_backends;
 extern VideoBackendBase* g_video_backend;

@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -9,6 +8,7 @@
 #include <vector>
 
 #include "Common/CommonTypes.h"
+#include "Common/Debug/Threads.h"
 
 namespace Common::Debug
 {
@@ -50,6 +50,9 @@ public:
   virtual bool HasEnabledPatch(u32 address) const = 0;
   virtual void RemovePatch(std::size_t index) = 0;
   virtual void ClearPatches() = 0;
+
+  // Threads
+  virtual Debug::Threads GetThreads() const = 0;
 
   virtual std::string Disassemble(u32 /*address*/) const { return "NODEBUGGER"; }
   virtual std::string GetRawMemoryString(int /*memory*/, u32 /*address*/) const

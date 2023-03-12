@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <string>
 
@@ -10,11 +9,11 @@
 #include "Core/ConfigManager.h"
 
 #include "VideoBackends/D3D12/Common.h"
-#include "VideoBackends/D3D12/DXContext.h"
-#include "VideoBackends/D3D12/PerfQuery.h"
-#include "VideoBackends/D3D12/Renderer.h"
-#include "VideoBackends/D3D12/SwapChain.h"
-#include "VideoBackends/D3D12/VertexManager.h"
+#include "VideoBackends/D3D12/D3D12PerfQuery.h"
+#include "VideoBackends/D3D12/D3D12Renderer.h"
+#include "VideoBackends/D3D12/D3D12SwapChain.h"
+#include "VideoBackends/D3D12/D3D12VertexManager.h"
+#include "VideoBackends/D3D12/DX12Context.h"
 #include "VideoBackends/D3D12/VideoBackend.h"
 
 #include "VideoCommon/FramebufferManager.h"
@@ -27,7 +26,7 @@ namespace DX12
 {
 std::string VideoBackend::GetName() const
 {
-  return "D3D12";
+  return NAME;
 }
 
 std::string VideoBackend::GetDisplayName() const
@@ -50,7 +49,6 @@ void VideoBackend::FillBackendInfo()
   g_Config.backend_info.bUsesLowerLeftOrigin = false;
   g_Config.backend_info.bSupportsExclusiveFullscreen = true;
   g_Config.backend_info.bSupportsDualSourceBlend = true;
-  g_Config.backend_info.bSupportsPrimitiveRestart = true;
   g_Config.backend_info.bSupportsOversizedViewports = false;
   g_Config.backend_info.bSupportsGeometryShaders = true;
   g_Config.backend_info.bSupports3DVision = false;
@@ -77,11 +75,14 @@ void VideoBackend::FillBackendInfo()
   g_Config.backend_info.bSupportsFramebufferFetch = false;
   g_Config.backend_info.bSupportsBackgroundCompiling = true;
   g_Config.backend_info.bSupportsLargePoints = false;
+  g_Config.backend_info.bSupportsDepthReadback = true;
   g_Config.backend_info.bSupportsPartialDepthCopies = false;
   g_Config.backend_info.Adapters = D3DCommon::GetAdapterNames();
   g_Config.backend_info.AAModes = DXContext::GetAAModes(g_Config.iAdapter);
   g_Config.backend_info.bSupportsShaderBinaries = true;
   g_Config.backend_info.bSupportsPipelineCacheData = true;
+  g_Config.backend_info.bSupportsCoarseDerivatives = true;
+  g_Config.backend_info.bSupportsTextureQueryLevels = true;
 
   // We can only check texture support once we have a device.
   if (g_dx_context)
@@ -99,7 +100,7 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
 {
   if (!DXContext::Create(g_Config.iAdapter, g_Config.bEnableValidationLayer))
   {
-    PanicAlert("Failed to create D3D12 context");
+    PanicAlertFmtT("Failed to create D3D12 context");
     return false;
   }
 
@@ -108,7 +109,7 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
 
   if (!g_dx_context->CreateGlobalResources())
   {
-    PanicAlert("Failed to create D3D12 global resources");
+    PanicAlertFmtT("Failed to create D3D12 global resources");
     DXContext::Destroy();
     ShutdownShared();
     return false;
@@ -117,7 +118,7 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
   std::unique_ptr<SwapChain> swap_chain;
   if (wsi.render_surface && !(swap_chain = SwapChain::Create(wsi)))
   {
-    PanicAlertT("Failed to create D3D swap chain");
+    PanicAlertFmtT("Failed to create D3D swap chain");
     DXContext::Destroy();
     ShutdownShared();
     return false;
@@ -135,7 +136,7 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
       !g_renderer->Initialize() || !g_framebuffer_manager->Initialize() ||
       !g_texture_cache->Initialize() || !PerfQuery::GetInstance()->Initialize())
   {
-    PanicAlert("Failed to initialize renderer classes");
+    PanicAlertFmtT("Failed to initialize renderer classes");
     Shutdown();
     return false;
   }

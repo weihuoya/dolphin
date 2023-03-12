@@ -7,7 +7,6 @@
 
     <!-- Places the emulation surface to the top half of the screen -->
     <LinearLayout
-        xmlns:android="http://schemas.android.com/apk/res/android"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
@@ -40,7 +39,6 @@
         android:layout_gravity="center"
         android:padding="@dimen/spacing_small"
         android:background="@color/dolphin_blue"
-        android:textColor="@color/lb_tv_white"
         android:text="@string/emulation_done"
         android:visibility="gone"/>
 

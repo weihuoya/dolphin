@@ -1,6 +1,5 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WiimoteEmu/Extension/Extension.h"
 
@@ -9,7 +8,7 @@
 #include <cstring>
 
 #include "Common/CommonTypes.h"
-#include "Common/Compiler.h"
+#include "Common/Inline.h"
 #include "Core/HW/WiimoteEmu/WiimoteEmu.h"
 
 #include "Common/Logging/Log.h"
@@ -47,11 +46,6 @@ bool None::ReadDeviceDetectPin() const
 void None::Update()
 {
   // Nothing needed.
-}
-
-bool None::IsButtonPressed() const
-{
-  return false;
 }
 
 void None::Reset()

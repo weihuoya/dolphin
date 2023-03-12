@@ -33,6 +33,8 @@ add_library(videocommon
   FramebufferManager.h
   FramebufferShaderGen.cpp
   FramebufferShaderGen.h
+  FreeLookCamera.cpp
+  FreeLookCamera.h
   GeometryShaderGen.cpp
   GeometryShaderGen.h
   GeometryShaderManager.cpp
@@ -40,8 +42,6 @@ add_library(videocommon
   HiresTextures.cpp
   HiresTextures.h
   HiresTextures_DDSLoader.cpp
-  ImageWrite.cpp
-  ImageWrite.h
   IndexGenerator.cpp
   IndexGenerator.h
   LightingShaderGen.cpp
@@ -66,11 +66,12 @@ add_library(videocommon
   PixelShaderManager.h
   PostProcessing.cpp
   PostProcessing.h
+  RasterFont.cpp
+  RasterFont.h
   RenderBase.cpp
   RenderBase.h
   RenderState.cpp
   RenderState.h
-  SamplerCommon.h
   ShaderCache.cpp
   ShaderCache.h
   ShaderGenCommon.cpp
@@ -88,6 +89,10 @@ add_library(videocommon
   TextureDecoder.h
   TextureDecoder_Common.cpp
   TextureDecoder_Util.h
+  TextureInfo.cpp
+  TextureInfo.h
+  TMEM.cpp
+  TMEM.h
   UberShaderCommon.cpp
   UberShaderCommon.h
   UberShaderPixel.cpp
@@ -132,6 +137,7 @@ target_link_libraries(videocommon
 PUBLIC
   core
 PRIVATE
+  fmt::fmt
   png
   xxhash
   imgui
@@ -164,6 +170,15 @@ if(FFmpeg_FOUND)
     FFmpeg::avcodec
     FFmpeg::avformat
     FFmpeg::avutil
+    FFmpeg::swresample
     FFmpeg::swscale
   )
+  if(APPLE)
+    target_link_libraries(videocommon PRIVATE
+      ${COREMEDIA_LIBRARY}
+      ${VIDEOTOOLBOX_LIBRARY}
+      ${COREVIDEO_LIBRARY}
+      ${AUDIOTOOLBOX_LIBRARY}
+    )
+  endif()
 endif()

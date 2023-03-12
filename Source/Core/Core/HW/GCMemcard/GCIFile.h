@@ -1,6 +1,5 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -12,6 +11,8 @@
 
 class PointerWrap;
 
+namespace Memcard
+{
 class GCIFile
 {
 public:
@@ -24,6 +25,7 @@ public:
   DEntry m_gci_header;
   std::vector<GCMBlock> m_save_data;
   std::vector<u16> m_used_blocks;
-  bool m_dirty;
+  bool m_dirty = false;
   std::string m_filename;
 };
+}  // namespace Memcard

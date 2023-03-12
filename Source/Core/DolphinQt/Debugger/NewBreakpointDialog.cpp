@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Debugger/NewBreakpointDialog.h"
 
@@ -20,6 +19,7 @@
 NewBreakpointDialog::NewBreakpointDialog(BreakpointWidget* parent)
     : QDialog(parent), m_parent(parent)
 {
+  setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
   setWindowTitle(tr("New Breakpoint"));
   CreateWidgets();
   ConnectWidgets();
@@ -62,12 +62,12 @@ void NewBreakpointDialog::CreateWidgets()
   m_memory_on_read_and_write = new QRadioButton(tr("Read or Write"));
   m_memory_on_write->setChecked(true);
   // i18n: This is a selectable action when adding a breakpoint
-  m_memory_do_log = new QRadioButton(tr("Write to Log"));
+  m_do_log = new QRadioButton(tr("Write to Log"));
   // i18n: This is a selectable action when adding a breakpoint
-  m_memory_do_break = new QRadioButton(tr("Break"));
+  m_do_break = new QRadioButton(tr("Break"));
   // i18n: This is a selectable action when adding a breakpoint
-  m_memory_do_log_and_break = new QRadioButton(tr("Write to Log and Break"));
-  m_memory_do_log_and_break->setChecked(true);
+  m_do_log_and_break = new QRadioButton(tr("Write to Log and Break"));
+  m_do_log_and_break->setChecked(true);
 
   auto* memory_layout = new QGridLayout;
   m_memory_box->setLayout(memory_layout);
@@ -89,10 +89,9 @@ void NewBreakpointDialog::CreateWidgets()
   QGroupBox* action_box = new QGroupBox(tr("Action"));
   auto* action_layout = new QHBoxLayout;
   action_box->setLayout(action_layout);
-  memory_layout->addWidget(action_box, 3, 0, 1, -1);
-  action_layout->addWidget(m_memory_do_log);
-  action_layout->addWidget(m_memory_do_break);
-  action_layout->addWidget(m_memory_do_log_and_break);
+  action_layout->addWidget(m_do_log);
+  action_layout->addWidget(m_do_break);
+  action_layout->addWidget(m_do_log_and_break);
 
   auto* layout = new QVBoxLayout;
 
@@ -100,9 +99,12 @@ void NewBreakpointDialog::CreateWidgets()
   layout->addWidget(m_instruction_box);
   layout->addWidget(m_memory_bp);
   layout->addWidget(m_memory_box);
+  layout->addWidget(action_box);
   layout->addWidget(m_buttons);
 
   setLayout(layout);
+
+  m_instruction_address->setFocus();
 }
 
 void NewBreakpointDialog::ConnectWidgets()
@@ -150,8 +152,8 @@ void NewBreakpointDialog::accept()
   bool on_write = m_memory_on_write->isChecked() || m_memory_on_read_and_write->isChecked();
 
   // Actions
-  bool do_log = m_memory_do_log->isChecked() || m_memory_do_log_and_break->isChecked();
-  bool do_break = m_memory_do_break->isChecked() || m_memory_do_log_and_break->isChecked();
+  bool do_log = m_do_log->isChecked() || m_do_log_and_break->isChecked();
+  bool do_break = m_do_break->isChecked() || m_do_log_and_break->isChecked();
 
   bool good;
 
@@ -165,7 +167,7 @@ void NewBreakpointDialog::accept()
       return;
     }
 
-    m_parent->AddBP(address);
+    m_parent->AddBP(address, false, do_break, do_log);
   }
   else
   {

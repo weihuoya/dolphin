@@ -1,21 +1,19 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.dialogs;
 
-import android.app.AlertDialog;
 import android.content.Context;
-import android.content.SharedPreferences;
-import android.os.Vibrator;
-import android.preference.PreferenceManager;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 
-import org.dolphinemu.dolphinemu.R;
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
+
 import org.dolphinemu.dolphinemu.features.settings.model.view.InputBindingSetting;
-import org.dolphinemu.dolphinemu.features.settings.utils.SettingsFile;
+import org.dolphinemu.dolphinemu.features.settings.ui.SettingsAdapter;
 import org.dolphinemu.dolphinemu.utils.ControllerMappingHelper;
 import org.dolphinemu.dolphinemu.utils.Log;
-import org.dolphinemu.dolphinemu.utils.Rumble;
-import org.dolphinemu.dolphinemu.utils.TvUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +29,7 @@ public final class MotionAlertDialog extends AlertDialog
   private final ArrayList<Float> mPreviousValues = new ArrayList<>();
   private int mPrevDeviceId = 0;
   private boolean mWaitingForEvent = true;
+  private SettingsAdapter mAdapter;
 
   /**
    * Constructor
@@ -38,39 +37,37 @@ public final class MotionAlertDialog extends AlertDialog
    * @param context The current {@link Context}.
    * @param setting The Preference to show this dialog for.
    */
-  public MotionAlertDialog(Context context, InputBindingSetting setting)
+  public MotionAlertDialog(Context context, InputBindingSetting setting, SettingsAdapter adapter)
   {
     super(context);
 
     this.setting = setting;
+    mAdapter = adapter;
   }
 
   public boolean onKeyEvent(int keyCode, KeyEvent event)
   {
     Log.debug("[MotionAlertDialog] Received key event: " + event.getAction());
-    switch (event.getAction())
+    if (event.getAction() == KeyEvent.ACTION_UP)
     {
-      case KeyEvent.ACTION_UP:
-        if (!ControllerMappingHelper.shouldKeyBeIgnored(event.getDevice(), keyCode))
-        {
-          setting.onKeyInput(event);
-          dismiss();
-        }
-        // Even if we ignore the key, we still consume it. Thus return true regardless.
-        return true;
-
-      default:
-        return false;
+      if (!ControllerMappingHelper.shouldKeyBeIgnored(event.getDevice(), keyCode))
+      {
+        setting.onKeyInput(mAdapter.getSettings(), event);
+        dismiss();
+      }
+      // Even if we ignore the key, we still consume it. Thus return true regardless.
+      return true;
     }
+    return false;
   }
 
   @Override
-  public boolean onKeyLongPress(int keyCode, KeyEvent event)
+  public boolean onKeyLongPress(int keyCode, @NonNull KeyEvent event)
   {
-    // Option to clear by long back is only needed on the TV interface
-    if (TvUtil.isLeanback(getContext()) && keyCode == KeyEvent.KEYCODE_BACK)
+    // Intended for devices with no touchscreen or mouse
+    if (keyCode == KeyEvent.KEYCODE_BACK)
     {
-      setting.clearValue();
+      setting.clearValue(mAdapter.getSettings());
       dismiss();
       return true;
     }
@@ -85,7 +82,7 @@ public final class MotionAlertDialog extends AlertDialog
   }
 
   @Override
-  public boolean dispatchGenericMotionEvent(MotionEvent event)
+  public boolean dispatchGenericMotionEvent(@NonNull MotionEvent event)
   {
     // Handle this event if we care about it, otherwise pass it down the framework
     return onMotionEvent(event) || super.dispatchGenericMotionEvent(event);
@@ -165,7 +162,7 @@ public final class MotionAlertDialog extends AlertDialog
       if (numMovedAxis == 1)
       {
         mWaitingForEvent = false;
-        setting.onMotionInput(input, lastMovedRange, lastMovedDir);
+        setting.onMotionInput(mAdapter.getSettings(), input, lastMovedRange, lastMovedDir);
         dismiss();
       }
     }

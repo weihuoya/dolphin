@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -9,28 +8,6 @@
 #include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
 
-#ifdef _WIN32
-#define ASSERT_MSG(_t_, _a_, _fmt_, ...)                                                           \
-  do                                                                                               \
-  {                                                                                                \
-    if (!(_a_))                                                                                    \
-    {                                                                                              \
-      if (!PanicYesNo(_fmt_, __VA_ARGS__))                                                         \
-        Crash();                                                                                   \
-    }                                                                                              \
-  } while (0)
-
-#define DEBUG_ASSERT_MSG(_t_, _a_, _msg_, ...)                                                     \
-  do                                                                                               \
-  {                                                                                                \
-    if (MAX_LOGLEVEL >= LogTypes::LOG_LEVELS::LDEBUG && !(_a_))                                    \
-    {                                                                                              \
-      ERROR_LOG(_t_, _msg_, __VA_ARGS__);                                                          \
-      if (!PanicYesNo(_msg_, __VA_ARGS__))                                                         \
-        Crash();                                                                                   \
-    }                                                                                              \
-  } while (0)
-#else
 #define ASSERT_MSG(_t_, _a_, _fmt_, ...)                                                           \
   do                                                                                               \
   {                                                                                                \
@@ -44,14 +21,16 @@
 #define DEBUG_ASSERT_MSG(_t_, _a_, _msg_, ...)                                                     \
   do                                                                                               \
   {                                                                                                \
-    if (MAX_LOGLEVEL >= LogTypes::LOG_LEVELS::LDEBUG && !(_a_))                                    \
+    if constexpr (Common::Log::MAX_LOGLEVEL >= Common::Log::LogLevel::LDEBUG)                      \
     {                                                                                              \
-      ERROR_LOG(_t_, _msg_, ##__VA_ARGS__);                                                        \
-      if (!PanicYesNo(_msg_, ##__VA_ARGS__))                                                       \
-        Crash();                                                                                   \
+      if (!(_a_))                                                                                  \
+      {                                                                                            \
+        ERROR_LOG(_t_, _msg_, ##__VA_ARGS__);                                                      \
+        if (!PanicYesNo(_msg_, ##__VA_ARGS__))                                                     \
+          Crash();                                                                                 \
+      }                                                                                            \
     }                                                                                              \
   } while (0)
-#endif
 
 #define ASSERT(_a_)                                                                                \
   do                                                                                               \
@@ -64,6 +43,6 @@
 #define DEBUG_ASSERT(_a_)                                                                          \
   do                                                                                               \
   {                                                                                                \
-    if (MAX_LOGLEVEL >= LogTypes::LOG_LEVELS::LDEBUG)                                              \
+    if constexpr (Common::Log::MAX_LOGLEVEL >= Common::Log::LogLevel::LDEBUG)                      \
       ASSERT(_a_);                                                                                 \
   } while (0)

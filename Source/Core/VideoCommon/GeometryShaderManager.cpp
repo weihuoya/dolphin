@@ -1,6 +1,5 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <cstring>
 
@@ -14,6 +13,9 @@
 static const int LINE_PT_TEX_OFFSETS[8] = {0, 16, 8, 4, 2, 1, 1, 1};
 
 GeometryShaderConstants GeometryShaderManager::constants;
+using float4 = std::array<float, 4>;
+static float4 StatePaddingBefore{};
+
 bool GeometryShaderManager::dirty;
 
 static bool s_projection_changed;
@@ -41,27 +43,7 @@ void GeometryShaderManager::Dirty()
 
 void GeometryShaderManager::SetConstants()
 {
-  if (s_projection_changed && g_ActiveConfig.stereo_mode != StereoMode::Off)
-  {
-    s_projection_changed = false;
-
-    if (xfmem.projection.type == GX_PERSPECTIVE)
-    {
-      float offset = (g_ActiveConfig.iStereoDepth / 1000.0f) *
-                     (g_ActiveConfig.iStereoDepthPercentage / 100.0f);
-      constants.stereoparams[0] = g_ActiveConfig.bStereoSwapEyes ? offset : -offset;
-      constants.stereoparams[1] = g_ActiveConfig.bStereoSwapEyes ? -offset : offset;
-    }
-    else
-    {
-      constants.stereoparams[0] = constants.stereoparams[1] = 0;
-    }
-
-    constants.stereoparams[2] = (float)(g_ActiveConfig.iStereoConvergence *
-                                        (g_ActiveConfig.iStereoConvergencePercentage / 100.0f));
-
-    dirty = true;
-  }
+  s_projection_changed = false;
 
   if (s_viewport_changed)
   {
@@ -109,6 +91,7 @@ void GeometryShaderManager::DoState(PointerWrap& p)
   p.Do(s_projection_changed);
   p.Do(s_viewport_changed);
 
+  p.Do(StatePaddingBefore);
   p.Do(constants);
 
   if (p.GetMode() == PointerWrap::MODE_READ)

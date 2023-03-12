@@ -1,6 +1,26 @@
 // Copyright 2013 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#ifdef _WIN32
+
+#define STRINGIFY_HELPER(x) #x
+#define STRINGIFY(x) STRINGIFY_HELPER(x)
+
+#if defined _MSC_FULL_VER && _MSC_FULL_VER < 193030705
+#pragma message("Current _MSC_FULL_VER: " STRINGIFY(_MSC_FULL_VER))
+#error Please update your build environment to the latest Visual Studio 2022!
+#endif
+
+#include <sdkddkver.h>
+#ifndef NTDDI_WIN10_CO
+#pragma message("Current WDK_NTDDI_VERSION: " STRINGIFY(WDK_NTDDI_VERSION))
+#error Windows 10.0.22000 SDK or later is required
+#endif
+
+#undef STRINGIFY
+#undef STRINGIFY_HELPER
+
+#endif
 
 #include <algorithm>
 #include <array>
@@ -23,11 +43,16 @@
 #include <execinfo.h>
 #endif
 #include <fcntl.h>
+#include <filesystem>
 #include <float.h>
+#include <fmt/format.h>
 #include <fstream>
 #include <functional>
 #ifndef _WIN32
 #include <getopt.h>
+#endif
+#if defined _WIN32 && defined _M_X86_64
+#include <intrin.h>
 #endif
 #include <iomanip>
 #include <iostream>
@@ -41,6 +66,7 @@
 #include <memory>
 #include <mutex>
 #include <numeric>
+#include <optional>
 #ifndef _WIN32
 #include <pthread.h>
 #endif
@@ -54,6 +80,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string_view>
 #include <thread>
 #include <time.h>
 #include <type_traits>
@@ -63,16 +90,11 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #ifdef _WIN32
-
-#if _MSC_FULL_VER < 191426433
-#error Please update your build environment to the latest Visual Studio 2017!
-#endif
-
 #include <Windows.h>
-
 #endif
 
 #include "Common/Common.h"

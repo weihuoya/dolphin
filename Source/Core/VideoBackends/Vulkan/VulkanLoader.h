@@ -1,12 +1,11 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #define VK_NO_PROTOTYPES
 
-#if defined(WIN32)
+#if defined(_WIN32)
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
 
@@ -19,7 +18,7 @@
 #endif
 
 #if defined(__APPLE__)
-#define VK_USE_PLATFORM_MACOS_MVK
+#define VK_USE_PLATFORM_METAL_EXT
 #endif
 
 #include "vulkan/vulkan.h"
@@ -38,6 +37,8 @@
 #undef VULKAN_INSTANCE_ENTRY_POINT
 #undef VULKAN_MODULE_ENTRY_POINT
 
+#include "Common/Logging/Log.h"
+
 namespace Vulkan
 {
 bool LoadVulkanLibrary();
@@ -46,8 +47,10 @@ bool LoadVulkanDeviceFunctions(VkDevice device);
 void UnloadVulkanLibrary();
 
 const char* VkResultToString(VkResult res);
-void LogVulkanResult(int level, const char* func_name, VkResult res, const char* msg, ...);
+void LogVulkanResult(Common::Log::LogLevel level, const char* func_name, VkResult res,
+                     const char* msg, ...);
 
-#define LOG_VULKAN_ERROR(res, ...) LogVulkanResult(2, __func__, res, __VA_ARGS__)
+#define LOG_VULKAN_ERROR(res, ...)                                                                 \
+  LogVulkanResult(Common::Log::LogLevel::LERROR, __func__, res, __VA_ARGS__)
 
 }  // namespace Vulkan

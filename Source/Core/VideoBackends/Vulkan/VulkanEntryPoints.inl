@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // Expands the VULKAN_ENTRY_POINT macro for each function when this file is included.
 // Parameters: Function name, is required
@@ -53,8 +52,8 @@ VULKAN_INSTANCE_ENTRY_POINT(vkGetPhysicalDeviceXlibPresentationSupportKHR, false
 VULKAN_INSTANCE_ENTRY_POINT(vkCreateAndroidSurfaceKHR, false)
 #endif
 
-#if defined(VK_USE_PLATFORM_MACOS_MVK)
-VULKAN_INSTANCE_ENTRY_POINT(vkCreateMacOSSurfaceMVK, false)
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+VULKAN_INSTANCE_ENTRY_POINT(vkCreateMetalSurfaceEXT, false)
 #endif
 
 VULKAN_INSTANCE_ENTRY_POINT(vkCreateDebugReportCallbackEXT, false)
@@ -193,9 +192,14 @@ VULKAN_DEVICE_ENTRY_POINT(vkGetSwapchainImagesKHR, false)
 VULKAN_DEVICE_ENTRY_POINT(vkAcquireNextImageKHR, false)
 VULKAN_DEVICE_ENTRY_POINT(vkQueuePresentKHR, false)
 
+VULKAN_DEVICE_ENTRY_POINT(vkGetImageMemoryRequirements2KHR, false)
+VULKAN_DEVICE_ENTRY_POINT(vkGetBufferMemoryRequirements2KHR, false)
+
 #ifdef SUPPORTS_VULKAN_EXCLUSIVE_FULLSCREEN
 VULKAN_DEVICE_ENTRY_POINT(vkAcquireFullScreenExclusiveModeEXT, false)
 VULKAN_DEVICE_ENTRY_POINT(vkReleaseFullScreenExclusiveModeEXT, false)
 #endif
+
+VULKAN_DEVICE_ENTRY_POINT(vkSetDebugUtilsObjectNameEXT, false)
 
 #endif  // VULKAN_DEVICE_ENTRY_POINT

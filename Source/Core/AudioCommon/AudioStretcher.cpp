@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +7,7 @@
 
 #include "AudioCommon/AudioStretcher.h"
 #include "Common/Logging/Log.h"
-#include "Core/ConfigManager.h"
+#include "Core/Config/MainSettings.h"
 
 namespace AudioCommon
 {
@@ -18,10 +17,6 @@ AudioStretcher::AudioStretcher(unsigned int sample_rate) : m_sample_rate(sample_
   m_sound_touch.setSampleRate(sample_rate);
   m_sound_touch.setPitch(1.0);
   m_sound_touch.setTempo(1.0);
-  m_sound_touch.setSetting(SETTING_USE_QUICKSEEK, 0);
-  m_sound_touch.setSetting(SETTING_SEQUENCE_MS, 62);
-  m_sound_touch.setSetting(SETTING_SEEKWINDOW_MS, 28);
-  m_sound_touch.setSetting(SETTING_OVERLAP_MS, 8);
 }
 
 void AudioStretcher::Clear()
@@ -36,7 +31,7 @@ void AudioStretcher::ProcessSamples(const short* in, unsigned int num_in, unsign
   // We were given actual_samples number of samples, and num_samples were requested from us.
   double current_ratio = static_cast<double>(num_in) / static_cast<double>(num_out);
 
-  const double max_latency = SConfig::GetInstance().m_audio_stretch_max_latency;
+  const double max_latency = Config::Get(Config::MAIN_AUDIO_STRETCH_LATENCY);
   const double max_backlog = m_sample_rate * max_latency / 1000.0 / m_stretch_ratio;
   const double backlog_fullness = m_sound_touch.numSamples() / max_backlog;
   if (backlog_fullness > 5.0)
@@ -62,8 +57,8 @@ void AudioStretcher::ProcessSamples(const short* in, unsigned int num_in, unsign
   m_stretch_ratio = std::max(m_stretch_ratio, 0.1);
   m_sound_touch.setTempo(m_stretch_ratio);
 
-  DEBUG_LOG(AUDIO, "Audio stretching: samples:%u/%u ratio:%f backlog:%f gain: %f", num_in, num_out,
-            m_stretch_ratio, backlog_fullness, lpf_gain);
+  DEBUG_LOG_FMT(AUDIO, "Audio stretching: samples:{}/{} ratio:{} backlog:{} gain: {}", num_in,
+                num_out, m_stretch_ratio, backlog_fullness, lpf_gain);
 
   m_sound_touch.putSamples(in, num_in);
 }

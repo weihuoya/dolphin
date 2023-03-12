@@ -1,10 +1,11 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Config/VerifyWidget.h"
 
+#include <future>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -12,12 +13,14 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
-#include <QProgressDialog>
 #include <QVBoxLayout>
 
 #include "Common/CommonTypes.h"
+#include "Core/Core.h"
 #include "DiscIO/Volume.h"
 #include "DiscIO/VolumeVerifier.h"
+#include "DolphinQt/QtUtils/ParallelProgressDialog.h"
+#include "DolphinQt/Settings.h"
 
 VerifyWidget::VerifyWidget(std::shared_ptr<DiscIO::Volume> volume) : m_volume(std::move(volume))
 {
@@ -36,11 +39,26 @@ VerifyWidget::VerifyWidget(std::shared_ptr<DiscIO::Volume> volume) : m_volume(st
   layout->setStretchFactor(m_summary_text, 2);
 
   setLayout(layout);
+
+  connect(&Settings::Instance(), &Settings::EmulationStateChanged, this,
+          &VerifyWidget::OnEmulationStateChanged);
+
+  OnEmulationStateChanged();
+}
+
+void VerifyWidget::OnEmulationStateChanged()
+{
+  const bool running = Core::GetState() != Core::State::Uninitialized;
+
+  // Verifying a Wii game while emulation is running doesn't work correctly
+  // due to verification of a Wii game creating an instance of IOS
+  m_verify_button->setEnabled(!running);
 }
 
 void VerifyWidget::CreateWidgets()
 {
   m_problems = new QTableWidget(0, 2, this);
+  m_problems->setTabKeyNavigation(false);
   m_problems->setHorizontalHeaderLabels({tr("Problem"), tr("Severity")});
   m_problems->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
   m_problems->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
@@ -130,33 +148,44 @@ void VerifyWidget::Verify()
   // We have to divide the number of processed bytes with something so it won't make ints overflow
   constexpr int DIVISOR = 0x100;
 
-  QProgressDialog progress(tr("Verifying"), tr("Cancel"), 0, verifier.GetTotalBytes() / DIVISOR,
-                           this);
-  progress.setWindowTitle(tr("Verifying"));
-  progress.setWindowFlags(progress.windowFlags() & ~Qt::WindowContextHelpButtonHint);
-  progress.setMinimumDuration(500);
-  progress.setWindowModality(Qt::WindowModal);
+  ParallelProgressDialog progress(tr("Verifying"), tr("Cancel"), 0,
+                                  static_cast<int>(verifier.GetTotalBytes() / DIVISOR), this);
+  progress.GetRaw()->setWindowTitle(tr("Verifying"));
+  progress.GetRaw()->setMinimumDuration(500);
+  progress.GetRaw()->setWindowModality(Qt::WindowModal);
 
-  verifier.Start();
-  while (verifier.GetBytesProcessed() != verifier.GetTotalBytes())
-  {
-    progress.setValue(verifier.GetBytesProcessed() / DIVISOR);
-    if (progress.wasCanceled())
-      return;
+  auto future =
+      std::async(std::launch::async,
+                 [&verifier, &progress]() -> std::optional<DiscIO::VolumeVerifier::Result> {
+                   progress.SetValue(0);
+                   verifier.Start();
+                   while (verifier.GetBytesProcessed() != verifier.GetTotalBytes())
+                   {
+                     progress.SetValue(static_cast<int>(verifier.GetBytesProcessed() / DIVISOR));
+                     if (progress.WasCanceled())
+                       return std::nullopt;
 
-    verifier.Process();
-  }
-  verifier.Finish();
+                     verifier.Process();
+                   }
+                   verifier.Finish();
 
-  DiscIO::VolumeVerifier::Result result = verifier.GetResult();
-  progress.setValue(verifier.GetBytesProcessed() / DIVISOR);
+                   const DiscIO::VolumeVerifier::Result result = verifier.GetResult();
+                   progress.Reset();
 
-  m_summary_text->setText(QString::fromStdString(result.summary_text));
+                   return result;
+                 });
+  progress.GetRaw()->exec();
 
-  m_problems->setRowCount(static_cast<int>(result.problems.size()));
+  std::optional<DiscIO::VolumeVerifier::Result> result = future.get();
+  if (!result)
+    return;
+
+  m_summary_text->setText(QString::fromStdString(result->summary_text));
+
+  m_problems->setRowCount(static_cast<int>(result->problems.size()));
   for (int i = 0; i < m_problems->rowCount(); ++i)
   {
-    const DiscIO::VolumeVerifier::Problem problem = result.problems[i];
+    const DiscIO::VolumeVerifier::Problem problem = result->problems[i];
 
     QString severity;
     switch (problem.severity)
@@ -170,18 +199,20 @@ void VerifyWidget::Verify()
     case DiscIO::VolumeVerifier::Severity::High:
       severity = tr("High");
       break;
+    case DiscIO::VolumeVerifier::Severity::None:
+      break;
     }
 
     SetProblemCellText(i, 0, QString::fromStdString(problem.text));
     SetProblemCellText(i, 1, severity);
   }
 
-  SetHash(m_crc32_line_edit, result.hashes.crc32);
-  SetHash(m_md5_line_edit, result.hashes.md5);
-  SetHash(m_sha1_line_edit, result.hashes.sha1);
+  SetHash(m_crc32_line_edit, result->hashes.crc32);
+  SetHash(m_md5_line_edit, result->hashes.md5);
+  SetHash(m_sha1_line_edit, result->hashes.sha1);
 
   if (m_redump_line_edit)
-    m_redump_line_edit->setText(QString::fromStdString(result.redump.message));
+    m_redump_line_edit->setText(QString::fromStdString(result->redump.message));
 }
 
 void VerifyWidget::SetProblemCellText(int row, int column, QString text)

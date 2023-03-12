@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HotkeyManager.h"
 
@@ -9,8 +8,12 @@
 #include <string>
 #include <vector>
 
+#include <fmt/format.h>
+
 #include "Common/Common.h"
 #include "Common/CommonTypes.h"
+#include "Common/FileUtil.h"
+#include "Common/IniFile.h"
 #include "Common/StringUtil.h"
 
 #include "InputCommon/ControllerEmu/Control/Input.h"
@@ -20,7 +23,7 @@
 #include "InputCommon/GCPadStatus.h"
 
 // clang-format off
-constexpr std::array<const char*, 133> s_hotkey_labels{{
+constexpr std::array<const char*, NUM_HOTKEYS> s_hotkey_labels{{
     _trans("Open"),
     _trans("Change Disc"),
     _trans("Eject Disc"),
@@ -31,6 +34,7 @@ constexpr std::array<const char*, 133> s_hotkey_labels{{
     _trans("Toggle Fullscreen"),
     _trans("Take Screenshot"),
     _trans("Exit"),
+    _trans("Unlock Cursor"),
     _trans("Activate NetPlay Chat"),
     _trans("Control NetPlay Golf Mode"),
 
@@ -81,25 +85,26 @@ constexpr std::array<const char*, 133> s_hotkey_labels{{
     _trans("Toggle SD Card"),
     _trans("Toggle USB Keyboard"),
 
-    _trans("Next Profile for Wii Remote 1"),
-    _trans("Previous Profile for Wii Remote 1"),
-    _trans("Next Game Profile for Wii Remote 1"),
-    _trans("Previous Game Profile for Wii Remote 1"),
-    _trans("Next Profile for Wii Remote 2"),
-    _trans("Previous Profile for Wii Remote 2"),
-    _trans("Next Game Profile for Wii Remote 2"),
-    _trans("Previous Game Profile for Wii Remote 2"),
-    _trans("Next Profile for Wii Remote 3"),
-    _trans("Previous Profile for Wii Remote 3"),
-    _trans("Next Game Profile for Wii Remote 3"),
-    _trans("Previous Game Profile for Wii Remote 3"),
-    _trans("Next Profile for Wii Remote 4"),
-    _trans("Previous Profile for Wii Remote 4"),
-    _trans("Next Game Profile for Wii Remote 4"),
-    _trans("Previous Game Profile for Wii Remote 4"),
+    _trans("Next Profile"),
+    _trans("Previous Profile"),
+    _trans("Next Game Profile"),
+    _trans("Previous Game Profile"),
+    _trans("Next Profile"),
+    _trans("Previous Profile"),
+    _trans("Next Game Profile"),
+    _trans("Previous Game Profile"),
+    _trans("Next Profile"),
+    _trans("Previous Profile"),
+    _trans("Next Game Profile"),
+    _trans("Previous Game Profile"),
+    _trans("Next Profile"),
+    _trans("Previous Profile"),
+    _trans("Next Game Profile"),
+    _trans("Previous Game Profile"),
 
     _trans("Toggle Crop"),
     _trans("Toggle Aspect Ratio"),
+    _trans("Toggle Skip EFB Access"),
     _trans("Toggle EFB Copies"),
     _trans("Toggle XFB Copies"),
     _trans("Toggle XFB Immediate Mode"),
@@ -112,16 +117,7 @@ constexpr std::array<const char*, 133> s_hotkey_labels{{
     // i18n: IR stands for internal resolution
     _trans("Decrease IR"),
 
-    _trans("Freelook Decrease Speed"),
-    _trans("Freelook Increase Speed"),
-    _trans("Freelook Reset Speed"),
-    _trans("Freelook Move Up"),
-    _trans("Freelook Move Down"),
-    _trans("Freelook Move Left"),
-    _trans("Freelook Move Right"),
-    _trans("Freelook Zoom In"),
-    _trans("Freelook Zoom Out"),
-    _trans("Freelook Reset"),
+    _trans("Freelook Toggle"),
 
     _trans("Toggle 3D Side-by-Side"),
     _trans("Toggle 3D Top-Bottom"),
@@ -182,6 +178,19 @@ constexpr std::array<const char*, 133> s_hotkey_labels{{
     _trans("Undo Save State"),
     _trans("Save State"),
     _trans("Load State"),
+
+    _trans("Load ROM"),
+    _trans("Unload ROM"),
+    _trans("Reset"),
+
+    _trans("Volume Down"),
+    _trans("Volume Up"),
+    _trans("Volume Toggle Mute"),
+      
+    _trans("1x"),
+    _trans("2x"),
+    _trans("3x"),
+    _trans("4x"),
 }};
 // clang-format on
 static_assert(NUM_HOTKEYS == s_hotkey_labels.size(), "Wrong count of hotkey_labels");
@@ -199,10 +208,10 @@ InputConfig* GetConfig()
   return &s_config;
 }
 
-void GetStatus()
+void GetStatus(bool ignore_focus)
 {
   // Get input
-  static_cast<HotkeyManager*>(s_config.GetController(0))->GetInput(&s_hotkey);
+  static_cast<HotkeyManager*>(s_config.GetController(0))->GetInput(&s_hotkey, ignore_focus);
 }
 
 bool IsEnabled()
@@ -235,6 +244,43 @@ bool IsPressed(int id, bool held)
   return false;
 }
 
+// This function exists to load the old "Keys" group so pre-existing configs don't break.
+// TODO: Remove this at a future date when we're confident most configs are migrated.
+static void LoadLegacyConfig(ControllerEmu::EmulatedController* controller)
+{
+  IniFile inifile;
+  if (inifile.Load(File::GetUserPath(D_CONFIG_IDX) + "Hotkeys.ini"))
+  {
+    if (!inifile.Exists("Hotkeys") && inifile.Exists("Hotkeys1"))
+    {
+      auto sec = inifile.GetOrCreateSection("Hotkeys1");
+
+      {
+        std::string defdev;
+        sec->Get("Device", &defdev, "");
+        controller->SetDefaultDevice(defdev);
+      }
+
+      for (auto& group : controller->groups)
+      {
+        for (auto& control : group->controls)
+        {
+          std::string key("Keys/" + control->name);
+
+          if (sec->Exists(key))
+          {
+            std::string expression;
+            sec->Get(key, &expression, "");
+            control->control_ref->SetExpression(std::move(expression));
+          }
+        }
+      }
+
+      controller->UpdateReferences(g_controller_interface);
+    }
+  }
+}
+
 void Initialize()
 {
   if (s_config.ControllersNeedToBeCreated())
@@ -243,7 +289,7 @@ void Initialize()
   s_config.RegisterHotplugCallback();
 
   // load the saved controller config
-  s_config.LoadConfig(true);
+  LoadConfig();
 
   s_hotkey_down = {};
 
@@ -252,7 +298,8 @@ void Initialize()
 
 void LoadConfig()
 {
-  s_config.LoadConfig(true);
+  s_config.LoadConfig(InputConfig::InputClass::GC);
+  LoadLegacyConfig(s_config.GetController(0));
 }
 
 ControllerEmu::ControlGroup* GetHotkeyGroup(HotkeyGroup group)
@@ -273,6 +320,7 @@ struct HotkeyGroupInfo
   const char* name;
   Hotkey first;
   Hotkey last;
+  bool ignore_focus = false;
 };
 
 constexpr std::array<HotkeyGroupInfo, NUM_HOTKEY_GROUPS> s_groups_info = {
@@ -285,10 +333,13 @@ constexpr std::array<HotkeyGroupInfo, NUM_HOTKEY_GROUPS> s_groups_info = {
      {_trans("Program Counter"), HK_SHOW_PC, HK_SET_PC},
      {_trans("Breakpoint"), HK_BP_TOGGLE, HK_MBP_ADD},
      {_trans("Wii"), HK_TRIGGER_SYNC_BUTTON, HK_TOGGLE_USB_KEYBOARD},
-     {_trans("Controller Profile"), HK_NEXT_WIIMOTE_PROFILE_1, HK_PREV_GAME_WIIMOTE_PROFILE_4},
+     {_trans("Controller Profile 1"), HK_NEXT_WIIMOTE_PROFILE_1, HK_PREV_GAME_WIIMOTE_PROFILE_1},
+     {_trans("Controller Profile 2"), HK_NEXT_WIIMOTE_PROFILE_2, HK_PREV_GAME_WIIMOTE_PROFILE_2},
+     {_trans("Controller Profile 3"), HK_NEXT_WIIMOTE_PROFILE_3, HK_PREV_GAME_WIIMOTE_PROFILE_3},
+     {_trans("Controller Profile 4"), HK_NEXT_WIIMOTE_PROFILE_4, HK_PREV_GAME_WIIMOTE_PROFILE_4},
      {_trans("Graphics Toggles"), HK_TOGGLE_CROP, HK_TOGGLE_TEXTURES},
      {_trans("Internal Resolution"), HK_INCREASE_IR, HK_DECREASE_IR},
-     {_trans("Freelook"), HK_FREELOOK_DECREASE_SPEED, HK_FREELOOK_RESET},
+     {_trans("Freelook"), HK_FREELOOK_TOGGLE, HK_FREELOOK_TOGGLE},
      // i18n: Stereoscopic 3D
      {_trans("3D"), HK_TOGGLE_STEREO_SBS, HK_TOGGLE_STEREO_ANAGLYPH},
      // i18n: Stereoscopic 3D
@@ -297,19 +348,21 @@ constexpr std::array<HotkeyGroupInfo, NUM_HOTKEY_GROUPS> s_groups_info = {
      {_trans("Save State"), HK_SAVE_STATE_SLOT_1, HK_SAVE_STATE_SLOT_SELECTED},
      {_trans("Select State"), HK_SELECT_STATE_SLOT_1, HK_SELECT_STATE_SLOT_10},
      {_trans("Load Last State"), HK_LOAD_LAST_STATE_1, HK_LOAD_LAST_STATE_10},
-     {_trans("Other State Hotkeys"), HK_SAVE_FIRST_STATE, HK_LOAD_STATE_FILE}}};
+     {_trans("Other State Hotkeys"), HK_SAVE_FIRST_STATE, HK_LOAD_STATE_FILE},
+     {_trans("GBA Core"), HK_GBA_LOAD, HK_GBA_RESET, true},
+     {_trans("GBA Volume"), HK_GBA_VOLUME_DOWN, HK_GBA_TOGGLE_MUTE, true},
+     {_trans("GBA Window Size"), HK_GBA_1X, HK_GBA_4X, true}}};
 
 HotkeyManager::HotkeyManager()
 {
   for (std::size_t group = 0; group < m_hotkey_groups.size(); group++)
   {
     m_hotkey_groups[group] =
-        (m_keys[group] = new ControllerEmu::Buttons("Keys", s_groups_info[group].name));
+        (m_keys[group] = new ControllerEmu::Buttons(s_groups_info[group].name));
     groups.emplace_back(m_hotkey_groups[group]);
     for (int key = s_groups_info[group].first; key <= s_groups_info[group].last; key++)
     {
-      m_keys[group]->controls.emplace_back(
-          new ControllerEmu::Input(ControllerEmu::Translate, s_hotkey_labels[key]));
+      m_keys[group]->AddInput(ControllerEmu::Translate, s_hotkey_labels[key]);
     }
   }
 }
@@ -320,14 +373,17 @@ HotkeyManager::~HotkeyManager()
 
 std::string HotkeyManager::GetName() const
 {
-  return std::string("Hotkeys") + char('1' + 0);
+  return "Hotkeys";
 }
 
-void HotkeyManager::GetInput(HotkeyStatus* const kb)
+void HotkeyManager::GetInput(HotkeyStatus* kb, bool ignore_focus)
 {
   const auto lock = GetStateLock();
   for (std::size_t group = 0; group < s_groups_info.size(); group++)
   {
+    if (s_groups_info[group].ignore_focus != ignore_focus)
+      continue;
+
     const int group_count = (s_groups_info[group].last - s_groups_info[group].first) + 1;
     std::vector<u32> bitmasks(group_count);
     for (size_t key = 0; key < bitmasks.size(); key++)
@@ -360,79 +416,75 @@ void HotkeyManager::LoadDefaults(const ControllerInterface& ciface)
 {
   EmulatedController::LoadDefaults(ciface);
 
-#ifdef _WIN32
-  const std::string NON = "(!(LMENU | RMENU) & !(LSHIFT | RSHIFT) & !(LCONTROL | RCONTROL))";
-  const std::string ALT = "((LMENU | RMENU) & !(LSHIFT | RSHIFT) & !(LCONTROL | RCONTROL))";
-  const std::string SHIFT = "(!(LMENU | RMENU) & (LSHIFT | RSHIFT) & !(LCONTROL | RCONTROL))";
-  const std::string CTRL = "(!(LMENU | RMENU) & !(LSHIFT | RSHIFT) & (LCONTROL | RCONTROL))";
-#elif __APPLE__
-  const std::string NON =
-      "(!`Left Alt` & !(`Left Shift`| `Right Shift`) & !(`Left Control` | `Right Control`))";
-  const std::string ALT =
-      "(`Left Alt` & !(`Left Shift`| `Right Shift`) & !(`Left Control` | `Right Control`))";
-  const std::string SHIFT =
-      "(!`Left Alt` & (`Left Shift`| `Right Shift`) & !(`Left Control` | `Right Control`))";
-  const std::string CTRL =
-      "(!`Left Alt` & !(`Left Shift`| `Right Shift`) & (`Left Control` | `Right Control`))";
-#else
-  const std::string NON = "(!`Alt_L` & !(`Shift_L` | `Shift_R`) & !(`Control_L` | `Control_R` ))";
-  const std::string ALT = "(`Alt_L` & !(`Shift_L` | `Shift_R`) & !(`Control_L` | `Control_R` ))";
-  const std::string SHIFT = "(!`Alt_L` & (`Shift_L` | `Shift_R`) & !(`Control_L` | `Control_R` ))";
-  const std::string CTRL = "(!`Alt_L` & !(`Shift_L` | `Shift_R`) & (`Control_L` | `Control_R` ))";
-#endif
-
   auto set_key_expression = [this](int index, const std::string& expression) {
     m_keys[FindGroupByID(index)]
         ->controls[GetIndexForGroup(FindGroupByID(index), index)]
         ->control_ref->SetExpression(expression);
   };
 
-  // General hotkeys
-  set_key_expression(HK_OPEN, CTRL + " & O");
-  set_key_expression(HK_PLAY_PAUSE, NON + " & `F10`");
-#ifdef _WIN32
-  set_key_expression(HK_STOP, NON + " & ESCAPE");
-  set_key_expression(HK_FULLSCREEN, ALT + " & RETURN");
-#else
-  set_key_expression(HK_STOP, NON + " & Escape");
-  set_key_expression(HK_FULLSCREEN, ALT + " & Return");
-#endif
-  set_key_expression(HK_STEP, NON + " & `F11`");
-  set_key_expression(HK_STEP_OVER, SHIFT + " & `F10`");
-  set_key_expression(HK_STEP_OUT, SHIFT + " & `F11`");
-  set_key_expression(HK_BP_TOGGLE, SHIFT + " & `F9`");
-  set_key_expression(HK_SCREENSHOT, NON + " & `F9`");
-  set_key_expression(HK_WIIMOTE1_CONNECT, ALT + " & `F5`");
-  set_key_expression(HK_WIIMOTE2_CONNECT, ALT + " & `F6`");
-  set_key_expression(HK_WIIMOTE3_CONNECT, ALT + " & `F7`");
-  set_key_expression(HK_WIIMOTE4_CONNECT, ALT + " & `F8`");
-  set_key_expression(HK_BALANCEBOARD_CONNECT, ALT + " & `F9`");
-#ifdef _WIN32
-  set_key_expression(HK_TOGGLE_THROTTLE, NON + " & TAB");
-#else
-  set_key_expression(HK_TOGGLE_THROTTLE, NON + " & Tab");
-#endif
+  auto hotkey_string = [](std::vector<std::string> inputs) {
+    return "@(" + JoinStrings(inputs, "+") + ')';
+  };
 
-  // Freelook
-  set_key_expression(HK_FREELOOK_DECREASE_SPEED, SHIFT + " & `1`");
-  set_key_expression(HK_FREELOOK_INCREASE_SPEED, SHIFT + " & `2`");
-  set_key_expression(HK_FREELOOK_RESET_SPEED, SHIFT + " & F");
-  set_key_expression(HK_FREELOOK_UP, SHIFT + " & E");
-  set_key_expression(HK_FREELOOK_DOWN, SHIFT + " & Q");
-  set_key_expression(HK_FREELOOK_LEFT, SHIFT + " & A");
-  set_key_expression(HK_FREELOOK_RIGHT, SHIFT + " & D");
-  set_key_expression(HK_FREELOOK_ZOOM_IN, SHIFT + " & W");
-  set_key_expression(HK_FREELOOK_ZOOM_OUT, SHIFT + " & S");
-  set_key_expression(HK_FREELOOK_RESET, SHIFT + " & R");
+  // General hotkeys
+  set_key_expression(HK_OPEN, hotkey_string({"Ctrl", "O"}));
+  set_key_expression(HK_PLAY_PAUSE, "F10");
+#ifdef _WIN32
+  set_key_expression(HK_STOP, "ESCAPE");
+  set_key_expression(HK_FULLSCREEN, hotkey_string({"Alt", "RETURN"}));
+#else
+  set_key_expression(HK_STOP, "Escape");
+  set_key_expression(HK_FULLSCREEN, hotkey_string({"Alt", "Return"}));
+#endif
+  set_key_expression(HK_STEP, "F11");
+  set_key_expression(HK_STEP_OVER, hotkey_string({"Shift", "F10"}));
+  set_key_expression(HK_STEP_OUT, hotkey_string({"Shift", "F11"}));
+  set_key_expression(HK_BP_TOGGLE, hotkey_string({"Shift", "F9"}));
+  set_key_expression(HK_SCREENSHOT, "F9");
+  set_key_expression(HK_WIIMOTE1_CONNECT, hotkey_string({"Alt", "F5"}));
+  set_key_expression(HK_WIIMOTE2_CONNECT, hotkey_string({"Alt", "F6"}));
+  set_key_expression(HK_WIIMOTE3_CONNECT, hotkey_string({"Alt", "F7"}));
+  set_key_expression(HK_WIIMOTE4_CONNECT, hotkey_string({"Alt", "F8"}));
+  set_key_expression(HK_BALANCEBOARD_CONNECT, hotkey_string({"Alt", "F9"}));
+#ifdef _WIN32
+  set_key_expression(HK_TOGGLE_THROTTLE, "TAB");
+#else
+  set_key_expression(HK_TOGGLE_THROTTLE, "Tab");
+#endif
 
   // Savestates
   for (int i = 0; i < 8; i++)
   {
-    set_key_expression(HK_LOAD_STATE_SLOT_1 + i,
-                       StringFromFormat((NON + " & `F%d`").c_str(), i + 1));
+    set_key_expression(HK_LOAD_STATE_SLOT_1 + i, fmt::format("F{}", i + 1));
     set_key_expression(HK_SAVE_STATE_SLOT_1 + i,
-                       StringFromFormat((SHIFT + " & `F%d`").c_str(), i + 1));
+                       hotkey_string({"Shift", fmt::format("F{}", i + 1)}));
   }
-  set_key_expression(HK_UNDO_LOAD_STATE, NON + " & `F12`");
-  set_key_expression(HK_UNDO_SAVE_STATE, SHIFT + " & `F12`");
+  set_key_expression(HK_UNDO_LOAD_STATE, "F12");
+  set_key_expression(HK_UNDO_SAVE_STATE, hotkey_string({"Shift", "F12"}));
+
+  // GBA
+  set_key_expression(HK_GBA_LOAD, hotkey_string({"`Shift`", "`O`"}));
+  set_key_expression(HK_GBA_UNLOAD, hotkey_string({"`Shift`", "`W`"}));
+  set_key_expression(HK_GBA_RESET, hotkey_string({"`Shift`", "`R`"}));
+
+#ifdef _WIN32
+  set_key_expression(HK_GBA_VOLUME_DOWN, "`SUBTRACT`");
+  set_key_expression(HK_GBA_VOLUME_UP, "`ADD`");
+#else
+  set_key_expression(HK_GBA_VOLUME_DOWN, "`KP_Subtract`");
+  set_key_expression(HK_GBA_VOLUME_UP, "`KP_Add`");
+#endif
+  set_key_expression(HK_GBA_TOGGLE_MUTE, "`M`");
+
+#ifdef _WIN32
+  set_key_expression(HK_GBA_1X, "`NUMPAD1`");
+  set_key_expression(HK_GBA_2X, "`NUMPAD2`");
+  set_key_expression(HK_GBA_3X, "`NUMPAD3`");
+  set_key_expression(HK_GBA_4X, "`NUMPAD4`");
+#else
+  set_key_expression(HK_GBA_1X, "`KP_1`");
+  set_key_expression(HK_GBA_2X, "`KP_2`");
+  set_key_expression(HK_GBA_3X, "`KP_3`");
+  set_key_expression(HK_GBA_4X, "`KP_4`");
+#endif
 }

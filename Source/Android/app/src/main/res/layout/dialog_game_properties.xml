@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <ImageView
+        android:id="@+id/banner"
+        android:layout_width="match_parent"
+        android:layout_height="130dp"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true"
+        android:scaleType="center"
+        tools:src="@drawable/no_banner" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/banner"
+        android:divider="@drawable/spacer_medium"
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:showDividers="middle">
+
+        <Button
+            android:id="@+id/custom_settings"
+            style="@style/Widget.AppCompat.Button.Colored"
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:background="@drawable/button_secondary_gradient"
+            android:stateListAnimator="@null"
+            android:text="@string/properties_edit_game_settings"
+            android:textAllCaps="false"
+            android:textColor="@android:color/white" />
+
+        <LinearLayout
+            android:id="@+id/row1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:divider="@drawable/spacer_medium"
+            android:orientation="horizontal"
+            android:showDividers="middle">
+
+            <Button
+                android:id="@+id/properties_details"
+                style="@style/Widget.AppCompat.Button.Colored"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/button_secondary_gradient"
+                android:stateListAnimator="@null"
+                android:text="@string/properties_details"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white" />
+
+            <Button
+                android:id="@+id/button_cheat_code"
+                style="@style/Widget.AppCompat.Button.Colored"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/button_secondary_gradient"
+                android:stateListAnimator="@null"
+                android:text="@string/properties_edit_cheats"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/row2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:divider="@drawable/spacer_medium"
+            android:orientation="horizontal"
+            android:showDividers="middle">
+
+            <Button
+                android:id="@+id/button_wiimote_settings"
+                style="@style/Widget.AppCompat.Button.Colored"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/button_secondary_gradient"
+                android:stateListAnimator="@null"
+                android:text="@string/wiimote_settings"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white" />
+
+            <Button
+                android:id="@+id/button_gcpad_settings"
+                style="@style/Widget.AppCompat.Button.Colored"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/button_secondary_gradient"
+                android:stateListAnimator="@null"
+                android:text="@string/gcpad_settings"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/row3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:divider="@drawable/spacer_medium"
+            android:orientation="horizontal"
+            android:showDividers="middle">
+
+            <Button
+                android:id="@+id/menu_clear_data"
+                style="@style/Widget.AppCompat.Button.Colored"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/button_secondary_gradient"
+                android:stateListAnimator="@null"
+                android:text="@string/properties_clear_game_data"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white" />
+
+            <Button
+                android:id="@+id/properties_clear_settings"
+                style="@style/Widget.AppCompat.Button.Colored"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/button_secondary_gradient"
+                android:stateListAnimator="@null"
+                android:text="@string/properties_clear_game_settings_button"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/row4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:divider="@drawable/spacer_medium"
+            android:orientation="horizontal"
+            android:showDividers="middle">
+
+            <Button
+                android:id="@+id/properties_convert"
+                style="@style/Widget.AppCompat.Button.Colored"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/button_secondary_gradient"
+                android:stateListAnimator="@null"
+                android:text="@string/properties_convert"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white" />
+
+            <Button
+                android:id="@+id/properties_ini_editor"
+                style="@style/Widget.AppCompat.Button.Colored"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/button_secondary_gradient"
+                android:stateListAnimator="@null"
+                android:text="@string/properties_ini_editor"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/row5"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:divider="@drawable/spacer_medium"
+            android:orientation="horizontal"
+            android:showDividers="middle">
+
+            <Button
+                android:id="@+id/properties_start_with_riivolution"
+                style="@style/Widget.AppCompat.Button.Colored"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/button_secondary_gradient"
+                android:stateListAnimator="@null"
+                android:text="@string/properties_start_with_riivolution"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <View
+        android:id="@+id/center_line"
+        android:layout_width="0px"
+        android:layout_height="0px"
+        android:layout_centerHorizontal="true"
+        android:visibility="invisible" />
+
+</RelativeLayout>

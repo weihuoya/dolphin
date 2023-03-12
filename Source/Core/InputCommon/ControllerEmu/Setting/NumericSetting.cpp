@@ -1,8 +1,9 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "InputCommon/ControllerEmu/Setting/NumericSetting.h"
+
+#include <sstream>
 
 namespace ControllerEmu
 {
@@ -23,6 +24,36 @@ const char* NumericSettingBase::GetUISuffix() const
 const char* NumericSettingBase::GetUIDescription() const
 {
   return m_details.ui_description;
+}
+
+template <>
+void NumericSetting<int>::SetExpressionFromValue()
+{
+  m_value.m_input.SetExpression(ValueToString(GetValue()));
+}
+
+template <>
+void NumericSetting<double>::SetExpressionFromValue()
+{
+  // We must use a dot decimal separator for expression parser.
+  std::ostringstream ss;
+  ss.imbue(std::locale::classic());
+  ss << GetValue();
+
+  m_value.m_input.SetExpression(ss.str());
+}
+
+template <>
+void NumericSetting<bool>::SetExpressionFromValue()
+{
+  // Cast bool to prevent "true"/"false" strings.
+  m_value.m_input.SetExpression(ValueToString(int(GetValue())));
+}
+
+template <>
+SettingType NumericSetting<int>::GetType() const
+{
+  return SettingType::Int;
 }
 
 template <>

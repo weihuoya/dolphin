@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/PowerPC/Jit64Common/EmuCodeBlock.h"
 
@@ -80,13 +79,26 @@ void EmuCodeBlock::MemoryExceptionCheck()
 void EmuCodeBlock::SwitchToFarCode()
 {
   m_near_code = GetWritableCodePtr();
-  SetCodePtr(m_far_code.GetWritableCodePtr());
+  m_near_code_end = GetWritableCodeEnd();
+  m_near_code_write_failed = HasWriteFailed();
+  SetCodePtr(m_far_code.GetWritableCodePtr(), m_far_code.GetWritableCodeEnd(),
+             m_far_code.HasWriteFailed());
 }
 
 void EmuCodeBlock::SwitchToNearCode()
 {
-  m_far_code.SetCodePtr(GetWritableCodePtr());
-  SetCodePtr(m_near_code);
+  m_far_code.SetCodePtr(GetWritableCodePtr(), GetWritableCodeEnd(), HasWriteFailed());
+  SetCodePtr(m_near_code, m_near_code_end, m_near_code_write_failed);
+}
+
+FixupBranch EmuCodeBlock::BATAddressLookup(X64Reg addr, X64Reg tmp, const void* bat_table)
+{
+  MOV(64, R(tmp), ImmPtr(bat_table));
+  SHR(32, R(addr), Imm8(PowerPC::BAT_INDEX_SHIFT));
+  MOV(32, R(addr), MComplex(tmp, addr, SCALE_4, 0));
+  BT(32, R(addr), Imm8(IntLog2(PowerPC::BAT_MAPPED_BIT)));
+
+  return J_CC(CC_NC, m_far_code.Enabled());
 }
 
 FixupBranch EmuCodeBlock::CheckIfSafeAddress(const OpArg& reg_value, X64Reg reg_addr,
@@ -371,7 +383,7 @@ void EmuCodeBlock::SafeLoadToReg(X64Reg reg_value, const Gen::OpArg& opAddress, 
 
   FixupBranch exit;
   const bool dr_set = (flags & SAFE_LOADSTORE_DR_ON) || MSR.DR;
-  const bool fast_check_address = !slowmem && dr_set;
+  const bool fast_check_address = !slowmem && dr_set && m_jit.jo.fastmem_arena;
   if (fast_check_address)
   {
     FixupBranch slow = CheckIfSafeAddress(R(reg_value), reg_addr, registersInUse);
@@ -435,7 +447,7 @@ void EmuCodeBlock::SafeLoadToRegImmediate(X64Reg reg_value, u32 address, int acc
                                           BitSet32 registersInUse, bool signExtend)
 {
   // If the address is known to be RAM, just load it directly.
-  if (PowerPC::IsOptimizableRAMAddress(address))
+  if (m_jit.jo.fastmem_arena && PowerPC::IsOptimizableRAMAddress(address))
   {
     UnsafeLoadToReg(reg_value, Imm32(address), accessSize, 0, signExtend);
     return;
@@ -539,7 +551,7 @@ void EmuCodeBlock::SafeWriteRegToReg(OpArg reg_value, X64Reg reg_addr, int acces
 
   FixupBranch exit;
   const bool dr_set = (flags & SAFE_LOADSTORE_DR_ON) || MSR.DR;
-  const bool fast_check_address = !slowmem && dr_set;
+  const bool fast_check_address = !slowmem && dr_set && m_jit.jo.fastmem_arena;
   if (fast_check_address)
   {
     FixupBranch slow = CheckIfSafeAddress(reg_value, reg_addr, registersInUse);
@@ -641,7 +653,7 @@ bool EmuCodeBlock::WriteToConstAddress(int accessSize, OpArg arg, u32 address,
     m_jit.js.fifoBytesSinceCheck += accessSize >> 3;
     return false;
   }
-  else if (PowerPC::IsOptimizableRAMAddress(address))
+  else if (m_jit.jo.fastmem_arena && PowerPC::IsOptimizableRAMAddress(address))
   {
     WriteToConstRamAddress(accessSize, arg, address);
     return false;
@@ -724,34 +736,6 @@ void EmuCodeBlock::JitClearCA()
   MOV(8, PPCSTATE(xer_ca), Imm8(0));
 }
 
-void EmuCodeBlock::ForceSinglePrecision(X64Reg output, const OpArg& input, bool packed,
-                                        bool duplicate)
-{
-  // Most games don't need these. Zelda requires it though - some platforms get stuck without them.
-  if (m_jit.jo.accurateSinglePrecision)
-  {
-    if (packed)
-    {
-      CVTPD2PS(output, input);
-      CVTPS2PD(output, R(output));
-    }
-    else
-    {
-      CVTSD2SS(output, input);
-      CVTSS2SD(output, R(output));
-      if (duplicate)
-        MOVDDUP(output, R(output));
-    }
-  }
-  else if (!input.IsSimpleReg(output))
-  {
-    if (duplicate)
-      MOVDDUP(output, input);
-    else
-      MOVAPD(output, input);
-  }
-}
-
 // Abstract between AVX and SSE: automatically handle 3-operand instructions
 void EmuCodeBlock::avx_op(void (XEmitter::*avxOp)(X64Reg, X64Reg, const OpArg&),
                           void (XEmitter::*sseOp)(X64Reg, const OpArg&), X64Reg regOp,
@@ -825,7 +809,8 @@ void EmuCodeBlock::avx_op(void (XEmitter::*avxOp)(X64Reg, X64Reg, const OpArg&, 
     else
     {
       (this->*sseOp)(XMM0, arg2, imm);
-      MOVAPD(regOp, R(XMM0));
+      if (regOp != XMM0)
+        MOVAPD(regOp, R(XMM0));
     }
   }
   else
@@ -868,88 +853,8 @@ void EmuCodeBlock::Force25BitPrecision(X64Reg output, const OpArg& input, X64Reg
   }
 }
 
-// Since the following float conversion functions are used in non-arithmetic PPC float
-// instructions, they must convert floats bitexact and never flush denormals to zero or turn SNaNs
-// into QNaNs. This means we can't use CVTSS2SD/CVTSD2SS. The x87 FPU doesn't even support
-// flush-to-zero so we can use FLD+FSTP even on denormals.
-// If the number is a NaN, make sure to set the QNaN bit back to its original value.
-
-// Another problem is that officially, converting doubles to single format results in undefined
-// behavior.  Relying on undefined behavior is a bug so no software should ever do this.
-// Super Mario 64 (on Wii VC) accidentally relies on this behavior.  See issue #11173
-
-alignas(16) static const __m128i double_exponent = _mm_set_epi64x(0, 0x7ff0000000000000);
-alignas(16) static const __m128i double_fraction = _mm_set_epi64x(0, 0x000fffffffffffff);
-alignas(16) static const __m128i double_sign_bit = _mm_set_epi64x(0, 0x8000000000000000);
-alignas(16) static const __m128i double_explicit_top_bit = _mm_set_epi64x(0, 0x0010000000000000);
-alignas(16) static const __m128i double_top_two_bits = _mm_set_epi64x(0, 0xc000000000000000);
-alignas(16) static const __m128i double_bottom_bits = _mm_set_epi64x(0, 0x07ffffffe0000000);
 alignas(16) static const __m128i double_qnan_bit = _mm_set_epi64x(0xffffffffffffffff,
                                                                   0xfff7ffffffffffff);
-
-// This is the same algorithm used in the interpreter (and actual hardware)
-// The documentation states that the conversion of a double with an outside the
-// valid range for a single (or a single denormal) is undefined.
-// But testing on actual hardware shows it always picks bits 0..1 and 5..34
-// unless the exponent is in the range of 874 to 896.
-void EmuCodeBlock::ConvertDoubleToSingle(X64Reg dst, X64Reg src)
-{
-  MOVAPD(XMM1, R(src));
-
-  // Grab Exponent
-  PAND(XMM1, MConst(double_exponent));
-  PSRLQ(XMM1, 52);
-  MOVD_xmm(R(RSCRATCH), XMM1);
-
-  // Check if the double is in the range of valid single subnormal
-  SUB(16, R(RSCRATCH), Imm16(874));
-  CMP(16, R(RSCRATCH), Imm16(896 - 874));
-  FixupBranch NoDenormalize = J_CC(CC_A);
-
-  // Denormalise
-
-  // shift = (905 - Exponent) plus the 21 bit double to single shift
-  MOV(16, R(RSCRATCH), Imm16(905 + 21));
-  MOVD_xmm(XMM0, R(RSCRATCH));
-  PSUBQ(XMM0, R(XMM1));
-
-  // xmm1 = fraction | 0x0010000000000000
-  MOVAPD(XMM1, R(src));
-  PAND(XMM1, MConst(double_fraction));
-  POR(XMM1, MConst(double_explicit_top_bit));
-
-  // fraction >> shift
-  PSRLQ(XMM1, R(XMM0));
-
-  // OR the sign bit in.
-  MOVAPD(XMM0, R(src));
-  PAND(XMM0, MConst(double_sign_bit));
-  PSRLQ(XMM0, 32);
-  POR(XMM1, R(XMM0));
-
-  FixupBranch end = J(false);  // Goto end
-
-  SetJumpTarget(NoDenormalize);
-
-  // Don't Denormalize
-
-  // We want bits 0, 1
-  MOVAPD(XMM1, R(src));
-  PAND(XMM1, MConst(double_top_two_bits));
-  PSRLQ(XMM1, 32);
-
-  // And 5 through to 34
-  MOVAPD(XMM0, R(src));
-  PAND(XMM0, MConst(double_bottom_bits));
-  PSRLQ(XMM0, 29);
-
-  // OR them togther
-  POR(XMM1, R(XMM0));
-
-  // End
-  SetJumpTarget(end);
-  MOVDDUP(dst, R(XMM1));
-}
 
 // Converting single->double is a bit easier because all single denormals are double normals.
 void EmuCodeBlock::ConvertSingleToDouble(X64Reg dst, X64Reg src, bool src_is_gpr)
@@ -983,30 +888,35 @@ void EmuCodeBlock::ConvertSingleToDouble(X64Reg dst, X64Reg src, bool src_is_gpr
   MOVDDUP(dst, R(dst));
 }
 
-alignas(16) static const u64 psDoubleExp[2] = {0x7FF0000000000000ULL, 0};
-alignas(16) static const u64 psDoubleFrac[2] = {0x000FFFFFFFFFFFFFULL, 0};
-alignas(16) static const u64 psDoubleNoSign[2] = {0x7FFFFFFFFFFFFFFFULL, 0};
+alignas(16) static const u64 psDoubleExp[2] = {Common::DOUBLE_EXP, 0};
+alignas(16) static const u64 psDoubleFrac[2] = {Common::DOUBLE_FRAC, 0};
+alignas(16) static const u64 psDoubleNoSign[2] = {~Common::DOUBLE_SIGN, 0};
+
+alignas(16) static const u32 psFloatExp[4] = {Common::FLOAT_EXP, 0, 0, 0};
+alignas(16) static const u32 psFloatFrac[4] = {Common::FLOAT_FRAC, 0, 0, 0};
+alignas(16) static const u32 psFloatNoSign[4] = {~Common::FLOAT_SIGN, 0, 0, 0};
 
 // TODO: it might be faster to handle FPRF in the same way as CR is currently handled for integer,
-// storing
-// the result of each floating point op and calculating it when needed. This is trickier than for
-// integers
-// though, because there's 32 possible FPRF bit combinations but only 9 categories of floating point
-// values,
-// which makes the whole thing rather trickier.
-// Fortunately, PPCAnalyzer can optimize out a large portion of FPRF calculations, so maybe this
-// isn't
-// quite that necessary.
-void EmuCodeBlock::SetFPRF(Gen::X64Reg xmm)
+// storing the result of each floating point op and calculating it when needed. This is trickier
+// than for integers though, because there's 32 possible FPRF bit combinations but only 9 categories
+// of floating point values. Fortunately, PPCAnalyzer can optimize out a large portion of FPRF
+// calculations, so maybe this isn't quite that necessary.
+void EmuCodeBlock::SetFPRF(Gen::X64Reg xmm, bool single)
 {
+  const int input_size = single ? 32 : 64;
+
   AND(32, PPCSTATE(fpscr), Imm32(~FPRF_MASK));
 
   FixupBranch continue1, continue2, continue3, continue4;
   if (cpu_info.bSSE4_1)
   {
     MOVQ_xmm(R(RSCRATCH), xmm);
-    SHR(64, R(RSCRATCH), Imm8(63));  // Get the sign bit; almost all the branches need it.
-    PTEST(xmm, MConst(psDoubleExp));
+    // Get the sign bit; almost all the branches need it.
+    SHR(input_size, R(RSCRATCH), Imm8(input_size - 1));
+    if (single)
+      PTEST(xmm, MConst(psFloatExp));
+    else
+      PTEST(xmm, MConst(psDoubleExp));
     FixupBranch maxExponent = J_CC(CC_C);
     FixupBranch zeroExponent = J_CC(CC_Z);
 
@@ -1016,7 +926,10 @@ void EmuCodeBlock::SetFPRF(Gen::X64Reg xmm)
     continue1 = J();
 
     SetJumpTarget(maxExponent);
-    PTEST(xmm, MConst(psDoubleFrac));
+    if (single)
+      PTEST(xmm, MConst(psFloatFrac));
+    else
+      PTEST(xmm, MConst(psDoubleFrac));
     FixupBranch notNAN = J_CC(CC_Z);
 
     // Max exponent + mantissa: PPC_FPCLASS_QNAN
@@ -1031,7 +944,10 @@ void EmuCodeBlock::SetFPRF(Gen::X64Reg xmm)
     continue3 = J();
 
     SetJumpTarget(zeroExponent);
-    PTEST(xmm, MConst(psDoubleNoSign));
+    if (single)
+      PTEST(xmm, MConst(psFloatNoSign));
+    else
+      PTEST(xmm, MConst(psDoubleNoSign));
     FixupBranch zero = J_CC(CC_Z);
 
     // No exponent + mantissa: sign ? PPC_FPCLASS_ND : PPC_FPCLASS_PD;
@@ -1047,37 +963,58 @@ void EmuCodeBlock::SetFPRF(Gen::X64Reg xmm)
   else
   {
     MOVQ_xmm(R(RSCRATCH), xmm);
-    TEST(64, R(RSCRATCH), MConst(psDoubleExp));
+    if (single)
+      TEST(32, R(RSCRATCH), Imm32(Common::FLOAT_EXP));
+    else
+      TEST(64, R(RSCRATCH), MConst(psDoubleExp));
     FixupBranch zeroExponent = J_CC(CC_Z);
-    AND(64, R(RSCRATCH), MConst(psDoubleNoSign));
-    CMP(64, R(RSCRATCH), MConst(psDoubleExp));
+
+    if (single)
+    {
+      AND(32, R(RSCRATCH), Imm32(~Common::FLOAT_SIGN));
+      CMP(32, R(RSCRATCH), Imm32(Common::FLOAT_EXP));
+    }
+    else
+    {
+      AND(64, R(RSCRATCH), MConst(psDoubleNoSign));
+      CMP(64, R(RSCRATCH), MConst(psDoubleExp));
+    }
     FixupBranch nan =
         J_CC(CC_G);  // This works because if the sign bit is set, RSCRATCH is negative
     FixupBranch infinity = J_CC(CC_E);
+
     MOVQ_xmm(R(RSCRATCH), xmm);
-    SHR(64, R(RSCRATCH), Imm8(63));
+    SHR(input_size, R(RSCRATCH), Imm8(input_size - 1));
     LEA(32, RSCRATCH,
         MScaled(RSCRATCH, Common::PPC_FPCLASS_NN - Common::PPC_FPCLASS_PN, Common::PPC_FPCLASS_PN));
     continue1 = J();
+
     SetJumpTarget(nan);
     MOV(32, R(RSCRATCH), Imm32(Common::PPC_FPCLASS_QNAN));
     continue2 = J();
+
     SetJumpTarget(infinity);
     MOVQ_xmm(R(RSCRATCH), xmm);
-    SHR(64, R(RSCRATCH), Imm8(63));
+    SHR(input_size, R(RSCRATCH), Imm8(input_size - 1));
     LEA(32, RSCRATCH,
         MScaled(RSCRATCH, Common::PPC_FPCLASS_NINF - Common::PPC_FPCLASS_PINF,
                 Common::PPC_FPCLASS_PINF));
     continue3 = J();
+
     SetJumpTarget(zeroExponent);
-    TEST(64, R(RSCRATCH), R(RSCRATCH));
+    if (single)
+      TEST(input_size, R(RSCRATCH), Imm32(~Common::FLOAT_SIGN));
+    else
+      TEST(input_size, R(RSCRATCH), MConst(psDoubleNoSign));
     FixupBranch zero = J_CC(CC_Z);
-    SHR(64, R(RSCRATCH), Imm8(63));
+
+    SHR(input_size, R(RSCRATCH), Imm8(input_size - 1));
     LEA(32, RSCRATCH,
         MScaled(RSCRATCH, Common::PPC_FPCLASS_ND - Common::PPC_FPCLASS_PD, Common::PPC_FPCLASS_PD));
     continue4 = J();
+
     SetJumpTarget(zero);
-    SHR(64, R(RSCRATCH), Imm8(63));
+    SHR(input_size, R(RSCRATCH), Imm8(input_size - 1));
     SHL(32, R(RSCRATCH), Imm8(4));
     ADD(32, R(RSCRATCH), Imm8(Common::PPC_FPCLASS_PZ));
   }

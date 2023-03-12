@@ -1,17 +1,20 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <array>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <QMenuBar>
 #include <QPointer>
 
+#include "Common/CommonTypes.h"
+
 class QMenu;
+class ParallelProgressDialog;
 
 namespace Core
 {
@@ -27,6 +30,9 @@ namespace UICommon
 {
 class GameFile;
 }
+
+using RSOPairEntry = std::pair<u32, std::string>;
+using RSOVector = std::vector<RSOPairEntry>;
 
 class MenuBar final : public QMenuBar
 {
@@ -91,6 +97,7 @@ signals:
   void ConfigureAudio();
   void ConfigureControllers();
   void ConfigureHotkeys();
+  void ConfigureFreelook();
 
   // View
   void ShowList();
@@ -153,6 +160,8 @@ private:
   void GenerateSymbolsFromAddress();
   void GenerateSymbolsFromSignatureDB();
   void GenerateSymbolsFromRSO();
+  void GenerateSymbolsFromRSOAuto();
+  RSOVector DetectRSOModules(ParallelProgressDialog& progress);
   void LoadSymbolMap();
   void LoadOtherSymbolMap();
   void LoadBadSymbolMap();
@@ -187,7 +196,6 @@ private:
   QMenu* m_backup_menu;
 
   // Tools
-  QAction* m_show_cheat_manager;
   QAction* m_wad_install_action;
   QMenu* m_perform_online_update_menu;
   QAction* m_perform_online_update_for_current_region;
@@ -232,9 +240,11 @@ private:
   // View
   QAction* m_show_code;
   QAction* m_show_registers;
+  QAction* m_show_threads;
   QAction* m_show_watch;
   QAction* m_show_breakpoints;
   QAction* m_show_memory;
+  QAction* m_show_network;
   QAction* m_show_jit;
   QMenu* m_cols_menu;
 
@@ -246,6 +256,7 @@ private:
   QAction* m_jit_interpreter_core;
   QAction* m_jit_block_linking;
   QAction* m_jit_disable_cache;
+  QAction* m_jit_disable_fastmem;
   QAction* m_jit_clear_cache;
   QAction* m_jit_log_coverage;
   QAction* m_jit_search_instruction;
@@ -261,6 +272,7 @@ private:
   QAction* m_jit_paired_off;
   QAction* m_jit_systemregisters_off;
   QAction* m_jit_branch_off;
+  QAction* m_jit_register_cache_off;
 
   bool m_game_selected = false;
 };

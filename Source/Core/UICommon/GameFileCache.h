@@ -1,9 +1,9 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -30,8 +30,7 @@ public:
     Yes = 1,
   };
 
-  GameFileCache();  // Uses the default path
-  explicit GameFileCache(std::string path);
+  GameFileCache();
 
   void ForEach(std::function<void(const std::shared_ptr<const GameFile>&)> f) const;
 
@@ -44,9 +43,11 @@ public:
   // These functions return true if the call modified the cache.
   bool Update(const std::vector<std::string>& all_game_paths,
               std::function<void(const std::shared_ptr<const GameFile>&)> game_added_to_cache = {},
-              std::function<void(const std::string&)> game_removed_from_cache = {});
+              std::function<void(const std::string&)> game_removed_from_cache = {},
+              const std::atomic_bool& processing_halted = false);
   bool UpdateAdditionalMetadata(
-      std::function<void(const std::shared_ptr<const GameFile>&)> game_updated = {});
+      std::function<void(const std::shared_ptr<const GameFile>&)> game_updated = {},
+      const std::atomic_bool& processing_halted = false);
 
   bool Load();
   bool Save();

@@ -1,21 +1,21 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <QMainWindow>
 #include <QStringList>
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
 
-class QProgressDialog;
 class QStackedWidget;
 class QString;
 
 class BreakpointWidget;
+class BootSessionData;
 struct BootParameters;
 class CheatsManager;
 class CodeWidget;
@@ -23,6 +23,7 @@ class ControllersWindow;
 class DiscordHandler;
 class DragEnterEvent;
 class FIFOPlayerWindow;
+class FreeLookWindow;
 class GameList;
 class GCTASInputWindow;
 class GraphicsWindow;
@@ -35,10 +36,12 @@ class MemoryWidget;
 class MenuBar;
 class NetPlayDialog;
 class NetPlaySetupDialog;
+class NetworkWidget;
 class RegisterWidget;
 class RenderWidget;
 class SearchBar;
 class SettingsWindow;
+class ThreadWidget;
 class ToolBar;
 class WatchWidget;
 class WiiTASInputWindow;
@@ -105,6 +108,7 @@ private:
   void SetFullScreenResolution(bool fullscreen);
 
   void FullScreen();
+  void UnlockCursor();
   void ScreenShot();
 
   void CreateComponents();
@@ -129,22 +133,23 @@ private:
   };
 
   void ScanForSecondDiscAndStartGame(const UICommon::GameFile& game,
-                                     const std::optional<std::string>& savestate_path = {});
+                                     std::unique_ptr<BootSessionData> boot_session_data = nullptr);
   void StartGame(const QString& path, ScanForSecondDisc scan,
-                 const std::optional<std::string>& savestate_path = {});
+                 std::unique_ptr<BootSessionData> boot_session_data = nullptr);
   void StartGame(const std::string& path, ScanForSecondDisc scan,
-                 const std::optional<std::string>& savestate_path = {});
+                 std::unique_ptr<BootSessionData> boot_session_data = nullptr);
   void StartGame(const std::vector<std::string>& paths,
-                 const std::optional<std::string>& savestate_path = {});
+                 std::unique_ptr<BootSessionData> boot_session_data = nullptr);
   void StartGame(std::unique_ptr<BootParameters>&& parameters);
   void ShowRenderWidget();
-  void HideRenderWidget(bool reinit = true);
+  void HideRenderWidget(bool reinit = true, bool is_exit = false);
 
   void ShowSettingsWindow();
   void ShowGeneralWindow();
   void ShowAudioWindow();
   void ShowControllersWindow();
   void ShowGraphicsWindow();
+  void ShowFreeLookWindow();
   void ShowAboutDialog();
   void ShowHotkeyDialog();
   void ShowNetPlaySetupDialog();
@@ -153,18 +158,20 @@ private:
   void ShowMemcardManager();
   void ShowResourcePackManager();
   void ShowCheatsManager();
+  void ShowRiivolutionBootWidget(const UICommon::GameFile& game);
 
   void NetPlayInit();
   bool NetPlayJoin();
-  bool NetPlayHost(const QString& game_id);
+  bool NetPlayHost(const UICommon::GameFile& game);
   void NetPlayQuit();
 
   void OnBootGameCubeIPL(DiscIO::Region region);
   void OnImportNANDBackup();
   void OnConnectWiiRemote(int id);
-  void OnSignal();
 
-  void OnUpdateProgressDialog(QString label, int progress, int total);
+#if defined(__unix__) || defined(__unix) || defined(__APPLE__)
+  void OnSignal();
+#endif
 
   void OnPlayRecording();
   void OnStartRecording();
@@ -179,18 +186,17 @@ private:
 
   QStringList PromptFileNames();
 
-  void EnableScreenSaver(bool enable);
+  void UpdateScreenSaverInhibition();
 
   void OnStopComplete();
   void dragEnterEvent(QDragEnterEvent* event) override;
   void dropEvent(QDropEvent* event) override;
   QSize sizeHint() const override;
 
-#if defined(HAVE_XRANDR) && HAVE_XRANDR
+#ifdef HAVE_XRANDR
   std::unique_ptr<X11Utils::XRRConfiguration> m_xrr_config;
 #endif
 
-  QProgressDialog* m_progress_dialog = nullptr;
   QStackedWidget* m_stack;
   ToolBar* m_tool_bar;
   MenuBar* m_menu_bar;
@@ -198,9 +204,11 @@ private:
   GameList* m_game_list;
   RenderWidget* m_render_widget = nullptr;
   bool m_rendering_to_main;
+  bool m_stop_confirm_showing = false;
   bool m_stop_requested = false;
   bool m_exit_requested = false;
   bool m_fullscreen_requested = false;
+  bool m_is_screensaver_inhibited = false;
   int m_state_slot = 1;
   std::unique_ptr<BootParameters> m_pending_boot;
 
@@ -209,6 +217,7 @@ private:
   GraphicsWindow* m_graphics_window = nullptr;
   FIFOPlayerWindow* m_fifo_window = nullptr;
   MappingWindow* m_hotkey_window = nullptr;
+  FreeLookWindow* m_freelook_window = nullptr;
 
   HotkeyScheduler* m_hotkey_scheduler;
   NetPlayDialog* m_netplay_dialog;
@@ -225,7 +234,9 @@ private:
   LogWidget* m_log_widget;
   LogConfigWidget* m_log_config_widget;
   MemoryWidget* m_memory_widget;
+  NetworkWidget* m_network_widget;
   RegisterWidget* m_register_widget;
+  ThreadWidget* m_thread_widget;
   WatchWidget* m_watch_widget;
   CheatsManager* m_cheats_manager;
   QByteArray m_render_widget_geometry;

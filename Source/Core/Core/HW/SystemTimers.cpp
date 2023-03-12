@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // This file controls all system timers
 
@@ -34,7 +33,7 @@ IPC_HLE_PERIOD: For the Wii Remote this is the call schedule:
       // If the AclFrameQue is empty this will call Wiimote_Update() and make it send
       the current input status to the game. I'm not sure if this occurs approximately
       once every frame or if the frequency is not exactly tied to rendered frames
-      IOS::HLE::Device::BluetoothEmu::Update()
+      IOS::HLE::BluetoothEmuDevice::Update()
       PluginWiimote::Wiimote_Update()
 
       // This is also a device updated by IOS::HLE::Update() but it doesn't
@@ -46,11 +45,10 @@ IPC_HLE_PERIOD: For the Wii Remote this is the call schedule:
 #include "Core/HW/SystemTimers.h"
 
 #include <cfloat>
-#include <cinttypes>
 #include <cmath>
 #include <cstdlib>
+#include <Core/Config/MainSettings.h>
 
-#include "Common/Atomic.h"
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
 #include "Common/Thread.h"
@@ -180,21 +178,21 @@ void ThrottleCallback(u64 last_time, s64 cyclesLate)
   u32 next_event = GetTicksPerSecond() / 1000;
 
   {
-    std::lock_guard<std::mutex> lk(s_emu_to_real_time_mutex);
+    std::lock_guard lk(s_emu_to_real_time_mutex);
     s_emu_to_real_time_ring_buffer[s_emu_to_real_time_index] = time - s_time_spent_sleeping;
     s_emu_to_real_time_index =
         (s_emu_to_real_time_index + 1) % s_emu_to_real_time_ring_buffer.size();
   }
 
-  if (frame_limiter)
+  if (frame_limiter && !Config::Get(Config::MAIN_FAST_FORWARD_HOTKEY))
   {
     if (config.m_EmulationSpeed != 1.0f)
       next_event = u32(next_event * config.m_EmulationSpeed);
     const s64 max_fallback = config.iTimingVariance * 1000;
-    if (abs(diff) > max_fallback)
+    if (std::abs(diff) > max_fallback)
     {
-      DEBUG_LOG(COMMON, "system too %s, %" PRIi64 " ms skipped", diff < 0 ? "slow" : "fast",
-                abs(diff) - max_fallback);
+      DEBUG_LOG_FMT(COMMON, "system too {}, {} ms skipped", diff < 0 ? "slow" : "fast",
+                    std::abs(diff) - max_fallback);
       last_time = time - max_fallback;
     }
     else if (diff > 1000)
@@ -253,7 +251,7 @@ double GetEstimatedEmulationPerformance()
 {
   u64 ts_now, ts_before;  // In microseconds
   {
-    std::lock_guard<std::mutex> lk(s_emu_to_real_time_mutex);
+    std::lock_guard lk(s_emu_to_real_time_mutex);
     size_t index_now = s_emu_to_real_time_index == 0 ? s_emu_to_real_time_ring_buffer.size() - 1 :
                                                        s_emu_to_real_time_index - 1;
     size_t index_before = s_emu_to_real_time_index;

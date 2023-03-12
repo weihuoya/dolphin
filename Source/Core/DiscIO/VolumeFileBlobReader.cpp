@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DiscIO/VolumeFileBlobReader.h"
 
@@ -42,6 +41,21 @@ u64 VolumeFileBlobReader::GetDataSize() const
 u64 VolumeFileBlobReader::GetRawSize() const
 {
   return GetDataSize();
+}
+
+u64 VolumeFileBlobReader::GetBlockSize() const
+{
+  return m_volume.GetBlobReader().GetBlockSize();
+}
+
+bool VolumeFileBlobReader::HasFastRandomAccessInBlock() const
+{
+  return m_volume.GetBlobReader().HasFastRandomAccessInBlock();
+}
+
+std::string VolumeFileBlobReader::GetCompressionMethod() const
+{
+  return m_volume.GetBlobReader().GetCompressionMethod();
 }
 
 bool VolumeFileBlobReader::Read(u64 offset, u64 length, u8* out_ptr)

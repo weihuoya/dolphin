@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/RenderWidget.h"
 
@@ -20,7 +19,7 @@
 #include <QTimer>
 #include <QWindow>
 
-#include "imgui.h"
+#include <imgui.h>
 
 #include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
@@ -32,14 +31,21 @@
 #include "DolphinQt/Resources.h"
 #include "DolphinQt/Settings.h"
 
+#include "InputCommon/ControllerInterface/ControllerInterface.h"
+
 #include "VideoCommon/RenderBase.h"
-#include "VideoCommon/VertexShaderManager.h"
 #include "VideoCommon/VideoConfig.h"
+
+#ifdef _WIN32
+#include <WinUser.h>
+#include <windef.h>
+#endif
 
 RenderWidget::RenderWidget(QWidget* parent) : QWidget(parent)
 {
   setWindowTitle(QStringLiteral("Dolphin"));
   setWindowIcon(Resources::GetAppIcon());
+  setWindowRole(QStringLiteral("renderer"));
   setAcceptDrops(true);
 
   QPalette p;
@@ -51,13 +57,12 @@ RenderWidget::RenderWidget(QWidget* parent) : QWidget(parent)
     if (!Config::Get(Config::MAIN_RENDER_WINDOW_AUTOSIZE) || isFullScreen() || isMaximized())
       return;
 
-    resize(w, h);
+    const auto dpr = window()->windowHandle()->screen()->devicePixelRatio();
+
+    resize(w / dpr, h / dpr);
   });
 
   connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, [this](Core::State state) {
-    // Stop filling the background once emulation starts, but fill it until then (Bug 10958)
-    SetFillBackground(Config::Get(Config::MAIN_RENDER_TO_MAIN) &&
-                      state == Core::State::Uninitialized);
     if (state == Core::State::Running)
       SetImGuiKeyMap();
   });
@@ -78,9 +83,12 @@ RenderWidget::RenderWidget(QWidget* parent) : QWidget(parent)
   m_mouse_timer->setSingleShot(true);
   setMouseTracking(true);
 
-  connect(&Settings::Instance(), &Settings::HideCursorChanged, this,
+  connect(&Settings::Instance(), &Settings::CursorVisibilityChanged, this,
           &RenderWidget::OnHideCursorChanged);
+  connect(&Settings::Instance(), &Settings::LockCursorChanged, this,
+          &RenderWidget::OnLockCursorChanged);
   OnHideCursorChanged();
+  OnLockCursorChanged();
   connect(&Settings::Instance(), &Settings::KeepWindowOnTopChanged, this,
           &RenderWidget::OnKeepOnTopChanged);
   OnKeepOnTopChanged(Settings::Instance().IsKeepWindowOnTopEnabled());
@@ -88,21 +96,12 @@ RenderWidget::RenderWidget(QWidget* parent) : QWidget(parent)
 
   // We need a native window to render into.
   setAttribute(Qt::WA_NativeWindow);
-
-  SetFillBackground(true);
-}
-
-void RenderWidget::SetFillBackground(bool fill)
-{
-  setAutoFillBackground(fill);
-  setAttribute(Qt::WA_OpaquePaintEvent, !fill);
-  setAttribute(Qt::WA_NoSystemBackground, !fill);
-  setAttribute(Qt::WA_PaintOnScreen, !fill);
+  setAttribute(Qt::WA_PaintOnScreen);
 }
 
 QPaintEngine* RenderWidget::paintEngine() const
 {
-  return autoFillBackground() ? QWidget::paintEngine() : nullptr;
+  return nullptr;
 }
 
 void RenderWidget::dragEnterEvent(QDragEnterEvent* event)
@@ -138,7 +137,36 @@ void RenderWidget::dropEvent(QDropEvent* event)
 
 void RenderWidget::OnHideCursorChanged()
 {
-  setCursor(Settings::Instance().GetHideCursor() ? Qt::BlankCursor : Qt::ArrowCursor);
+  UpdateCursor();
+}
+
+void RenderWidget::OnLockCursorChanged()
+{
+  SetCursorLocked(false);
+  UpdateCursor();
+}
+
+// Calling this at any time will set the cursor (image) to the correct state
+void RenderWidget::UpdateCursor()
+{
+  if (!Settings::Instance().GetLockCursor())
+  {
+    // Only hide if the cursor is automatically locking (it will hide on lock).
+    // "Unhide" the cursor if we lost focus, otherwise it will disappear when hovering
+    // on top of the game window in the background
+    const bool keep_on_top = (windowFlags() & Qt::WindowStaysOnTopHint) != 0;
+    const bool should_hide =
+        (Settings::Instance().GetCursorVisibility() == SConfig::ShowCursor::Never) &&
+        (keep_on_top || SConfig::GetInstance().m_BackgroundInput || isActiveWindow());
+    setCursor(should_hide ? Qt::BlankCursor : Qt::ArrowCursor);
+  }
+  else
+  {
+    setCursor((m_cursor_locked &&
+               Settings::Instance().GetCursorVisibility() == SConfig::ShowCursor::Never) ?
+                  Qt::BlankCursor :
+                  Qt::ArrowCursor);
+  }
 }
 
 void RenderWidget::OnKeepOnTopChanged(bool top)
@@ -148,14 +176,23 @@ void RenderWidget::OnKeepOnTopChanged(bool top)
   setWindowFlags(top ? windowFlags() | Qt::WindowStaysOnTopHint :
                        windowFlags() & ~Qt::WindowStaysOnTopHint);
 
+  m_dont_lock_cursor_on_show = true;
   if (was_visible)
     show();
+  m_dont_lock_cursor_on_show = false;
+
+  UpdateCursor();
 }
 
 void RenderWidget::HandleCursorTimer()
 {
-  if (isActiveWindow())
+  if (!isActiveWindow())
+    return;
+  if ((!Settings::Instance().GetLockCursor() || m_cursor_locked) &&
+      Settings::Instance().GetCursorVisibility() == SConfig::ShowCursor::OnMovement)
+  {
     setCursor(Qt::BlankCursor);
+  }
 }
 
 void RenderWidget::showFullScreen()
@@ -169,14 +206,144 @@ void RenderWidget::showFullScreen()
   emit SizeChanged(width() * dpr, height() * dpr);
 }
 
+// Lock the cursor within the window/widget internal borders, including the aspect ratio if wanted
+void RenderWidget::SetCursorLocked(bool locked, bool follow_aspect_ratio)
+{
+  // It seems like QT doesn't scale the window frame correctly with some DPIs
+  // so it might happen that the locked cursor can be on the frame of the window,
+  // being able to resize it, but that is a minor problem.
+  // As a hack, if necessary, we could always scale down the size by 2 pixel, to a min of 1 given
+  // that the size can be 0 already. We probably shouldn't scale axes already scaled by aspect ratio
+  QRect render_rect = geometry();
+  if (parentWidget())
+  {
+    render_rect.moveTopLeft(parentWidget()->mapToGlobal(render_rect.topLeft()));
+  }
+  auto scale = devicePixelRatioF();  // Seems to always be rounded on Win. Should we round results?
+  QPoint screen_offset = QPoint(0, 0);
+  if (window()->windowHandle() && window()->windowHandle()->screen())
+  {
+    screen_offset = window()->windowHandle()->screen()->geometry().topLeft();
+  }
+  render_rect.moveTopLeft(((render_rect.topLeft() - screen_offset) * scale) + screen_offset);
+  render_rect.setSize(render_rect.size() * scale);
+
+  if (follow_aspect_ratio)
+  {
+    // TODO: SetCursorLocked() should be re-called every time this value is changed?
+    // This might cause imprecisions of one pixel (but it won't cause the cursor to go over borders)
+    Common::Vec2 aspect_ratio = g_controller_interface.GetWindowInputScale();
+    if (aspect_ratio.x > 1.f)
+    {
+      const float new_half_width = float(render_rect.width()) / (aspect_ratio.x * 2.f);
+      // Only ceil if it was >= 0.25
+      const float ceiled_new_half_width = std::ceil(std::round(new_half_width * 2.f) / 2.f);
+      const int x_center = render_rect.center().x();
+      // Make a guess on which one to floor and ceil.
+      // For more precision, we should have kept the rounding point scale from above as well.
+      render_rect.setLeft(x_center - std::floor(new_half_width));
+      render_rect.setRight(x_center + ceiled_new_half_width);
+    }
+    if (aspect_ratio.y > 1.f)
+    {
+      const float new_half_height = render_rect.height() / (aspect_ratio.y * 2.f);
+      const float ceiled_new_half_height = std::ceil(std::round(new_half_height * 2.f) / 2.f);
+      const int y_center = render_rect.center().y();
+      render_rect.setTop(y_center - std::floor(new_half_height));
+      render_rect.setBottom(y_center + ceiled_new_half_height);
+    }
+  }
+
+  if (locked)
+  {
+#ifdef _WIN32
+    RECT rect;
+    rect.left = render_rect.left();
+    rect.right = render_rect.right();
+    rect.top = render_rect.top();
+    rect.bottom = render_rect.bottom();
+
+    if (ClipCursor(&rect))
+#else
+    // TODO: implement on other platforms. Probably XGrabPointer on Linux.
+    // The setting is hidden in the UI if not implemented
+    if (false)
+#endif
+    {
+      m_cursor_locked = true;
+
+      if (Settings::Instance().GetCursorVisibility() != SConfig::ShowCursor::Constantly)
+      {
+        setCursor(Qt::BlankCursor);
+      }
+
+      Host::GetInstance()->SetRenderFullFocus(true);
+    }
+  }
+  else
+  {
+#ifdef _WIN32
+    ClipCursor(nullptr);
+#endif
+
+    if (m_cursor_locked)
+    {
+      m_cursor_locked = false;
+
+      if (!Settings::Instance().GetLockCursor())
+      {
+        return;
+      }
+
+      // Center the mouse in the window if it's still active
+      // Leave it where it was otherwise, e.g. a prompt has opened or we alt tabbed.
+      if (isActiveWindow())
+      {
+        cursor().setPos(render_rect.left() + render_rect.width() / 2,
+                        render_rect.top() + render_rect.height() / 2);
+      }
+
+      // Show the cursor or the user won't know the mouse is now unlocked
+      setCursor(Qt::ArrowCursor);
+
+      Host::GetInstance()->SetRenderFullFocus(false);
+    }
+  }
+}
+
+void RenderWidget::SetCursorLockedOnNextActivation(bool locked)
+{
+  if (Settings::Instance().GetLockCursor())
+  {
+    m_lock_cursor_on_next_activation = locked;
+    return;
+  }
+  m_lock_cursor_on_next_activation = false;
+}
+
+void RenderWidget::SetWaitingForMessageBox(bool waiting_for_message_box)
+{
+  if (m_waiting_for_message_box == waiting_for_message_box)
+  {
+    return;
+  }
+  m_waiting_for_message_box = waiting_for_message_box;
+  if (!m_waiting_for_message_box && m_lock_cursor_on_next_activation && isActiveWindow())
+  {
+    if (Settings::Instance().GetLockCursor())
+    {
+      SetCursorLocked(true);
+    }
+    m_lock_cursor_on_next_activation = false;
+  }
+}
+
 bool RenderWidget::event(QEvent* event)
 {
   PassEventToImGui(event);
 
   switch (event->type())
   {
-  case QEvent::Paint:
-    return !autoFillBackground();
   case QEvent::KeyPress:
   {
     QKeyEvent* ke = static_cast<QKeyEvent*>(event);
@@ -190,13 +357,24 @@ bool RenderWidget::event(QEvent* event)
 
     break;
   }
-  case QEvent::MouseMove:
-    if (g_Config.bFreeLook)
-      OnFreeLookMouseMove(static_cast<QMouseEvent*>(event));
-    [[fallthrough]];
-
+  // Needed in case a new window open and it moves the mouse
+  case QEvent::WindowBlocked:
+    SetCursorLocked(false);
+    break;
   case QEvent::MouseButtonPress:
-    if (!Settings::Instance().GetHideCursor() && isActiveWindow())
+    if (isActiveWindow())
+    {
+      // Lock the cursor with any mouse button click (behave the same as window focus change).
+      // This event is occasionally missed because isActiveWindow is laggy
+      if (Settings::Instance().GetLockCursor())
+      {
+        SetCursorLocked(true);
+      }
+    }
+    break;
+  case QEvent::MouseMove:
+    // Unhide on movement
+    if (Settings::Instance().GetCursorVisibility() == SConfig::ShowCursor::OnMovement)
     {
       setCursor(Qt::ArrowCursor);
       m_mouse_timer->start(MOUSE_HIDE_DELAY);
@@ -205,20 +383,62 @@ bool RenderWidget::event(QEvent* event)
   case QEvent::WinIdChange:
     emit HandleChanged(reinterpret_cast<void*>(winId()));
     break;
+  case QEvent::Show:
+    // Don't do if "stay on top" changed (or was true)
+    if (Settings::Instance().GetLockCursor() &&
+        Settings::Instance().GetCursorVisibility() != SConfig::ShowCursor::Constantly &&
+        !m_dont_lock_cursor_on_show)
+    {
+      // Auto lock when this window is shown (it was hidden)
+      if (isActiveWindow())
+        SetCursorLocked(true);
+      else
+        SetCursorLockedOnNextActivation();
+    }
+    break;
+  // Note that this event in Windows is not always aligned to the window that is highlighted,
+  // it's the window that has keyboard and mouse focus
   case QEvent::WindowActivate:
     if (SConfig::GetInstance().m_PauseOnFocusLost && Core::GetState() == Core::State::Paused)
       Core::SetState(Core::State::Running);
 
+    UpdateCursor();
+
+    // Avoid "race conditions" with message boxes
+    if (m_lock_cursor_on_next_activation && !m_waiting_for_message_box)
+    {
+      if (Settings::Instance().GetLockCursor())
+      {
+        SetCursorLocked(true);
+      }
+      m_lock_cursor_on_next_activation = false;
+    }
+
     emit FocusChanged(true);
     break;
   case QEvent::WindowDeactivate:
+    SetCursorLocked(false);
+
+    UpdateCursor();
+
     if (SConfig::GetInstance().m_PauseOnFocusLost && Core::GetState() == Core::State::Running)
-      Core::SetState(Core::State::Paused);
+    {
+      // If we are declared as the CPU thread, it means that the real CPU thread is waiting
+      // for us to finish showing a panic alert (with that panic alert likely being the cause
+      // of this event), so trying to pause the real CPU thread would cause a deadlock
+      if (!Core::IsCPUThread())
+        Core::SetState(Core::State::Paused);
+    }
 
     emit FocusChanged(false);
     break;
+  case QEvent::Move:
+    SetCursorLocked(m_cursor_locked);
+    break;
   case QEvent::Resize:
   {
+    SetCursorLocked(m_cursor_locked);
+
     const QResizeEvent* se = static_cast<QResizeEvent*>(event);
     QSize new_size = se->size();
 
@@ -229,7 +449,13 @@ bool RenderWidget::event(QEvent* event)
     emit SizeChanged(new_size.width() * dpr, new_size.height() * dpr);
     break;
   }
+  // Happens when we add/remove the widget from the main window instead of the dedicated one
+  case QEvent::ParentChange:
+    SetCursorLocked(false);
+    break;
   case QEvent::WindowStateChange:
+    // Lock the mouse again when fullscreen changes (we might have missed some events)
+    SetCursorLocked(m_cursor_locked || (isFullScreen() && Settings::Instance().GetLockCursor()));
     emit StateChanged(isFullScreen());
     break;
   case QEvent::Close:
@@ -239,23 +465,6 @@ bool RenderWidget::event(QEvent* event)
     break;
   }
   return QWidget::event(event);
-}
-
-void RenderWidget::OnFreeLookMouseMove(QMouseEvent* event)
-{
-  const auto mouse_move = event->pos() - m_last_mouse;
-  m_last_mouse = event->pos();
-
-  if (event->buttons() & Qt::RightButton)
-  {
-    // Camera Pitch and Yaw:
-    VertexShaderManager::RotateView(mouse_move.y() / 200.f, mouse_move.x() / 200.f, 0.f);
-  }
-  else if (event->buttons() & Qt::MidButton)
-  {
-    // Camera Roll:
-    VertexShaderManager::RotateView(0.f, 0.f, mouse_move.x() / 200.f);
-  }
 }
 
 void RenderWidget::PassEventToImGui(const QEvent* event)
@@ -341,6 +550,7 @@ void RenderWidget::SetImGuiKeyMap()
       {ImGuiKey_Z, Qt::Key_Z},
   }};
   auto lock = g_renderer->GetImGuiLock();
-  for (auto entry : key_map)
-    ImGui::GetIO().KeyMap[entry[0]] = entry[1] & 0x1FF;
+
+  for (auto [imgui_key, qt_key] : key_map)
+    ImGui::GetIO().KeyMap[imgui_key] = (qt_key & 0x1FF);
 }

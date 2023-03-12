@@ -1,5 +1,9 @@
 if (NOT Qt5_DIR AND MSVC)
-set(Qt5_DIR "${CMAKE_SOURCE_DIR}/Externals/Qt/Qt5.13.1/5.13.1/msvc2017_64/lib/cmake/Qt5")
+  if(_M_ARM_64)
+    set(Qt5_DIR "${CMAKE_SOURCE_DIR}/Externals/Qt/Qt5.15.0/msvc2019_arm64/lib/cmake/Qt5")
+  else()
+    set(Qt5_DIR "${CMAKE_SOURCE_DIR}/Externals/Qt/Qt5.15.0/msvc2019_64/lib/cmake/Qt5")
+  endif()
 endif()
 
 find_package(Qt5 5.9 REQUIRED COMPONENTS Gui Widgets)
@@ -12,8 +16,14 @@ set(CMAKE_AUTOMOC ON)
 add_executable(dolphin-emu
   AboutDialog.cpp
   AboutDialog.h
+  CheatSearchFactoryWidget.cpp
+  CheatSearchFactoryWidget.h
+  CheatSearchWidget.cpp
+  CheatSearchWidget.h
   CheatsManager.cpp
   CheatsManager.h
+  ConvertDialog.cpp
+  ConvertDialog.h
   DiscordHandler.cpp
   DiscordHandler.h
   DiscordJoinRequestDialog.cpp
@@ -31,6 +41,8 @@ add_executable(dolphin-emu
   MainWindow.h
   MenuBar.cpp
   MenuBar.h
+  NKitWarningDialog.cpp
+  NKitWarningDialog.h
   RenderWidget.cpp
   RenderWidget.h
   Resources.cpp
@@ -51,14 +63,26 @@ add_executable(dolphin-emu
   Config/CheatCodeEditor.h
   Config/CheatWarningWidget.cpp
   Config/CheatWarningWidget.h
+  Config/CommonControllersWidget.cpp
+  Config/CommonControllersWidget.h
+  Config/ControllerInterface/DualShockUDPClientAddServerDialog.cpp
+  Config/ControllerInterface/DualShockUDPClientAddServerDialog.h
   Config/ControllerInterface/DualShockUDPClientWidget.cpp
   Config/ControllerInterface/DualShockUDPClientWidget.h
   Config/ControllerInterface/ControllerInterfaceWindow.cpp
   Config/ControllerInterface/ControllerInterfaceWindow.h
+  Config/ControllerInterface/ServerStringValidator.cpp
+  Config/ControllerInterface/ServerStringValidator.h
   Config/ControllersWindow.cpp
   Config/ControllersWindow.h
   Config/FilesystemWidget.cpp
   Config/FilesystemWidget.h
+  Config/FreeLookWidget.cpp
+  Config/FreeLookWidget.h
+  Config/FreeLookWindow.cpp
+  Config/FreeLookWindow.h
+  Config/GamecubeControllersWidget.cpp
+  Config/GamecubeControllersWidget.h
   Config/GameConfigEdit.cpp
   Config/GameConfigEdit.h
   Config/GameConfigHighlighter.cpp
@@ -69,6 +93,8 @@ add_executable(dolphin-emu
   Config/GeckoCodeWidget.h
   Config/Graphics/AdvancedWidget.cpp
   Config/Graphics/AdvancedWidget.h
+  Config/Graphics/BalloonTip.cpp
+  Config/Graphics/BalloonTip.h
   Config/Graphics/EnhancementsWidget.cpp
   Config/Graphics/EnhancementsWidget.h
   Config/Graphics/GeneralWidget.cpp
@@ -83,7 +109,6 @@ add_executable(dolphin-emu
   Config/Graphics/GraphicsRadio.h
   Config/Graphics/GraphicsSlider.cpp
   Config/Graphics/GraphicsSlider.h
-  Config/Graphics/GraphicsWidget.cpp
   Config/Graphics/GraphicsWidget.h
   Config/Graphics/GraphicsWindow.cpp
   Config/Graphics/GraphicsWindow.h
@@ -99,6 +124,12 @@ add_executable(dolphin-emu
   Config/LogConfigWidget.h
   Config/LogWidget.cpp
   Config/LogWidget.h
+  Config/Mapping/FreeLookGeneral.cpp
+  Config/Mapping/FreeLookGeneral.h
+  Config/Mapping/FreeLookRotation.cpp
+  Config/Mapping/FreeLookRotation.h
+  Config/Mapping/GBAPadEmu.cpp
+  Config/Mapping/GBAPadEmu.h
   Config/Mapping/GCKeyboardEmu.cpp
   Config/Mapping/GCKeyboardEmu.h
   Config/Mapping/GCMicrophone.cpp
@@ -113,6 +144,8 @@ add_executable(dolphin-emu
   Config/Mapping/HotkeyControllerProfile.h
   Config/Mapping/HotkeyDebugging.cpp
   Config/Mapping/HotkeyDebugging.h
+  Config/Mapping/HotkeyGBA.cpp
+  Config/Mapping/HotkeyGBA.h
   Config/Mapping/HotkeyGeneral.cpp
   Config/Mapping/HotkeyGeneral.h
   Config/Mapping/HotkeyGraphics.cpp
@@ -140,6 +173,10 @@ add_executable(dolphin-emu
   Config/Mapping/MappingWindow.h
   Config/Mapping/WiimoteEmuExtension.cpp
   Config/Mapping/WiimoteEmuExtension.h
+  Config/Mapping/WiimoteEmuExtensionMotionInput.cpp
+  Config/Mapping/WiimoteEmuExtensionMotionInput.h
+  Config/Mapping/WiimoteEmuExtensionMotionSimulation.cpp
+  Config/Mapping/WiimoteEmuExtensionMotionSimulation.h
   Config/Mapping/WiimoteEmuGeneral.cpp
   Config/Mapping/WiimoteEmuGeneral.h
   Config/Mapping/WiimoteEmuMotionControl.cpp
@@ -154,8 +191,21 @@ add_executable(dolphin-emu
   Config/PropertiesDialog.h
   Config/SettingsWindow.cpp
   Config/SettingsWindow.h
+  Config/ToolTipControls/ToolTipCheckBox.cpp
+  Config/ToolTipControls/ToolTipCheckBox.h
+  Config/ToolTipControls/ToolTipComboBox.cpp
+  Config/ToolTipControls/ToolTipComboBox.h
+  Config/ToolTipControls/ToolTipRadioButton.cpp
+  Config/ToolTipControls/ToolTipRadioButton.h
+  Config/ToolTipControls/ToolTipSlider.cpp
+  Config/ToolTipControls/ToolTipSlider.h
+  Config/ToolTipControls/ToolTipSpinBox.cpp
+  Config/ToolTipControls/ToolTipSpinBox.h
+  Config/ToolTipControls/ToolTipWidget.h
   Config/VerifyWidget.cpp
   Config/VerifyWidget.h
+  Config/WiimoteControllersWidget.cpp
+  Config/WiimoteControllersWidget.h
   Debugger/BreakpointWidget.cpp
   Debugger/BreakpointWidget.h
   Debugger/CodeViewWidget.cpp
@@ -168,6 +218,8 @@ add_executable(dolphin-emu
   Debugger/MemoryViewWidget.h
   Debugger/MemoryWidget.cpp
   Debugger/MemoryWidget.h
+  Debugger/NetworkWidget.cpp
+  Debugger/NetworkWidget.h
   Debugger/NewBreakpointDialog.cpp
   Debugger/NewBreakpointDialog.h
   Debugger/PatchInstructionDialog.cpp
@@ -176,6 +228,8 @@ add_executable(dolphin-emu
   Debugger/RegisterColumn.h
   Debugger/RegisterWidget.cpp
   Debugger/RegisterWidget.h
+  Debugger/ThreadWidget.cpp
+  Debugger/ThreadWidget.h
   Debugger/WatchWidget.cpp
   Debugger/WatchWidget.h
   GameList/GameList.cpp
@@ -188,6 +242,8 @@ add_executable(dolphin-emu
   GameList/GridProxyModel.h
   GameList/ListProxyModel.cpp
   GameList/ListProxyModel.h
+  GCMemcardCreateNewDialog.cpp
+  GCMemcardCreateNewDialog.h
   GCMemcardManager.cpp
   GCMemcardManager.h
   QtUtils/BlockUserInputFilter.cpp
@@ -206,6 +262,8 @@ add_executable(dolphin-emu
   NetPlay/NetPlaySetupDialog.h
   NetPlay/PadMappingDialog.cpp
   NetPlay/PadMappingDialog.h
+  QtUtils/DolphinFileDialog.cpp
+  QtUtils/DolphinFileDialog.h
   QtUtils/DoubleClickEventFilter.cpp
   QtUtils/DoubleClickEventFilter.h
   QtUtils/ElidedButton.cpp
@@ -216,8 +274,13 @@ add_executable(dolphin-emu
   QtUtils/FlowLayout.h
   QtUtils/ModalMessageBox.cpp
   QtUtils/ModalMessageBox.h
+  QtUtils/ParallelProgressDialog.h
+  QtUtils/PartiallyClosableTabWidget.cpp
+  QtUtils/PartiallyClosableTabWidget.h
   QtUtils/ImageConverter.cpp
   QtUtils/ImageConverter.h
+  QtUtils/UTF8CodePointCountValidator.cpp
+  QtUtils/UTF8CodePointCountValidator.h
   QtUtils/WindowActivationEventFilter.cpp
   QtUtils/WindowActivationEventFilter.h
   QtUtils/WinIconHelper.cpp
@@ -228,10 +291,14 @@ add_executable(dolphin-emu
   QtUtils/AspectRatioWidget.h
   ResourcePackManager.cpp
   ResourcePackManager.h
+  RiivolutionBootWidget.cpp
+  RiivolutionBootWidget.h
   Settings/AdvancedPane.cpp
   Settings/AdvancedPane.h
   Settings/AudioPane.cpp
   Settings/AudioPane.h
+  Settings/BroadbandAdapterSettingsDialog.cpp
+  Settings/BroadbandAdapterSettingsDialog.h
   Settings/GameCubePane.cpp
   Settings/GameCubePane.h
   Settings/GeneralPane.cpp
@@ -252,6 +319,8 @@ add_executable(dolphin-emu
   TAS/TASCheckBox.h
   TAS/TASInputWindow.cpp
   TAS/TASInputWindow.h
+  TAS/TASSlider.cpp
+  TAS/TASSlider.h
   TAS/StickWidget.cpp
   TAS/StickWidget.h
   TAS/IRWidget.cpp
@@ -288,6 +357,22 @@ PRIVATE
   imgui
 )
 
+if (WIN32)
+  target_link_libraries(dolphin-emu
+  PRIVATE
+	  gdi32.lib
+		shell32.lib
+  )
+endif()
+
+if (MSVC)
+  # Don't propogate warnings in qt headers to Dolphin
+  target_compile_options(dolphin-emu PRIVATE /experimental:external)
+  target_compile_options(dolphin-emu PRIVATE /external:W0)
+  target_compile_options(dolphin-emu PRIVATE "/external:I${Qt5Gui_PRIVATE_INCLUDE_DIRS}")
+  target_compile_options(dolphin-emu PRIVATE "/external:I${Qt5Widgets_PRIVATE_INCLUDE_DIRS}")
+endif()
+
 if(WIN32)
   target_sources(dolphin-emu PRIVATE DolphinQt.manifest DolphinQt.rc)
 
@@ -297,11 +382,19 @@ if(WIN32)
     WIN32_EXECUTABLE TRUE
   )
 
-  target_compile_options(dolphin-emu PRIVATE "-D_SILENCE_CXX17_RESULT_OF_DEPRECATION_WARNING")
-
   # Copy Sys dir
   add_custom_command(TARGET dolphin-emu POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/Data/Sys" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Sys"
+  )
+
+  # Copy COPYING
+  add_custom_command(TARGET dolphin-emu POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/COPYING" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/COPYING"
+  )
+
+  # Copy Licenses dir
+  add_custom_command(TARGET dolphin-emu POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/LICENSES" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Licenses"
   )
 
   # Copy qt.conf
@@ -335,6 +428,9 @@ if(WIN32)
                                  $<IF:$<CONFIG:Debug>,--debug,--release>
                                  --no-translations
                                  --no-compiler-runtime
+                                 --no-system-d3d-compiler
+                                 --no-angle
+                                 --no-opengl-sw
                                  "$<TARGET_FILE:dolphin-emu>"
   )
 endif()
@@ -357,7 +453,11 @@ if(GETTEXT_MSGFMT_EXECUTABLE)
 
   foreach(po ${LINGUAS})
     get_filename_component(lang ${po} NAME_WE)
-    set(mo_dir ${CMAKE_CURRENT_BINARY_DIR}/${lang})
+    if(WIN32)
+      set(mo_dir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Languages/${lang})
+    else()
+      set(mo_dir ${CMAKE_CURRENT_BINARY_DIR}/${lang})
+    endif()
     set(mo ${mo_dir}/dolphin-emu.mo)
 
     target_sources(dolphin-emu PRIVATE ${mo})
@@ -373,7 +473,6 @@ if(GETTEXT_MSGFMT_EXECUTABLE)
       add_custom_command(OUTPUT ${mo}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${mo_dir}
         COMMAND ${GETTEXT_MSGFMT_EXECUTABLE} -o ${mo} ${po}
-        COMMAND ${CMAKE_COMMAND} -E copy ${mo} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Languages/${lang}/dolphin-emu.mo
         DEPENDS ${po}
       )
     else()
@@ -395,6 +494,8 @@ if(APPLE)
   set_target_properties(dolphin-emu PROPERTIES
     MACOSX_BUNDLE true
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
+    XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/DolphinEmu.entitlements"
+    XCODE_ATTRIBUTE_OTHER_CODE_SIGN_FLAGS "--deep --options=runtime"
     OUTPUT_NAME Dolphin
     )
 
@@ -427,14 +528,48 @@ if(APPLE)
   endforeach()
 
   # Copy MoltenVK into the bundle
-  target_sources(dolphin-emu PRIVATE "${CMAKE_SOURCE_DIR}/Externals/MoltenVK/libvulkan.dylib")
-  set_source_files_properties("${CMAKE_SOURCE_DIR}/Externals/MoltenVK/libvulkan.dylib" PROPERTIES MACOSX_PACKAGE_LOCATION Frameworks)
+  if(ENABLE_VULKAN)
+    add_dependencies(dolphin-emu MoltenVK)
+    ExternalProject_Get_Property(MoltenVK SOURCE_DIR)
+    target_sources(dolphin-emu PRIVATE "${SOURCE_DIR}/Package/Release/MoltenVK/dylib/macOS/libMoltenVK.dylib")
+    set_source_files_properties("${SOURCE_DIR}/Package/Release/MoltenVK/dylib/macOS/libMoltenVK.dylib" PROPERTIES MACOSX_PACKAGE_LOCATION Frameworks GENERATED ON)
+  endif()
 
   # Update library references to make the bundle portable
   include(DolphinPostprocessBundle)
   dolphin_postprocess_bundle(dolphin-emu)
+  # Fix rpath
+  add_custom_command(TARGET dolphin-emu
+    POST_BUILD COMMAND
+    ${CMAKE_INSTALL_NAME_TOOL} -add_rpath "@executable_path/../Frameworks/"
+    $<TARGET_FILE:dolphin-emu>)
+
+  if(MACOS_CODE_SIGNING)
+    # Code sign make file builds
+    add_custom_command(TARGET dolphin-emu
+      POST_BUILD COMMAND
+      /usr/bin/codesign -f -s "${MACOS_CODE_SIGNING_IDENTITY}" --deep --options=runtime --entitlements "${CMAKE_SOURCE_DIR}/Source/Core/DolphinQt/DolphinEmu$<$<CONFIG:Debug>:Debug>.entitlements" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Dolphin.app" || true)
+    
+    # Code sign builds for build systems that do have release/debug variants (Xcode)
+    add_custom_command(TARGET dolphin-emu
+      POST_BUILD COMMAND
+      /usr/bin/codesign -f -s "${MACOS_CODE_SIGNING_IDENTITY}" --deep --options=runtime --entitlements "${CMAKE_SOURCE_DIR}/Source/Core/DolphinQt/DolphinEmuDebug.entitlements" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/Dolphin.app" || true)
+      
+    add_custom_command(TARGET dolphin-emu
+      POST_BUILD COMMAND
+      /usr/bin/codesign -f -s "${MACOS_CODE_SIGNING_IDENTITY}" --deep --options=runtime --entitlements "${CMAKE_SOURCE_DIR}/Source/Core/DolphinQt/DolphinEmu.entitlements" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/Dolphin.app" || true)
+  endif()
 else()
   install(TARGETS dolphin-emu RUNTIME DESTINATION ${bindir})
+endif()
+
+if(USE_MGBA)
+  target_sources(dolphin-emu PRIVATE
+    GBAHost.cpp
+    GBAHost.h
+    GBAWidget.cpp
+    GBAWidget.h
+  )
 endif()
 
 if(USE_DISCORD_PRESENCE)

@@ -1,14 +1,13 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
 
 #include "Common/Assert.h"
+#include "Common/Image.h"
 #include "Common/MsgHandler.h"
 #include "VideoCommon/AbstractStagingTexture.h"
 #include "VideoCommon/AbstractTexture.h"
-#include "VideoCommon/ImageWrite.h"
 #include "VideoCommon/RenderBase.h"
 
 AbstractTexture::AbstractTexture(const TextureConfig& c) : m_config(c)
@@ -48,9 +47,10 @@ bool AbstractTexture::Save(const std::string& filename, unsigned int level)
   if (!readback_texture->Map())
     return false;
 
-  return TextureToPng(reinterpret_cast<const u8*>(readback_texture->GetMappedPointer()),
-                      static_cast<int>(readback_texture->GetMappedStride()), filename, level_width,
-                      level_height);
+  return Common::SavePNG(filename,
+                         reinterpret_cast<const u8*>(readback_texture->GetMappedPointer()),
+                         Common::ImageByteFormat::RGBA, level_width, level_height,
+                         static_cast<int>(readback_texture->GetMappedStride()));
 }
 
 bool AbstractTexture::IsCompressedFormat(AbstractTextureFormat format)
@@ -113,6 +113,7 @@ u32 AbstractTexture::CalculateStrideForFormat(AbstractTextureFormat format, u32 
   case AbstractTextureFormat::DXT3:
   case AbstractTextureFormat::DXT5:
   case AbstractTextureFormat::BPTC:
+  case AbstractTextureFormat::RGBA32F:
     return static_cast<size_t>(std::max(1u, row_length / 4)) * 16;
   case AbstractTextureFormat::R16:
   case AbstractTextureFormat::D16:
@@ -126,7 +127,7 @@ u32 AbstractTexture::CalculateStrideForFormat(AbstractTextureFormat format, u32 
   case AbstractTextureFormat::D32F_S8:
     return static_cast<size_t>(row_length) * 8;
   default:
-    PanicAlert("Unhandled texture format.");
+    PanicAlertFmt("Unhandled texture format.");
     return 0;
   }
 }
@@ -140,6 +141,7 @@ u32 AbstractTexture::GetTexelSizeForFormat(AbstractTextureFormat format)
   case AbstractTextureFormat::DXT3:
   case AbstractTextureFormat::DXT5:
   case AbstractTextureFormat::BPTC:
+  case AbstractTextureFormat::RGBA32F:
     return 16;
   case AbstractTextureFormat::R16:
   case AbstractTextureFormat::D16:
@@ -153,7 +155,7 @@ u32 AbstractTexture::GetTexelSizeForFormat(AbstractTextureFormat format)
   case AbstractTextureFormat::D32F_S8:
     return 8;
   default:
-    PanicAlert("Unhandled texture format.");
+    PanicAlertFmt("Unhandled texture format.");
     return 0;
   }
 }

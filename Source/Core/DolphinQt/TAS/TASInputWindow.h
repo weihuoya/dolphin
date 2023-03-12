@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -23,20 +22,28 @@ class TASInputWindow : public QDialog
 public:
   explicit TASInputWindow(QWidget* parent);
 
+  int GetTurboPressFrames() const;
+  int GetTurboReleaseFrames() const;
+
 protected:
+  TASCheckBox* CreateButton(const QString& name);
   QGroupBox* CreateStickInputs(QString name, QSpinBox*& x_value, QSpinBox*& y_value, u16 max_x,
                                u16 max_y, Qt::Key x_shortcut_key, Qt::Key y_shortcut_key);
-  QBoxLayout* CreateSliderValuePairLayout(QString name, QSpinBox*& value, u16 max,
+  QBoxLayout* CreateSliderValuePairLayout(QString name, QSpinBox*& value, int default_, u16 max,
                                           Qt::Key shortcut_key, QWidget* shortcut_widget,
                                           bool invert = false);
-  QSpinBox* CreateSliderValuePair(QBoxLayout* layout, u16 max, QKeySequence shortcut_key_sequence,
-                                  Qt::Orientation orientation, QWidget* shortcut_widget,
-                                  bool invert = false);
+  QSpinBox* CreateSliderValuePair(QBoxLayout* layout, int default_, u16 max,
+                                  QKeySequence shortcut_key_sequence, Qt::Orientation orientation,
+                                  QWidget* shortcut_widget, bool invert = false);
   template <typename UX>
   void GetButton(TASCheckBox* button, UX& pad, UX mask);
   void GetSpinBoxU8(QSpinBox* spin, u8& controller_value);
   void GetSpinBoxU16(QSpinBox* spin, u16& controller_value);
+
+  QGroupBox* m_settings_box;
   QCheckBox* m_use_controller;
+  QSpinBox* m_turbo_press_frames;
+  QSpinBox* m_turbo_release_frames;
 
 private:
   std::map<TASCheckBox*, bool> m_checkbox_set_by_controller;
