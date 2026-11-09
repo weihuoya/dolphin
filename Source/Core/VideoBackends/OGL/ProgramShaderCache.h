@@ -1,6 +1,5 @@
 // Copyright 2011 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -10,7 +9,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "Common/GL/GLUtil.h"
+#include "Common/GL/GLExtensions/GLExtensions.h"
 #include "VideoCommon/AsyncShaderCompiler.h"
 
 namespace OGL
@@ -49,7 +48,6 @@ struct PipelineProgramKey
   u64 pixel_shader_id;
 
   bool operator==(const PipelineProgramKey& rhs) const;
-  bool operator!=(const PipelineProgramKey& rhs) const;
   bool operator<(const PipelineProgramKey& rhs) const;
 };
 
@@ -60,7 +58,7 @@ struct PipelineProgramKeyHash
 
 struct PipelineProgram
 {
-  PipelineProgramKey key;
+  PipelineProgramKey key{};
   SHADER shader;
   std::atomic_size_t reference_count{1};
   bool binary_retrieved = false;
@@ -70,6 +68,7 @@ class ProgramShaderCache
 {
 public:
   static void BindVertexFormat(const GLVertexFormat* vertex_format);
+  static void ReBindVertexFormat();
   static bool IsValidVertexFormatBound();
   static void InvalidateVertexFormat();
   static void InvalidateVertexFormatIfBound(GLuint vao);

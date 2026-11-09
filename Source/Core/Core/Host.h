@@ -1,10 +1,14 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <memory>
+#include <span>
 #include <string>
+#include <vector>
+
+#include "Common/CommonTypes.h"
 
 // Host - defines an interface for the emulator core to communicate back to the
 // OS-specific layer
@@ -23,26 +27,52 @@
 // The host can be just a command line app that opens a window, or a full blown debugger
 // interface.
 
+namespace HW::GBA
+{
+class Core;
+}  // namespace HW::GBA
+
+class GBAHostInterface
+{
+public:
+  virtual ~GBAHostInterface() = default;
+  virtual void GameChanged() = 0;
+  virtual void FrameEnded(std::span<const u32> video_buffer) = 0;
+};
+
 enum class HostMessageID
 {
   // Begin at 10 in case there is already messages with wParam = 0, 1, 2 and so on
   WMUserStop = 10,
-  WMUserCreate,
-  WMUserSetCursor,
   WMUserJobDispatch,
 };
 
-bool Host_UINeedsControllerState();
+std::vector<std::string> Host_GetPreferredLocales();
 bool Host_UIBlocksControllerState();
 bool Host_RendererHasFocus();
+bool Host_RendererHasFullFocus();
 bool Host_RendererIsFullscreen();
+bool Host_TASInputHasFocus();
+
 void Host_Message(HostMessageID id);
-void Host_NotifyMapLoaded();
-void Host_RefreshDSPDebuggerWindow();
+void Host_PPCSymbolsChanged();
+void Host_PPCBreakpointsChanged();
 void Host_RequestRenderWindowSize(int width, int height);
 void Host_UpdateDisasmDialog();
-void Host_UpdateMainFrame();
+void Host_JitCacheInvalidation();
+void Host_JitProfileDataWiped();
 void Host_UpdateTitle(const std::string& title);
 void Host_YieldToUI();
-void Host_UpdateProgressDialog(const char* caption, int position, int total);
 void Host_TitleChanged();
+
+void Host_UpdateDiscordClientID(const std::string& client_id = {});
+bool Host_UpdateDiscordPresenceRaw(const std::string& details = {}, const std::string& state = {},
+                                   const std::string& large_image_key = {},
+                                   const std::string& large_image_text = {},
+                                   const std::string& small_image_key = {},
+                                   const std::string& small_image_text = {},
+                                   const int64_t start_timestamp = 0,
+                                   const int64_t end_timestamp = 0, const int party_size = 0,
+                                   const int party_max = 0);
+
+std::unique_ptr<GBAHostInterface> Host_CreateGBAHost(std::weak_ptr<HW::GBA::Core> core);

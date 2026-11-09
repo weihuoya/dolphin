@@ -1,16 +1,16 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "Core/DSP/Jit/x64/DSPEmitter.h"
 
 #include "Common/CommonTypes.h"
 
 #include "Core/DSP/DSPCore.h"
-#include "Core/DSP/Jit/x64/DSPEmitter.h"
 
 using namespace Gen;
 
 /* It is safe to directly write to the address registers as they are
-   neither read not written by any extendable opcode. The same is true
+   neither read nor written by any extendable opcode. The same is true
    for memory accesses.
    It probably even is safe to write to all registers except for
    SR, ACx.x, AXx.x and PROD, which may be modified by the main op.
@@ -132,7 +132,7 @@ void DSPEmitter::l(const UDSPInstruction opc)
 }
 
 // LN $axD.D, @$arS
-// xxxx xxxx 01dd d0ss
+// xxxx xxxx 01dd d1ss
 // Load $axD.D/$acD.D with value from memory pointed by register $arS.
 // Add indexing register $ixS to register $arS.
 void DSPEmitter::ln(const UDSPInstruction opc)
@@ -355,16 +355,18 @@ void DSPEmitter::slnm(const UDSPInstruction opc)
   increase_addr_reg(DSP_REG_AR0, DSP_REG_AR0);
 }
 
-// LD $ax0.d, $ax1.r, @$arS
+// LD $ax0.D, $ax1.R, @$arS
 // xxxx xxxx 11dr 00ss
-// example for "nx'ld $AX0.L, $AX1.L, @$AR3"
-// Loads the word pointed by AR0 to AX0.H, then loads the word pointed by AR3
-// to AX0.L.  Increments AR0 and AR3.  If AR0 and AR3 point into the same
-// memory page (upper 6 bits of addr are the same -> games are not doing that!)
-// then the value pointed by AR0 is loaded to BOTH AX0.H and AX0.L.  If AR0
-// points into an invalid memory page (ie 0x2000), then AX0.H keeps its old
-// value. (not implemented yet) If AR3 points into an invalid memory page, then
-// AX0.L gets the same value as AX0.H. (not implemented yet)
+// Load register $ax0.D (either $ax0.l or $ax0.h) with value from memory pointed by register $arS.
+// Load register $ax1.R (either $ax1.l or $ax1.h) with value from memory pointed by register $ar3.
+// Increment both $arS and $ar3.
+// S cannot be 3, as that encodes LDAX.  Thus $arS and $ar3 are known to be distinct.
+// If $ar0 and $ar3 point into the same memory page (upper 6 bits of addr are the same -> games are
+// not doing that!) then the value pointed by $ar0 is loaded to BOTH $ax0.D and $ax1.R.
+// If $ar0 points into an invalid memory page (ie 0x2000), then $ax0.D keeps its old value. (not
+// implemented yet)
+// If $ar3 points into an invalid memory page, then $ax1.R gets the same value as $ax0.D. (not
+// implemented yet)
 void DSPEmitter::ld(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 5) & 0x1;
@@ -381,10 +383,10 @@ void DSPEmitter::ld(const UDSPInstruction opc)
   m_gpr.PutXReg(tmp);
   DSPJitRegCache c(m_gpr);
   TEST(16, R(ECX), Imm16(0xfc00));
-  FixupBranch not_equal = J_CC(CC_NE, true);
+  FixupBranch not_equal = J_CC(CC_NE, Jump::Near);
   pushExtValueFromMem2((rreg << 1) + DSP_REG_AXL1, sreg);
   m_gpr.FlushRegs(c);
-  FixupBranch after = J(true);
+  FixupBranch after = J(Jump::Near);
   SetJumpTarget(not_equal);  // else
   pushExtValueFromMem2((rreg << 1) + DSP_REG_AXL1, DSP_REG_AR3);
   m_gpr.FlushRegs(c);
@@ -397,6 +399,9 @@ void DSPEmitter::ld(const UDSPInstruction opc)
 
 // LDAX $axR, @$arS
 // xxxx xxxx 11sr 0011
+// Load register $axR.h with value from memory pointed by register $arS.
+// Load register $axR.l with value from memory pointed by register $ar3.
+// Increment both $arS and $ar3.
 void DSPEmitter::ldax(const UDSPInstruction opc)
 {
   u8 sreg = (opc >> 5) & 0x1;
@@ -412,10 +417,10 @@ void DSPEmitter::ldax(const UDSPInstruction opc)
   m_gpr.PutXReg(tmp);
   DSPJitRegCache c(m_gpr);
   TEST(16, R(ECX), Imm16(0xfc00));
-  FixupBranch not_equal = J_CC(CC_NE, true);
+  FixupBranch not_equal = J_CC(CC_NE, Jump::Near);
   pushExtValueFromMem2(rreg + DSP_REG_AXL0, sreg);
   m_gpr.FlushRegs(c);
-  FixupBranch after = J(true);  // else
+  FixupBranch after = J(Jump::Near);  // else
   SetJumpTarget(not_equal);
   pushExtValueFromMem2(rreg + DSP_REG_AXL0, DSP_REG_AR3);
   m_gpr.FlushRegs(c);
@@ -426,7 +431,7 @@ void DSPEmitter::ldax(const UDSPInstruction opc)
   increment_addr_reg(DSP_REG_AR3);
 }
 
-// LDN $ax0.d, $ax1.r, @$arS
+// LDN $ax0.D, $ax1.R, @$arS
 // xxxx xxxx 11dr 01ss
 void DSPEmitter::ldn(const UDSPInstruction opc)
 {
@@ -444,10 +449,10 @@ void DSPEmitter::ldn(const UDSPInstruction opc)
   m_gpr.PutXReg(tmp);
   DSPJitRegCache c(m_gpr);
   TEST(16, R(ECX), Imm16(0xfc00));
-  FixupBranch not_equal = J_CC(CC_NE, true);
+  FixupBranch not_equal = J_CC(CC_NE, Jump::Near);
   pushExtValueFromMem2((rreg << 1) + DSP_REG_AXL1, sreg);
   m_gpr.FlushRegs(c);
-  FixupBranch after = J(true);
+  FixupBranch after = J(Jump::Near);
   SetJumpTarget(not_equal);  // else
   pushExtValueFromMem2((rreg << 1) + DSP_REG_AXL1, DSP_REG_AR3);
   m_gpr.FlushRegs(c);
@@ -475,10 +480,10 @@ void DSPEmitter::ldaxn(const UDSPInstruction opc)
   m_gpr.PutXReg(tmp);
   DSPJitRegCache c(m_gpr);
   TEST(16, R(ECX), Imm16(0xfc00));
-  FixupBranch not_equal = J_CC(CC_NE, true);
+  FixupBranch not_equal = J_CC(CC_NE, Jump::Near);
   pushExtValueFromMem2(rreg + DSP_REG_AXL0, sreg);
   m_gpr.FlushRegs(c);
-  FixupBranch after = J(true);  // else
+  FixupBranch after = J(Jump::Near);  // else
   SetJumpTarget(not_equal);
   pushExtValueFromMem2(rreg + DSP_REG_AXL0, DSP_REG_AR3);
   m_gpr.FlushRegs(c);
@@ -489,7 +494,7 @@ void DSPEmitter::ldaxn(const UDSPInstruction opc)
   increment_addr_reg(DSP_REG_AR3);
 }
 
-// LDM $ax0.d, $ax1.r, @$arS
+// LDM $ax0.D, $ax1.R, @$arS
 // xxxx xxxx 11dr 10ss
 void DSPEmitter::ldm(const UDSPInstruction opc)
 {
@@ -507,10 +512,10 @@ void DSPEmitter::ldm(const UDSPInstruction opc)
   m_gpr.PutXReg(tmp);
   DSPJitRegCache c(m_gpr);
   TEST(16, R(ECX), Imm16(0xfc00));
-  FixupBranch not_equal = J_CC(CC_NE, true);
+  FixupBranch not_equal = J_CC(CC_NE, Jump::Near);
   pushExtValueFromMem2((rreg << 1) + DSP_REG_AXL1, sreg);
   m_gpr.FlushRegs(c);
-  FixupBranch after = J(true);
+  FixupBranch after = J(Jump::Near);
   SetJumpTarget(not_equal);  // else
   pushExtValueFromMem2((rreg << 1) + DSP_REG_AXL1, DSP_REG_AR3);
   m_gpr.FlushRegs(c);
@@ -538,10 +543,10 @@ void DSPEmitter::ldaxm(const UDSPInstruction opc)
   m_gpr.PutXReg(tmp);
   DSPJitRegCache c(m_gpr);
   TEST(16, R(ECX), Imm16(0xfc00));
-  FixupBranch not_equal = J_CC(CC_NE, true);
+  FixupBranch not_equal = J_CC(CC_NE, Jump::Near);
   pushExtValueFromMem2(rreg + DSP_REG_AXL0, sreg);
   m_gpr.FlushRegs(c);
-  FixupBranch after = J(true);  // else
+  FixupBranch after = J(Jump::Near);  // else
   SetJumpTarget(not_equal);
   pushExtValueFromMem2(rreg + DSP_REG_AXL0, DSP_REG_AR3);
   m_gpr.FlushRegs(c);
@@ -552,7 +557,7 @@ void DSPEmitter::ldaxm(const UDSPInstruction opc)
   increase_addr_reg(DSP_REG_AR3, DSP_REG_AR3);
 }
 
-// LDNM $ax0.d, $ax1.r, @$arS
+// LDNM $ax0.D, $ax1.R, @$arS
 // xxxx xxxx 11dr 11ss
 void DSPEmitter::ldnm(const UDSPInstruction opc)
 {
@@ -570,10 +575,10 @@ void DSPEmitter::ldnm(const UDSPInstruction opc)
   m_gpr.PutXReg(tmp);
   DSPJitRegCache c(m_gpr);
   TEST(16, R(ECX), Imm16(0xfc00));
-  FixupBranch not_equal = J_CC(CC_NE, true);
+  FixupBranch not_equal = J_CC(CC_NE, Jump::Near);
   pushExtValueFromMem2((rreg << 1) + DSP_REG_AXL1, sreg);
   m_gpr.FlushRegs(c);
-  FixupBranch after = J(true);
+  FixupBranch after = J(Jump::Near);
   SetJumpTarget(not_equal);  // else
   pushExtValueFromMem2((rreg << 1) + DSP_REG_AXL1, DSP_REG_AR3);
   m_gpr.FlushRegs(c);
@@ -601,10 +606,10 @@ void DSPEmitter::ldaxnm(const UDSPInstruction opc)
   m_gpr.PutXReg(tmp);
   DSPJitRegCache c(m_gpr);
   TEST(16, R(ECX), Imm16(0xfc00));
-  FixupBranch not_equal = J_CC(CC_NE, true);
+  FixupBranch not_equal = J_CC(CC_NE, Jump::Near);
   pushExtValueFromMem2(rreg + DSP_REG_AXL0, sreg);
   m_gpr.FlushRegs(c);
-  FixupBranch after = J(true);  // else
+  FixupBranch after = J(Jump::Near);  // else
   SetJumpTarget(not_equal);
   pushExtValueFromMem2(rreg + DSP_REG_AXL0, DSP_REG_AR3);
   m_gpr.FlushRegs(c);
@@ -665,7 +670,7 @@ void DSPEmitter::popExtValueToReg()
     if (m_store_index >= DSP_REG_ACM0 && m_store_index2 == -1)
     {
       TEST(32, R(EBX), Imm32(SR_40_MODE_BIT << 16));
-      FixupBranch not_40bit = J_CC(CC_Z, true);
+      FixupBranch not_40bit = J_CC(CC_Z, Jump::Near);
       DSPJitRegCache c(m_gpr);
       // if (g_dsp.r[DSP_REG_SR] & SR_40_MODE_BIT)
       //{

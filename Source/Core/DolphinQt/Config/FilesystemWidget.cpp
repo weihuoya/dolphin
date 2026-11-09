@@ -1,28 +1,30 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Config/FilesystemWidget.h"
 
 #include <QApplication>
 #include <QCoreApplication>
-#include <QFileDialog>
 #include <QFileInfo>
+#include <QGridLayout>
 #include <QHeaderView>
 #include <QMenu>
-#include <QProgressDialog>
 #include <QStandardItemModel>
 #include <QStyleFactory>
 #include <QTreeView>
-#include <QVBoxLayout>
 
 #include <future>
 
+#include "Common/StringUtil.h"
+
 #include "DiscIO/DiscExtractor.h"
+#include "DiscIO/DiscUtils.h"
 #include "DiscIO/Filesystem.h"
 #include "DiscIO/Volume.h"
 
+#include "DolphinQt/QtUtils/DolphinFileDialog.h"
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
+#include "DolphinQt/QtUtils/ParallelProgressDialog.h"
 #include "DolphinQt/Resources.h"
 
 #include "UICommon/UICommon.h"
@@ -52,7 +54,10 @@ FilesystemWidget::~FilesystemWidget() = default;
 
 void FilesystemWidget::CreateWidgets()
 {
-  auto* layout = new QVBoxLayout;
+  // Note: At least with KDE Plasma,
+  //  QTreeView takes on an ugly square-corner style when alone in a QVBoxLayout.
+  // QGridLayout does not produce this problem.
+  auto* const layout = new QGridLayout{this};
 
   m_tree_model = new QStandardItemModel(0, 2);
   m_tree_model->setHorizontalHeaderLabels({tr("Name"), tr("Size")});
@@ -60,12 +65,14 @@ void FilesystemWidget::CreateWidgets()
   m_tree_view = new QTreeView(this);
   m_tree_view->setModel(m_tree_model);
   m_tree_view->setContextMenuPolicy(Qt::CustomContextMenu);
+  m_tree_model->setParent(m_tree_view);
 
   auto* header = m_tree_view->header();
 
   header->setSectionResizeMode(0, QHeaderView::Stretch);
   header->setSectionResizeMode(1, QHeaderView::ResizeToContents);
   header->setStretchLastSection(false);
+  header->setDefaultAlignment(Qt::AlignCenter);
 
 // Windows: Set style to (old) windows, which draws branch lines
 #ifdef _WIN32
@@ -74,8 +81,6 @@ void FilesystemWidget::CreateWidgets()
 #endif
 
   layout->addWidget(m_tree_view);
-
-  setLayout(layout);
 }
 
 void FilesystemWidget::ConnectWidgets()
@@ -87,12 +92,12 @@ void FilesystemWidget::ConnectWidgets()
 void FilesystemWidget::PopulateView()
 {
   // Cache these two icons, the tree will use them a lot.
-  m_folder_icon = Resources::GetScaledIcon("isoproperties_folder");
-  m_file_icon = Resources::GetScaledIcon("isoproperties_file");
+  m_folder_icon = Resources::GetResourceIcon("isoproperties_folder");
+  m_file_icon = Resources::GetResourceIcon("isoproperties_file");
 
   auto* disc = new QStandardItem(tr("Disc"));
   disc->setEditable(false);
-  disc->setIcon(Resources::GetScaledIcon("isoproperties_disc"));
+  disc->setIcon(Resources::GetResourceIcon("isoproperties_disc"));
   disc->setData(QVariant::fromValue(EntryType::Disc), ENTRY_TYPE);
   m_tree_model->appendRow(disc);
   m_tree_view->expand(disc->index());
@@ -101,10 +106,10 @@ void FilesystemWidget::PopulateView()
 
   for (size_t i = 0; i < partitions.size(); i++)
   {
-    auto* item = new QStandardItem(tr("Partition %1").arg(i));
+    auto* item = new QStandardItem;
     item->setEditable(false);
 
-    item->setIcon(Resources::GetScaledIcon("isoproperties_disc"));
+    item->setIcon(Resources::GetResourceIcon("isoproperties_disc"));
     item->setData(static_cast<qlonglong>(i), ENTRY_PARTITION);
     item->setData(QVariant::fromValue(EntryType::Partition), ENTRY_TYPE);
 
@@ -123,6 +128,58 @@ void FilesystemWidget::PopulateView()
 void FilesystemWidget::PopulateDirectory(int partition_id, QStandardItem* root,
                                          const DiscIO::Partition& partition)
 {
+  auto partition_type = m_volume->GetPartitionType(partition);
+  auto game_id = m_volume->GetGameID(partition);
+  auto title_id = m_volume->GetTitleID(partition);
+
+  QString text = root->text();
+
+  if (!text.isEmpty())
+    text += QStringLiteral(" - ");
+
+  if (partition_type)
+  {
+    QString partition_type_str;
+    switch (partition_type.value())
+    {
+    case DiscIO::PARTITION_DATA:
+      partition_type_str = tr("Data Partition (%1)").arg(partition_type.value());
+      break;
+    case DiscIO::PARTITION_UPDATE:
+      partition_type_str = tr("Update Partition (%1)").arg(partition_type.value());
+      break;
+    case DiscIO::PARTITION_CHANNEL:
+      partition_type_str = tr("Channel Partition (%1)").arg(partition_type.value());
+      break;
+    case DiscIO::PARTITION_INSTALL:
+      partition_type_str = tr("Install Partition (%1)").arg(partition_type.value());
+      break;
+    default:
+      partition_type_str =
+          tr("Other Partition (%1)").arg(partition_type.value(), 8, 16, QLatin1Char('0'));
+      break;
+    }
+    text += partition_type_str + QStringLiteral(" - ");
+  }
+
+  text += QString::fromStdString(game_id);
+
+  if (title_id)
+  {
+    text += QStringLiteral(" - %1 (").arg(title_id.value(), 16, 16, QLatin1Char('0'));
+    for (u32 i = 0; i < 4; i++)
+    {
+      char c = static_cast<char>(title_id.value() >> 8 * (3 - i));
+      if (Common::IsPrintableCharacter(c))
+        text += QLatin1Char(c);
+      else
+        text += QLatin1Char('.');
+    }
+    text += QLatin1Char(')');
+  }
+
+  root->setText(text);
+
   const DiscIO::FileSystem* const file_system = m_volume->GetFileSystem(partition);
   if (file_system)
     PopulateDirectory(partition_id, root, file_system->GetRoot());
@@ -157,7 +214,7 @@ void FilesystemWidget::PopulateDirectory(int partition_id, QStandardItem* root,
 
 QString FilesystemWidget::SelectFolder()
 {
-  return QFileDialog::getExistingDirectory(this, QObject::tr("Choose the folder to extract to"));
+  return DolphinFileDialog::getExistingDirectory(this, QObject::tr("Choose Folder to Extract To"));
 }
 
 void FilesystemWidget::ShowContextMenu(const QPoint&)
@@ -169,6 +226,7 @@ void FilesystemWidget::ShowContextMenu(const QPoint&)
   auto* item = m_tree_model->itemFromIndex(selection->selectedIndexes()[0]);
 
   QMenu* menu = new QMenu(this);
+  menu->setAttribute(Qt::WA_DeleteOnClose, true);
 
   EntryType type = item->data(ENTRY_TYPE).value<EntryType>();
 
@@ -209,7 +267,7 @@ void FilesystemWidget::ShowContextMenu(const QPoint&)
   switch (type)
   {
   case EntryType::Disc:
-    menu->addAction(tr("Extract Entire Disc..."), this, [this, path] {
+    menu->addAction(tr("Extract Entire Disc..."), this, [this] {
       auto folder = SelectFolder();
 
       if (folder.isEmpty())
@@ -242,7 +300,7 @@ void FilesystemWidget::ShowContextMenu(const QPoint&)
   case EntryType::File:
     menu->addAction(tr("Extract File..."), this, [this, partition, path] {
       auto dest =
-          QFileDialog::getSaveFileName(this, tr("Save File to"), QFileInfo(path).fileName());
+          DolphinFileDialog::getSaveFileName(this, tr("Save File To"), QFileInfo(path).fileName());
 
       if (!dest.isEmpty())
         ExtractFile(partition, path, dest);
@@ -282,28 +340,34 @@ void FilesystemWidget::ExtractDirectory(const DiscIO::Partition& partition, cons
   std::unique_ptr<DiscIO::FileInfo> info = filesystem->FindFileInfo(path.toStdString());
   u32 size = info->GetTotalChildren();
 
-  QProgressDialog* dialog = new QProgressDialog(this);
-  dialog->setWindowFlags(dialog->windowFlags() & ~Qt::WindowContextHelpButtonHint);
-  dialog->setMinimum(0);
-  dialog->setMaximum(size);
-  dialog->show();
-  dialog->setWindowTitle(tr("Progress"));
+  ParallelProgressDialog dialog(this);
+  dialog.GetRaw()->setMinimum(0);
+  dialog.GetRaw()->setMaximum(size);
+  dialog.GetRaw()->setWindowTitle(tr("Progress"));
 
-  bool all = path.isEmpty();
+  const bool all = path.isEmpty();
 
-  DiscIO::ExportDirectory(
-      *m_volume, partition, *info, true, path.toStdString(), out.toStdString(),
-      [all, dialog](const std::string& current) {
-        dialog->setLabelText(
-            (all ? QObject::tr("Extracting All Files...") : QObject::tr("Extracting Directory..."))
-                .append(QStringLiteral(" %1").arg(QString::fromStdString(current))));
-        dialog->setValue(dialog->value() + 1);
+  std::future<void> future = std::async(std::launch::async, [&] {
+    int progress = 0;
 
-        QCoreApplication::processEvents();
-        return dialog->wasCanceled();
-      });
+    DiscIO::ExportDirectory(
+        *m_volume, partition, *info, true, path.toStdString(), out.toStdString(),
+        [all, &dialog, &progress](const std::string& current) {
+          dialog.SetLabelText(
+              (all ? QObject::tr("Extracting All Files...") :
+                     QObject::tr("Extracting Directory..."))
+                  .append(QStringLiteral(" %1").arg(QString::fromStdString(current))));
+          dialog.SetValue(++progress);
 
-  dialog->close();
+          QCoreApplication::processEvents();
+          return dialog.WasCanceled();
+        });
+
+    dialog.Reset();
+  });
+
+  dialog.GetRaw()->exec();
+  future.get();
 }
 
 void FilesystemWidget::ExtractFile(const DiscIO::Partition& partition, const QString& path,

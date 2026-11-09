@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -16,6 +15,8 @@
 #elif defined(__OpenBSD__)
 #include <endian.h>
 #endif
+
+#include <fmt/format.h>
 
 #include "Common/CommonTypes.h"
 
@@ -126,6 +127,22 @@ inline u64 swap64(const u8* data)
   return swap64(value);
 }
 
+inline void WriteSwap16(u8* data, u16 value)
+{
+  value = swap16(value);
+  std::memcpy(data, &value, sizeof(u16));
+}
+inline void WriteSwap32(u8* data, u32 value)
+{
+  value = swap32(value);
+  std::memcpy(data, &value, sizeof(u32));
+}
+inline void WriteSwap64(u8* data, u64 value)
+{
+  value = swap64(value);
+  std::memcpy(data, &value, sizeof(u64));
+}
+
 template <int count>
 void swap(u8*);
 
@@ -184,3 +201,15 @@ private:
   value_type raw;
 };
 }  // Namespace Common
+
+template <typename value_type>
+struct fmt::formatter<Common::BigEndianValue<value_type>>
+{
+  fmt::formatter<value_type> m_formatter;
+  constexpr auto parse(format_parse_context& ctx) { return m_formatter.parse(ctx); }
+  template <typename FormatContext>
+  auto format(const Common::BigEndianValue<value_type>& value, FormatContext& ctx) const
+  {
+    return m_formatter.format(value.operator value_type(), ctx);
+  }
+};

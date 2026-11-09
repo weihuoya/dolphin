@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -13,7 +12,7 @@ namespace ExpansionInterface
 class CEXIAD16 : public IEXIDevice
 {
 public:
-  CEXIAD16();
+  explicit CEXIAD16(Core::System& system);
   void SetCS(int cs) override;
   bool IsPresent() const override;
   void DoState(PointerWrap& p) override;
@@ -29,7 +28,7 @@ private:
   union AD16Reg
   {
     u32 U32 = 0;
-    u32 U8[4];
+    u8 U8[4];
   };
 
   // STATE_TO_SAVE

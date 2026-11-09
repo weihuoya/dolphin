@@ -1,19 +1,17 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <cinttypes>
+#include "Common/x64Emitter.h"
+
 #include <cstring>
 
 #include "Common/CPUDetect.h"
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
-#include "Common/x64Emitter.h"
 #include "Common/x64Reg.h"
 
 namespace Gen
 {
-// TODO(ector): Add EAX special casing, for ever so slightly smaller code.
 struct NormalOpDef
 {
   u8 toRm8, toRm32, fromRm8, fromRm32, imm8, imm32, simm8, eaximm8, eaximm32, ext;
@@ -102,46 +100,73 @@ enum class FloatOp
   Invalid = -1,
 };
 
-void XEmitter::SetCodePtr(u8* ptr)
+void XEmitter::SetCodePtr(u8* ptr, u8* end, bool write_failed)
 {
   code = ptr;
-}
-
-const u8* XEmitter::GetCodePtr() const
-{
-  return code;
-}
-
-u8* XEmitter::GetWritableCodePtr()
-{
-  return code;
+  m_code_end = end;
+  m_write_failed = write_failed;
 }
 
 void XEmitter::Write8(u8 value)
 {
+  if (code >= m_code_end)
+  {
+    code = m_code_end;
+    m_write_failed = true;
+    return;
+  }
+
   *code++ = value;
 }
 
 void XEmitter::Write16(u16 value)
 {
+  if (code + sizeof(u16) > m_code_end)
+  {
+    code = m_code_end;
+    m_write_failed = true;
+    return;
+  }
+
   std::memcpy(code, &value, sizeof(u16));
   code += sizeof(u16);
 }
 
 void XEmitter::Write32(u32 value)
 {
+  if (code + sizeof(u32) > m_code_end)
+  {
+    code = m_code_end;
+    m_write_failed = true;
+    return;
+  }
+
   std::memcpy(code, &value, sizeof(u32));
   code += sizeof(u32);
 }
 
 void XEmitter::Write64(u64 value)
 {
+  if (code + sizeof(u64) > m_code_end)
+  {
+    code = m_code_end;
+    m_write_failed = true;
+    return;
+  }
+
   std::memcpy(code, &value, sizeof(u64));
   code += sizeof(u64);
 }
 
 void XEmitter::ReserveCodeSpace(int bytes)
 {
+  if (code + bytes > m_code_end)
+  {
+    code = m_code_end;
+    m_write_failed = true;
+    return;
+  }
+
   for (int i = 0; i < bytes; i++)
     *code++ = 0xCC;
 }
@@ -225,7 +250,7 @@ void OpArg::WriteVEX(XEmitter* emit, X64Reg regOp1, X64Reg regOp2, int L, int pp
   int X = !(indexReg & 8);
   int B = !(offsetOrBaseReg & 8);
 
-  int vvvv = (regOp2 == X64Reg::INVALID_REG) ? 0xf : (regOp2 ^ 0xf);
+  u8 vvvv = (regOp2 == X64Reg::INVALID_REG) ? 0xf : (regOp2 ^ 0xf);
 
   // do we need any VEX fields that only appear in the three-byte form?
   if (X == 1 && B == 1 && W == 0 && mmmmm == 1)
@@ -264,73 +289,51 @@ void OpArg::WriteRest(XEmitter* emit, int extraBytes, X64Reg _operandReg,
     s64 distance = (s64)offset - (s64)ripAddr;
     ASSERT_MSG(DYNA_REC,
                (distance < 0x80000000LL && distance >= -0x80000000LL) || !warn_64bit_offset,
-               "WriteRest: op out of range (0x%" PRIx64 " uses 0x%" PRIx64 ")", ripAddr, offset);
+               "WriteRest: op out of range ({:#x} uses {:#x})", ripAddr, offset);
     s32 offs = (s32)distance;
     emit->Write32((u32)offs);
     return;
   }
 
-  if (scale == 0)
+  if (scale == SCALE_NONE)
   {
     // Oh, no memory, Just a reg.
     mod = 3;  // 11
   }
+  else if (scale >= SCALE_NOBASE_2 && scale <= SCALE_NOBASE_8)
+  {
+    SIB = true;
+    mod = 0;
+    _offsetOrBaseReg = 5;
+    // Always has 32-bit displacement
+  }
   else
   {
-    // Ah good, no scaling.
-    if (scale == SCALE_ATREG && !((_offsetOrBaseReg & 7) == 4 || (_offsetOrBaseReg & 7) == 5))
-    {
-      // Okay, we're good. No SIB necessary.
-      int ioff = (int)offset;
-      if (ioff == 0)
-      {
-        mod = 0;
-      }
-      else if (ioff < -128 || ioff > 127)
-      {
-        mod = 2;  // 32-bit displacement
-      }
-      else
-      {
-        mod = 1;  // 8-bit displacement
-      }
-    }
-    else if (scale >= SCALE_NOBASE_2 && scale <= SCALE_NOBASE_8)
+    if (scale != SCALE_ATREG)
     {
       SIB = true;
-      mod = 0;
-      _offsetOrBaseReg = 5;
+    }
+    else if ((_offsetOrBaseReg & 7) == 4)
+    {
+      // Special case for which SCALE_ATREG needs SIB
+      SIB = true;
+      ireg = _offsetOrBaseReg;
+    }
+
+    // Okay, we're fine. Just disp encoding.
+    // We need displacement. Which size?
+    int ioff = (int)(s64)offset;
+    if (ioff == 0 && (_offsetOrBaseReg & 7) != 5)
+    {
+      mod = 0;  // No displacement
+    }
+    else if (ioff >= -128 && ioff <= 127)
+    {
+      mod = 1;  // 8-bit displacement
     }
     else
     {
-      if ((_offsetOrBaseReg & 7) == 4)  // this would occupy the SIB encoding :(
-      {
-        // So we have to fake it with SIB encoding :(
-        SIB = true;
-      }
-
-      if (scale >= SCALE_1 && scale < SCALE_ATREG)
-      {
-        SIB = true;
-      }
-
-      if (scale == SCALE_ATREG && ((_offsetOrBaseReg & 7) == 4))
-      {
-        SIB = true;
-        ireg = _offsetOrBaseReg;
-      }
-
-      // Okay, we're fine. Just disp encoding.
-      // We need displacement. Which size?
-      int ioff = (int)(s64)offset;
-      if (ioff < -128 || ioff > 127)
-      {
-        mod = 2;  // 32-bit displacement
-      }
-      else
-      {
-        mod = 1;  // 8-bit displacement
-      }
+      mod = 2;  // 32-bit displacement
     }
   }
 
@@ -340,7 +343,7 @@ void OpArg::WriteRest(XEmitter* emit, int extraBytes, X64Reg _operandReg,
   if (SIB)
     oreg = 4;
 
-  emit->WriteModRM(mod, _operandReg & 7, oreg & 7);
+  emit->WriteModRM(mod, _operandReg, oreg);
 
   if (SIB)
   {
@@ -409,26 +412,30 @@ void XEmitter::Rex(int w, int r, int x, int b)
     Write8(rx);
 }
 
-void XEmitter::JMP(const u8* addr, bool force5Bytes)
+void XEmitter::JMP(const u8* addr, bool force_near_padding)
 {
   u64 fn = (u64)addr;
-  if (!force5Bytes)
+  s64 distance = (s64)(fn - ((u64)code + SHORT_JMP_LEN));
+  if (distance < -0x80 || distance >= 0x80)
   {
-    s64 distance = (s64)(fn - ((u64)code + 2));
-    ASSERT_MSG(DYNA_REC, distance >= -0x80 && distance < 0x80,
-               "Jump target too far away, needs force5Bytes = true");
-    // 8 bits will do
-    Write8(0xEB);
-    Write8((u8)(s8)distance);
+    distance = (s64)(fn - ((u64)code + NEAR_JMP_LEN));
+    ASSERT_MSG(DYNA_REC, distance >= -0x80000000LL && distance < 0x80000000LL,
+               "Jump target too far away ({}), needs indirect register", distance);
+    Write8(0xE9);
+    Write32((u32)(s32)distance);
   }
   else
   {
-    s64 distance = (s64)(fn - ((u64)code + 5));
-
-    ASSERT_MSG(DYNA_REC, distance >= -0x80000000LL && distance < 0x80000000LL,
-               "Jump target too far away, needs indirect register");
-    Write8(0xE9);
-    Write32((u32)(s32)distance);
+    Write8(0xEB);
+    Write8((u8)(s8)distance);
+    if (force_near_padding)
+    {
+      for (int i = 0; i < NEAR_JMP_LEN - SHORT_JMP_LEN; i++)
+      {
+        // INT3 is more efficient than NOP if never executed, as it stops CPU speculation.
+        INT3();
+      }
+    }
   }
 }
 
@@ -465,7 +472,7 @@ void XEmitter::CALL(const void* fnptr)
 {
   u64 distance = u64(fnptr) - (u64(code) + 5);
   ASSERT_MSG(DYNA_REC, distance < 0x0000000080000000ULL || distance >= 0xFFFFFFFF80000000ULL,
-             "CALL out of range (%p calls %p)", code, fnptr);
+             "CALL out of range ({} calls {})", fmt::ptr(code), fmt::ptr(fnptr));
   Write8(0xE8);
   Write32(u32(distance));
 }
@@ -477,15 +484,23 @@ FixupBranch XEmitter::CALL()
   branch.ptr = code + 5;
   Write8(0xE8);
   Write32(0);
+
+  // If we couldn't write the full call instruction, indicate that in the returned FixupBranch by
+  // setting the branch's address to null. This will prevent a later SetJumpTarget() from writing to
+  // invalid memory.
+  if (HasWriteFailed())
+    branch.ptr = nullptr;
+
   return branch;
 }
 
-FixupBranch XEmitter::J(bool force5bytes)
+FixupBranch XEmitter::J(const Jump jump)
 {
   FixupBranch branch;
-  branch.type = force5bytes ? FixupBranch::Type::Branch32Bit : FixupBranch::Type::Branch8Bit;
-  branch.ptr = code + (force5bytes ? 5 : 2);
-  if (!force5bytes)
+  const bool is_near_jump = jump == Jump::Near;
+  branch.type = is_near_jump ? FixupBranch::Type::Branch32Bit : FixupBranch::Type::Branch8Bit;
+  branch.ptr = code + (is_near_jump ? 5 : 2);
+  if (!is_near_jump)
   {
     // 8 bits will do
     Write8(0xEB);
@@ -496,15 +511,23 @@ FixupBranch XEmitter::J(bool force5bytes)
     Write8(0xE9);
     Write32(0);
   }
+
+  // If we couldn't write the full jump instruction, indicate that in the returned FixupBranch by
+  // setting the branch's address to null. This will prevent a later SetJumpTarget() from writing to
+  // invalid memory.
+  if (HasWriteFailed())
+    branch.ptr = nullptr;
+
   return branch;
 }
 
-FixupBranch XEmitter::J_CC(CCFlags conditionCode, bool force5bytes)
+FixupBranch XEmitter::J_CC(CCFlags conditionCode, const Jump jump)
 {
   FixupBranch branch;
-  branch.type = force5bytes ? FixupBranch::Type::Branch32Bit : FixupBranch::Type::Branch8Bit;
-  branch.ptr = code + (force5bytes ? 6 : 2);
-  if (!force5bytes)
+  const bool is_near_jump = jump == Jump::Near;
+  branch.type = is_near_jump ? FixupBranch::Type::Branch32Bit : FixupBranch::Type::Branch8Bit;
+  branch.ptr = code + (is_near_jump ? 6 : 2);
+  if (!is_near_jump)
   {
     // 8 bits will do
     Write8(0x70 + conditionCode);
@@ -516,6 +539,13 @@ FixupBranch XEmitter::J_CC(CCFlags conditionCode, bool force5bytes)
     Write8(0x80 + conditionCode);
     Write32(0);
   }
+
+  // If we couldn't write the full jump instruction, indicate that in the returned FixupBranch by
+  // setting the branch's address to null. This will prevent a later SetJumpTarget() from writing to
+  // invalid memory.
+  if (HasWriteFailed())
+    branch.ptr = nullptr;
+
   return branch;
 }
 
@@ -527,7 +557,7 @@ void XEmitter::J_CC(CCFlags conditionCode, const u8* addr)
   {
     distance = (s64)(fn - ((u64)code + 6));
     ASSERT_MSG(DYNA_REC, distance >= -0x80000000LL && distance < 0x80000000LL,
-               "Jump target too far away, needs indirect register");
+               "Jump target too far away ({}), needs indirect register", distance);
     Write8(0x0F);
     Write8(0x80 + conditionCode);
     Write32((u32)(s32)distance);
@@ -541,18 +571,21 @@ void XEmitter::J_CC(CCFlags conditionCode, const u8* addr)
 
 void XEmitter::SetJumpTarget(const FixupBranch& branch)
 {
+  if (!branch.ptr)
+    return;
+
   if (branch.type == FixupBranch::Type::Branch8Bit)
   {
     s64 distance = (s64)(code - branch.ptr);
     ASSERT_MSG(DYNA_REC, distance >= -0x80 && distance < 0x80,
-               "Jump target too far away, needs force5Bytes = true");
+               "Jump::Short target too far away ({}), needs Jump::Near", distance);
     branch.ptr[-1] = (u8)(s8)distance;
   }
   else if (branch.type == FixupBranch::Type::Branch32Bit)
   {
     s64 distance = (s64)(code - branch.ptr);
     ASSERT_MSG(DYNA_REC, distance >= -0x80000000LL && distance < 0x80000000LL,
-               "Jump target too far away, needs indirect register");
+               "Jump::Near target too far away ({}), needs indirect register", distance);
 
     s32 valid_distance = static_cast<s32>(distance);
     std::memcpy(&branch.ptr[-4], &valid_distance, sizeof(s32));
@@ -871,7 +904,7 @@ void XEmitter::UD2()
 void XEmitter::PREFETCH(PrefetchLevel level, OpArg arg)
 {
   ASSERT_MSG(DYNA_REC, !arg.IsImm(), "PREFETCH - Imm argument");
-  arg.operandReg = (u8)level;
+  arg.operandReg = static_cast<u8>(level);
   arg.WriteREX(this, 0, 0);
   Write8(0x0F);
   Write8(0x18);
@@ -980,14 +1013,14 @@ void XEmitter::TZCNT(int bits, X64Reg dest, const OpArg& src)
 {
   CheckFlags();
   if (!cpu_info.bBMI1)
-    PanicAlert("Trying to use BMI1 on a system that doesn't support it. Bad programmer.");
+    PanicAlertFmt("Trying to use BMI1 on a system that doesn't support it. Bad programmer.");
   WriteBitSearchType(bits, dest, src, 0xBC, true);
 }
 void XEmitter::LZCNT(int bits, X64Reg dest, const OpArg& src)
 {
   CheckFlags();
   if (!cpu_info.bLZCNT)
-    PanicAlert("Trying to use LZCNT on a system that doesn't support it. Bad programmer.");
+    PanicAlertFmt("Trying to use LZCNT on a system that doesn't support it. Bad programmer.");
   WriteBitSearchType(bits, dest, src, 0xBD, true);
 }
 
@@ -1487,7 +1520,7 @@ void OpArg::WriteNormalOp(XEmitter* emit, bool toRM, NormalOp op, const OpArg& o
     }
     else
     {
-      ASSERT_MSG(DYNA_REC, 0, "WriteNormalOp - Unhandled case %d %d", operand.scale, bits);
+      ASSERT_MSG(DYNA_REC, 0, "WriteNormalOp - Unhandled case {} {}", operand.scale, bits);
     }
 
     // pass extension in REG of ModRM
@@ -1591,14 +1624,15 @@ void XEmitter::XOR(int bits, const OpArg& a1, const OpArg& a2)
 }
 void XEmitter::MOV(int bits, const OpArg& a1, const OpArg& a2)
 {
-  if (bits == 64 && a1.IsSimpleReg() && a2.scale == SCALE_IMM64 &&
-      a2.offset == static_cast<u32>(a2.offset))
+  if (bits == 64 && a1.IsSimpleReg() &&
+      ((a2.scale == SCALE_IMM64 && a2.offset == static_cast<u32>(a2.offset)) ||
+       (a2.scale == SCALE_IMM32 && static_cast<s32>(a2.offset) >= 0)))
   {
     WriteNormalOp(32, NormalOp::MOV, a1, a2.AsImm32());
     return;
   }
   if (a1.IsSimpleReg() && a2.IsSimpleReg() && a1.GetSimpleReg() == a2.GetSimpleReg())
-    ERROR_LOG(DYNA_REC, "Redundant MOV @ %p - bug in JIT?", code);
+    ERROR_LOG_FMT(DYNA_REC, "Redundant MOV @ {} - bug in JIT?", fmt::ptr(code));
   WriteNormalOp(bits, NormalOp::MOV, a1, a2);
 }
 void XEmitter::TEST(int bits, const OpArg& a1, const OpArg& a2)
@@ -1814,8 +1848,9 @@ void XEmitter::WriteVEXOp(u8 opPrefix, u16 op, X64Reg regOp1, X64Reg regOp2, con
 {
   int mmmmm = GetVEXmmmmm(op);
   int pp = GetVEXpp(opPrefix);
-  // FIXME: we currently don't support 256-bit instructions, and "size" is not the vector size here
-  arg.WriteVEX(this, regOp1, regOp2, 0, pp, mmmmm, W);
+  // Note that mixing an XMM register with a YMM register is invalid, which isn't checked here.
+  int L = (regOp1 != INVALID_REG && regOp1 & 0x100) || (regOp2 != INVALID_REG && regOp2 & 0x100);
+  arg.WriteVEX(this, regOp1, regOp2, L, pp, mmmmm, W);
   Write8(op & 0xFF);
   arg.WriteRest(this, extrabytes, regOp1);
 }
@@ -1827,26 +1862,33 @@ void XEmitter::WriteVEXOp4(u8 opPrefix, u16 op, X64Reg regOp1, X64Reg regOp2, co
   Write8((u8)regOp3 << 4);
 }
 
+static void CheckAVXSupport()
+{
+  if (!cpu_info.bAVX)
+    PanicAlertFmt("Trying to use AVX on a system that doesn't support it. Bad programmer.");
+}
+
 void XEmitter::WriteAVXOp(u8 opPrefix, u16 op, X64Reg regOp1, X64Reg regOp2, const OpArg& arg,
                           int W, int extrabytes)
 {
-  if (!cpu_info.bAVX)
-    PanicAlert("Trying to use AVX on a system that doesn't support it. Bad programmer.");
+  CheckAVXSupport();
   WriteVEXOp(opPrefix, op, regOp1, regOp2, arg, W, extrabytes);
 }
 
 void XEmitter::WriteAVXOp4(u8 opPrefix, u16 op, X64Reg regOp1, X64Reg regOp2, const OpArg& arg,
                            X64Reg regOp3, int W)
 {
-  if (!cpu_info.bAVX)
-    PanicAlert("Trying to use AVX on a system that doesn't support it. Bad programmer.");
+  CheckAVXSupport();
   WriteVEXOp4(opPrefix, op, regOp1, regOp2, arg, regOp3, W);
 }
 
 void XEmitter::WriteFMA3Op(u8 op, X64Reg regOp1, X64Reg regOp2, const OpArg& arg, int W)
 {
   if (!cpu_info.bFMA)
-    PanicAlert("Trying to use FMA3 on a system that doesn't support it. Computer is v. f'n madd.");
+  {
+    PanicAlertFmt(
+        "Trying to use FMA3 on a system that doesn't support it. Computer is v. f'n madd.");
+  }
   WriteVEXOp(0x66, 0x3800 | op, regOp1, regOp2, arg, W);
 }
 
@@ -1854,7 +1896,10 @@ void XEmitter::WriteFMA4Op(u8 op, X64Reg dest, X64Reg regOp1, X64Reg regOp2, con
                            int W)
 {
   if (!cpu_info.bFMA4)
-    PanicAlert("Trying to use FMA4 on a system that doesn't support it. Computer is v. f'n madd.");
+  {
+    PanicAlertFmt(
+        "Trying to use FMA4 on a system that doesn't support it. Computer is v. f'n madd.");
+  }
   WriteVEXOp4(0x66, 0x3A00 | op, dest, regOp1, arg, regOp2, W);
 }
 
@@ -1862,10 +1907,10 @@ void XEmitter::WriteBMIOp(int size, u8 opPrefix, u16 op, X64Reg regOp1, X64Reg r
                           const OpArg& arg, int extrabytes)
 {
   if (arg.IsImm())
-    PanicAlert("BMI1/2 instructions don't support immediate operands.");
+    PanicAlertFmt("BMI1/2 instructions don't support immediate operands.");
   if (size != 32 && size != 64)
-    PanicAlert("BMI1/2 instructions only support 32-bit and 64-bit modes!");
-  int W = size == 64;
+    PanicAlertFmt("BMI1/2 instructions only support 32-bit and 64-bit modes!");
+  const int W = size == 64;
   WriteVEXOp(opPrefix, op, regOp1, regOp2, arg, W, extrabytes);
 }
 
@@ -1874,7 +1919,7 @@ void XEmitter::WriteBMI1Op(int size, u8 opPrefix, u16 op, X64Reg regOp1, X64Reg 
 {
   CheckFlags();
   if (!cpu_info.bBMI1)
-    PanicAlert("Trying to use BMI1 on a system that doesn't support it. Bad programmer.");
+    PanicAlertFmt("Trying to use BMI1 on a system that doesn't support it. Bad programmer.");
   WriteBMIOp(size, opPrefix, op, regOp1, regOp2, arg, extrabytes);
 }
 
@@ -1882,7 +1927,7 @@ void XEmitter::WriteBMI2Op(int size, u8 opPrefix, u16 op, X64Reg regOp1, X64Reg 
                            const OpArg& arg, int extrabytes)
 {
   if (!cpu_info.bBMI2)
-    PanicAlert("Trying to use BMI2 on a system that doesn't support it. Bad programmer.");
+    PanicAlertFmt("Trying to use BMI2 on a system that doesn't support it. Bad programmer.");
   WriteBMIOp(size, opPrefix, op, regOp1, regOp2, arg, extrabytes);
 }
 
@@ -2474,19 +2519,19 @@ void XEmitter::PUNPCKLQDQ(X64Reg dest, const OpArg& arg)
   WriteSSEOp(0x66, 0x6C, dest, arg);
 }
 
-void XEmitter::PSRLW(X64Reg reg, int shift)
+void XEmitter::PSRLW(X64Reg reg, u8 shift)
 {
   WriteSSEOp(0x66, 0x71, (X64Reg)2, R(reg));
   Write8(shift);
 }
 
-void XEmitter::PSRLD(X64Reg reg, int shift)
+void XEmitter::PSRLD(X64Reg reg, u8 shift)
 {
   WriteSSEOp(0x66, 0x72, (X64Reg)2, R(reg));
   Write8(shift);
 }
 
-void XEmitter::PSRLQ(X64Reg reg, int shift)
+void XEmitter::PSRLQ(X64Reg reg, u8 shift)
 {
   WriteSSEOp(0x66, 0x73, (X64Reg)2, R(reg));
   Write8(shift);
@@ -2497,41 +2542,41 @@ void XEmitter::PSRLQ(X64Reg reg, const OpArg& arg)
   WriteSSEOp(0x66, 0xd3, reg, arg);
 }
 
-void XEmitter::PSRLDQ(X64Reg reg, int shift)
+void XEmitter::PSRLDQ(X64Reg reg, u8 shift)
 {
   WriteSSEOp(0x66, 0x73, (X64Reg)3, R(reg));
   Write8(shift);
 }
 
-void XEmitter::PSLLW(X64Reg reg, int shift)
+void XEmitter::PSLLW(X64Reg reg, u8 shift)
 {
   WriteSSEOp(0x66, 0x71, (X64Reg)6, R(reg));
   Write8(shift);
 }
 
-void XEmitter::PSLLD(X64Reg reg, int shift)
+void XEmitter::PSLLD(X64Reg reg, u8 shift)
 {
   WriteSSEOp(0x66, 0x72, (X64Reg)6, R(reg));
   Write8(shift);
 }
 
-void XEmitter::PSLLQ(X64Reg reg, int shift)
+void XEmitter::PSLLQ(X64Reg reg, u8 shift)
 {
   WriteSSEOp(0x66, 0x73, (X64Reg)6, R(reg));
   Write8(shift);
 }
 
-void XEmitter::PSLLDQ(X64Reg reg, int shift)
+void XEmitter::PSLLDQ(X64Reg reg, u8 shift)
 {
   WriteSSEOp(0x66, 0x73, (X64Reg)7, R(reg));
   Write8(shift);
 }
 
 // WARNING not REX compatible
-void XEmitter::PSRAW(X64Reg reg, int shift)
+void XEmitter::PSRAW(X64Reg reg, u8 shift)
 {
   if (reg > 7)
-    PanicAlert("The PSRAW-emitter does not support regs above 7");
+    PanicAlertFmt("The PSRAW-emitter does not support regs above 7");
   Write8(0x66);
   Write8(0x0f);
   Write8(0x71);
@@ -2540,10 +2585,10 @@ void XEmitter::PSRAW(X64Reg reg, int shift)
 }
 
 // WARNING not REX compatible
-void XEmitter::PSRAD(X64Reg reg, int shift)
+void XEmitter::PSRAD(X64Reg reg, u8 shift)
 {
   if (reg > 7)
-    PanicAlert("The PSRAD-emitter does not support regs above 7");
+    PanicAlertFmt("The PSRAD-emitter does not support regs above 7");
   Write8(0x66);
   Write8(0x0f);
   Write8(0x72);
@@ -2554,14 +2599,14 @@ void XEmitter::PSRAD(X64Reg reg, int shift)
 void XEmitter::WriteSSSE3Op(u8 opPrefix, u16 op, X64Reg regOp, const OpArg& arg, int extrabytes)
 {
   if (!cpu_info.bSSSE3)
-    PanicAlert("Trying to use SSSE3 on a system that doesn't support it. Bad programmer.");
+    PanicAlertFmt("Trying to use SSSE3 on a system that doesn't support it. Bad programmer.");
   WriteSSEOp(opPrefix, op, regOp, arg, extrabytes);
 }
 
 void XEmitter::WriteSSE41Op(u8 opPrefix, u16 op, X64Reg regOp, const OpArg& arg, int extrabytes)
 {
   if (!cpu_info.bSSE4_1)
-    PanicAlert("Trying to use SSE4.1 on a system that doesn't support it. Bad programmer.");
+    PanicAlertFmt("Trying to use SSE4.1 on a system that doesn't support it. Bad programmer.");
   WriteSSEOp(opPrefix, op, regOp, arg, extrabytes);
 }
 
@@ -2648,6 +2693,11 @@ void XEmitter::BLENDPD(X64Reg dest, const OpArg& arg, u8 blend)
 {
   WriteSSE41Op(0x66, 0x3A0D, dest, arg, 1);
   Write8(blend);
+}
+
+void XEmitter::PCMPEQQ(X64Reg dest, const OpArg& arg)
+{
+  WriteSSE41Op(0x66, 0x3829, dest, arg);
 }
 
 void XEmitter::PAND(X64Reg dest, const OpArg& arg)
@@ -2991,6 +3041,25 @@ void XEmitter::VPOR(X64Reg regOp1, X64Reg regOp2, const OpArg& arg)
 void XEmitter::VPXOR(X64Reg regOp1, X64Reg regOp2, const OpArg& arg)
 {
   WriteAVXOp(0x66, 0xEF, regOp1, regOp2, arg);
+}
+
+void XEmitter::VPSLLQ(X64Reg regOp1, X64Reg regOp2, u8 shift)
+{
+  WriteAVXOp(0x66, 0x73, (X64Reg)6, regOp1, R(regOp2));
+  Write8(shift);
+}
+
+void XEmitter::VMOVAPS(const OpArg& arg, X64Reg regOp)
+{
+  WriteAVXOp(0x00, 0x29, regOp, X64Reg::INVALID_REG, arg);
+}
+
+void XEmitter::VZEROUPPER()
+{
+  CheckAVXSupport();
+  Write8(0xC5);
+  Write8(0xF8);
+  Write8(0x77);
 }
 
 void XEmitter::VFMADD132PS(X64Reg regOp1, X64Reg regOp2, const OpArg& arg)
@@ -3342,56 +3411,6 @@ void XEmitter::FSOverride()
 void XEmitter::GSOverride()
 {
   Write8(0x65);
-}
-
-void XEmitter::FWAIT()
-{
-  Write8(0x9B);
-}
-
-// TODO: make this more generic
-void XEmitter::WriteFloatLoadStore(int bits, FloatOp op, FloatOp op_80b, const OpArg& arg)
-{
-  int mf = 0;
-  ASSERT_MSG(DYNA_REC, !(bits == 80 && op_80b == FloatOp::Invalid),
-             "WriteFloatLoadStore: 80 bits not supported for this instruction");
-  switch (bits)
-  {
-  case 32:
-    mf = 0;
-    break;
-  case 64:
-    mf = 4;
-    break;
-  case 80:
-    mf = 2;
-    break;
-  default:
-    ASSERT_MSG(DYNA_REC, 0, "WriteFloatLoadStore: invalid bits (should be 32/64/80)");
-  }
-  Write8(0xd9 | mf);
-  // x87 instructions use the reg field of the ModR/M byte as opcode:
-  if (bits == 80)
-    op = op_80b;
-  arg.WriteRest(this, 0, static_cast<X64Reg>(op));
-}
-
-void XEmitter::FLD(int bits, const OpArg& src)
-{
-  WriteFloatLoadStore(bits, FloatOp::LD, FloatOp::LD80, src);
-}
-void XEmitter::FST(int bits, const OpArg& dest)
-{
-  WriteFloatLoadStore(bits, FloatOp::ST, FloatOp::Invalid, dest);
-}
-void XEmitter::FSTP(int bits, const OpArg& dest)
-{
-  WriteFloatLoadStore(bits, FloatOp::STP, FloatOp::STP80, dest);
-}
-void XEmitter::FNSTSW_AX()
-{
-  Write8(0xDF);
-  Write8(0xE0);
 }
 
 void XEmitter::RDTSC()

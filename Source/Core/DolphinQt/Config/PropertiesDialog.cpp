@@ -1,12 +1,12 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "DolphinQt/Config/PropertiesDialog.h"
 
 #include <memory>
 
 #include <QDialogButtonBox>
 #include <QPushButton>
-#include <QTabWidget>
 #include <QVBoxLayout>
 
 #include "DiscIO/Enums.h"
@@ -16,73 +16,71 @@
 #include "DolphinQt/Config/FilesystemWidget.h"
 #include "DolphinQt/Config/GameConfigWidget.h"
 #include "DolphinQt/Config/GeckoCodeWidget.h"
+#include "DolphinQt/Config/GraphicsModListWidget.h"
 #include "DolphinQt/Config/InfoWidget.h"
 #include "DolphinQt/Config/PatchesWidget.h"
-#include "DolphinQt/Config/PropertiesDialog.h"
 #include "DolphinQt/Config/VerifyWidget.h"
 #include "DolphinQt/QtUtils/WrapInScrollArea.h"
 
 #include "UICommon/GameFile.h"
 
 PropertiesDialog::PropertiesDialog(QWidget* parent, const UICommon::GameFile& game)
-    : QDialog(parent)
+    : StackedSettingsWindow{parent}, m_filepath(game.GetFilePath())
 {
   setWindowTitle(QStringLiteral("%1: %2 - %3")
                      .arg(QString::fromStdString(game.GetFileName()),
                           QString::fromStdString(game.GetGameID()),
                           QString::fromStdString(game.GetLongName())));
-  setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
-  QVBoxLayout* layout = new QVBoxLayout();
-
-  QTabWidget* tab_widget = new QTabWidget(this);
-  InfoWidget* info = new InfoWidget(game);
-
-  ARCodeWidget* ar = new ARCodeWidget(game);
-  GeckoCodeWidget* gecko = new GeckoCodeWidget(game);
-  PatchesWidget* patches = new PatchesWidget(game);
-  GameConfigWidget* game_config = new GameConfigWidget(game);
+  auto* const info = new InfoWidget(game);
+  auto* const ar = new ARCodeWidget(game.GetGameID(), game.GetRevision());
+  auto* const gecko =
+      new GeckoCodeWidget(game.GetGameID(), game.GetGameTDBID(), game.GetRevision());
+  auto* const patches = new PatchesWidget(game);
+  auto* const game_config = new GameConfigWidget(game);
+  auto* const graphics_mod_list = new GraphicsModListWidget(game);
 
   connect(gecko, &GeckoCodeWidget::OpenGeneralSettings, this,
           &PropertiesDialog::OpenGeneralSettings);
 
   connect(ar, &ARCodeWidget::OpenGeneralSettings, this, &PropertiesDialog::OpenGeneralSettings);
+#ifdef USE_RETRO_ACHIEVEMENTS
+  connect(ar, &ARCodeWidget::OpenAchievementSettings, this,
+          &PropertiesDialog::OpenAchievementSettings);
+  connect(gecko, &GeckoCodeWidget::OpenAchievementSettings, this,
+          &PropertiesDialog::OpenAchievementSettings);
+  connect(patches, &PatchesWidget::OpenAchievementSettings, this,
+          &PropertiesDialog::OpenAchievementSettings);
+#endif  // USE_RETRO_ACHIEVEMENTS
 
-  const int padding_width = 120;
-  const int padding_height = 100;
-  tab_widget->addTab(GetWrappedWidget(game_config, this, padding_width, padding_height),
-                     tr("Game Config"));
-  tab_widget->addTab(GetWrappedWidget(patches, this, padding_width, padding_height), tr("Patches"));
-  tab_widget->addTab(GetWrappedWidget(ar, this, padding_width, padding_height), tr("AR Codes"));
-  tab_widget->addTab(GetWrappedWidget(gecko, this, padding_width, padding_height),
-                     tr("Gecko Codes"));
-  tab_widget->addTab(GetWrappedWidget(info, this, padding_width, padding_height), tr("Info"));
+  connect(graphics_mod_list, &GraphicsModListWidget::OpenGraphicsSettings, this,
+          &PropertiesDialog::OpenGraphicsSettings);
+
+  // Note: Intentional selective use of AddWrappedPane for a sensible dialog "minimumSize".
+  AddWrappedPane(info, tr("Info"));
+  AddPane(game_config, tr("Game Config"));
+  AddPane(patches, tr("Patches"));
+  AddPane(ar, tr("AR Codes"));
+  AddPane(gecko, tr("Gecko Codes"));
+  AddWrappedPane(graphics_mod_list, tr("Graphics Mods"));
 
   if (game.GetPlatform() != DiscIO::Platform::ELFOrDOL)
   {
     std::shared_ptr<DiscIO::Volume> volume = DiscIO::CreateVolume(game.GetFilePath());
     if (volume)
     {
-      VerifyWidget* verify = new VerifyWidget(volume);
-      tab_widget->addTab(GetWrappedWidget(verify, this, padding_width, padding_height),
-                         tr("Verify"));
+      auto* const verify = new VerifyWidget(volume);
+      AddPane(verify, tr("Verify"));
 
       if (DiscIO::IsDisc(game.GetPlatform()))
       {
-        FilesystemWidget* filesystem = new FilesystemWidget(volume);
-        tab_widget->addTab(GetWrappedWidget(filesystem, this, padding_width, padding_height),
-                           tr("Filesystem"));
+        auto* const filesystem = new FilesystemWidget(volume);
+        AddPane(filesystem, tr("Filesystem"));
       }
     }
   }
 
-  layout->addWidget(tab_widget);
+  connect(this, &QDialog::rejected, graphics_mod_list, &GraphicsModListWidget::SaveToDisk);
 
-  QDialogButtonBox* close_box = new QDialogButtonBox(QDialogButtonBox::Close);
-
-  connect(close_box, &QDialogButtonBox::rejected, this, &QDialog::reject);
-
-  layout->addWidget(close_box);
-
-  setLayout(layout);
+  OnDoneCreatingPanes();
 }

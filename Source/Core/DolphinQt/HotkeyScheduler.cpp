@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/HotkeyScheduler.h"
 
@@ -8,6 +7,9 @@
 #include <cmath>
 #include <thread>
 
+#include <fmt/format.h>
+
+#include <QApplication>
 #include <QCoreApplication>
 
 #include "AudioCommon/AudioCommon.h"
@@ -15,29 +17,35 @@
 #include "Common/Config/Config.h"
 #include "Common/Thread.h"
 
+#include "Core/AchievementManager.h"
+#include "Core/Config/FreeLookSettings.h"
 #include "Core/Config/GraphicsSettings.h"
-#include "Core/ConfigManager.h"
+#include "Core/Config/MainSettings.h"
+#include "Core/Config/UISettings.h"
 #include "Core/Core.h"
+#include "Core/FreeLookManager.h"
 #include "Core/HotkeyManager.h"
 #include "Core/IOS/IOS.h"
-#include "Core/IOS/USB/Bluetooth/BTBase.h"
 #include "Core/State.h"
+#include "Core/System.h"
+#include "Core/WiiUtils.h"
 
+#ifdef HAS_LIBMGBA
+#include "DolphinQt/GBAWidget.h"
+#include "DolphinQt/QtUtils/QueueOnObject.h"
+#endif
 #include "DolphinQt/Settings.h"
 
+#include "InputCommon/ControlReference/ControlReference.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 
 #include "VideoCommon/OnScreenDisplay.h"
-#include "VideoCommon/RenderBase.h"
-#include "VideoCommon/VertexShaderManager.h"
 #include "VideoCommon/VideoConfig.h"
 
 constexpr const char* DUBOIS_ALGORITHM_SHADER = "dubois";
 
 HotkeyScheduler::HotkeyScheduler() : m_stop_requested(false)
 {
-  HotkeyManagerEmu::Initialize();
-  HotkeyManagerEmu::LoadConfig();
   HotkeyManagerEmu::Enable(true);
 }
 
@@ -77,13 +85,13 @@ static void HandleFrameStepHotkeys()
 
   if (IsHotkey(HK_FRAME_ADVANCE_INCREASE_SPEED))
   {
-    frame_step_delay = std::min(frame_step_delay + 1, MAX_FRAME_STEP_DELAY);
+    frame_step_delay = std::max(frame_step_delay - 1, 0);
     return;
   }
 
   if (IsHotkey(HK_FRAME_ADVANCE_DECREASE_SPEED))
   {
-    frame_step_delay = std::max(frame_step_delay - 1, 0);
+    frame_step_delay = std::min(frame_step_delay + 1, MAX_FRAME_STEP_DELAY);
     return;
   }
 
@@ -100,7 +108,9 @@ static void HandleFrameStepHotkeys()
 
     if ((frame_step_count == 0 || frame_step_count == FRAME_STEP_DELAY) && !frame_step_hold)
     {
-      Core::DoFrameStep();
+      if (frame_step_count > 0)
+        Settings::Instance().SetIsContinuouslyFrameStepping(true);
+      Core::QueueHostJob([](auto& system) { Core::DoFrameStep(system); });
       frame_step_hold = true;
     }
 
@@ -125,30 +135,71 @@ static void HandleFrameStepHotkeys()
     frame_step_count = 0;
     frame_step_hold = false;
     frame_step_delay_count = 0;
+    Settings::Instance().SetIsContinuouslyFrameStepping(false);
+    emit Settings::Instance().EmulationStateChanged(Core::GetState(Core::System::GetInstance()));
   }
 }
 
 void HotkeyScheduler::Run()
 {
+  Common::SetCurrentThreadName("HotkeyScheduler");
+
   while (!m_stop_requested.IsSet())
   {
-    Common::SleepCurrentThread(1000 / 60);
+    Common::SleepCurrentThread(5);
+
+    g_controller_interface.SetCurrentInputChannel(ciface::InputChannel::FreeLook);
+    g_controller_interface.UpdateInput();
+    FreeLook::UpdateInput();
+
+    g_controller_interface.SetCurrentInputChannel(ciface::InputChannel::Host);
+    g_controller_interface.UpdateInput();
 
     if (!HotkeyManagerEmu::IsEnabled())
       continue;
 
-    if (Core::GetState() == Core::State::Uninitialized || Core::GetState() == Core::State::Paused)
-      g_controller_interface.UpdateInput();
-
-    if (Core::GetState() != Core::State::Stopping)
+    Core::System& system = Core::System::GetInstance();
+    if (Core::GetState(system) != Core::State::Stopping)
     {
-      HotkeyManagerEmu::GetStatus();
+      // Obey window focus (config permitting) before checking hotkeys.
+      Core::UpdateInputGate(Config::Get(Config::MAIN_FOCUSED_HOTKEYS));
 
-      if (!Core::IsRunningAndStarted())
-        continue;
+      HotkeyManagerEmu::GetStatus(false);
 
+      // Everything else on the host thread (controller config dialog) should always get input.
+      ControlReference::SetInputGate(true);
+
+      HotkeyManagerEmu::GetStatus(true);
+
+      // Open
       if (IsHotkey(HK_OPEN))
         emit Open();
+
+      // Refresh Game List
+      if (IsHotkey(HK_REFRESH_LIST))
+        emit RefreshGameListHotkey();
+
+      // Recording
+      if (IsHotkey(HK_START_RECORDING))
+        emit StartRecording();
+
+      // Exit
+      if (IsHotkey(HK_EXIT))
+        emit ExitHotkey();
+
+#ifdef USE_RETRO_ACHIEVEMENTS
+      if (IsHotkey(HK_OPEN_ACHIEVEMENTS))
+        emit OpenAchievements();
+#endif  // USE_RETRO_ACHIEVEMENTS
+
+      if (Core::IsUninitialized(system))
+      {
+        // Only check for Play Recording hotkey when no game is running
+        if (IsHotkey(HK_PLAY_RECORDING))
+          emit PlayRecording();
+
+        continue;
+      }
 
       // Disc
 
@@ -166,10 +217,6 @@ void HotkeyScheduler::Run()
         // Prevent fullscreen from getting toggled too often
         Common::SleepCurrentThread(100);
       }
-
-      // Refresh Game List
-      if (IsHotkey(HK_REFRESH_LIST))
-        emit RefreshGameListHotkey();
 
       // Pause and Unpause
       if (IsHotkey(HK_PLAY_PAUSE))
@@ -190,9 +237,12 @@ void HotkeyScheduler::Run()
       if (IsHotkey(HK_SCREENSHOT))
         emit ScreenShotHotkey();
 
-      // Exit
-      if (IsHotkey(HK_EXIT))
-        emit ExitHotkey();
+      // Unlock Cursor
+      if (IsHotkey(HK_UNLOCK_CURSOR))
+        emit UnlockCursor();
+
+      if (IsHotkey(HK_CENTER_MOUSE, true))
+        g_controller_interface.SetMouseCenteringRequested(true);
 
       auto& settings = Settings::Instance();
 
@@ -203,10 +253,6 @@ void HotkeyScheduler::Run()
       if (IsHotkey(HK_REQUEST_GOLF_CONTROL))
         emit RequestGolfControl();
 
-      // Recording
-      if (IsHotkey(HK_START_RECORDING))
-        emit StartRecording();
-
       if (IsHotkey(HK_EXPORT_RECORDING))
         emit ExportRecording();
 
@@ -214,39 +260,28 @@ void HotkeyScheduler::Run()
         emit ToggleReadOnlyMode();
 
       // Wiimote
-      if (SConfig::GetInstance().m_bt_passthrough_enabled)
-      {
-        const auto ios = IOS::HLE::GetIOS();
-        auto device = ios ? ios->GetDeviceByName("/dev/usb/oh1/57e/305") : nullptr;
+      if (auto bt = WiiUtils::GetBluetoothRealDevice())
+        bt->UpdateSyncButtonState(IsHotkey(HK_TRIGGER_SYNC_BUTTON, true));
 
-        if (device != nullptr)
-          std::static_pointer_cast<IOS::HLE::Device::BluetoothBase>(device)->UpdateSyncButtonState(
-              IsHotkey(HK_TRIGGER_SYNC_BUTTON, true));
-      }
-
-      if (SConfig::GetInstance().bEnableDebugging)
+      if (Config::IsDebuggingEnabled())
       {
         CheckDebuggingHotkeys();
       }
 
       // TODO: HK_MBP_ADD
 
-      if (SConfig::GetInstance().bWii)
+      if (Core::System::GetInstance().IsWii())
       {
-        int wiimote_id = -1;
         if (IsHotkey(HK_WIIMOTE1_CONNECT))
-          wiimote_id = 0;
+          emit ConnectWiiRemote(0);
         if (IsHotkey(HK_WIIMOTE2_CONNECT))
-          wiimote_id = 1;
+          emit ConnectWiiRemote(1);
         if (IsHotkey(HK_WIIMOTE3_CONNECT))
-          wiimote_id = 2;
+          emit ConnectWiiRemote(2);
         if (IsHotkey(HK_WIIMOTE4_CONNECT))
-          wiimote_id = 3;
+          emit ConnectWiiRemote(3);
         if (IsHotkey(HK_BALANCEBOARD_CONNECT))
-          wiimote_id = 4;
-
-        if (wiimote_id > -1)
-          emit ConnectWiiRemote(wiimote_id);
+          emit ConnectWiiRemote(4);
 
         if (IsHotkey(HK_TOGGLE_SD_CARD))
           Settings::Instance().SetSDCardInserted(!Settings::Instance().IsSDCardInserted());
@@ -255,6 +290,13 @@ void HotkeyScheduler::Run()
         {
           Settings::Instance().SetUSBKeyboardConnected(
               !Settings::Instance().IsUSBKeyboardConnected());
+        }
+
+        if (IsHotkey(HK_TOGGLE_WII_SPEAK_MUTE))
+        {
+          const bool muted = !Settings::Instance().IsWiiSpeakMuted();
+          Settings::Instance().SetWiiSpeakMuted(muted);
+          OSD::AddMessage(muted ? "Wii Speak muted" : "Wii Speak unmuted");
         }
       }
 
@@ -298,11 +340,11 @@ void HotkeyScheduler::Run()
       else if (IsHotkey(HK_NEXT_GAME_WIIMOTE_PROFILE_4))
         m_profile_cycler.NextWiimoteProfileForGame(3);
 
-      auto ShowVolume = []() {
+      auto ShowVolume = [] {
         OSD::AddMessage(std::string("Volume: ") +
-                        (SConfig::GetInstance().m_IsMuted ?
+                        (Config::Get(Config::MAIN_AUDIO_MUTED) ?
                              "Muted" :
-                             std::to_string(SConfig::GetInstance().m_Volume) + "%"));
+                             fmt::format("{}%", Config::Get(Config::MAIN_AUDIO_VOLUME))));
       };
 
       // Volume
@@ -320,14 +362,14 @@ void HotkeyScheduler::Run()
 
       if (IsHotkey(HK_VOLUME_TOGGLE_MUTE))
       {
-        AudioCommon::ToggleMuteVolume();
+        AudioCommon::ToggleMuteVolume(system);
         ShowVolume();
       }
 
       // Graphics
       const auto efb_scale = Config::Get(Config::GFX_EFB_SCALE);
-      auto ShowEFBScale = []() {
-        switch (Config::Get(Config::GFX_EFB_SCALE))
+      const auto ShowEFBScale = [](int new_efb_scale) {
+        switch (new_efb_scale)
         {
         case EFB_SCALE_AUTO_INTEGRAL:
           OSD::AddMessage("Internal Resolution: Auto (integral)");
@@ -336,7 +378,7 @@ void HotkeyScheduler::Run()
           OSD::AddMessage("Internal Resolution: Native");
           break;
         default:
-          OSD::AddMessage(StringFromFormat("Internal Resolution: %dx", g_Config.iEFBScale));
+          OSD::AddMessage(fmt::format("Internal Resolution: {}x", new_efb_scale));
           break;
         }
       };
@@ -344,19 +386,25 @@ void HotkeyScheduler::Run()
       if (IsHotkey(HK_INCREASE_IR))
       {
         Config::SetCurrent(Config::GFX_EFB_SCALE, efb_scale + 1);
-        ShowEFBScale();
+        ShowEFBScale(efb_scale + 1);
       }
       if (IsHotkey(HK_DECREASE_IR))
       {
         if (efb_scale > EFB_SCALE_AUTO_INTEGRAL)
         {
           Config::SetCurrent(Config::GFX_EFB_SCALE, efb_scale - 1);
-          ShowEFBScale();
+          ShowEFBScale(efb_scale - 1);
         }
       }
 
-      if (IsHotkey(HK_TOGGLE_CROP))
-        Config::SetCurrent(Config::GFX_CROP, !Config::Get(Config::GFX_CROP));
+      if (IsHotkey(HK_TOGGLE_CROP_TO_ASPECT_RATIO))
+      {
+        Config::SetCurrent(Config::GFX_CROP_TO_ASPECT_RATIO,
+                           !Config::Get(Config::GFX_CROP_TO_ASPECT_RATIO));
+      }
+
+      if (IsHotkey(HK_TOGGLE_CROP_CUSTOM))
+        Config::SetCurrent(Config::GFX_CROP_CUSTOM, !Config::Get(Config::GFX_CROP_CUSTOM));
 
       if (IsHotkey(HK_TOGGLE_AR))
       {
@@ -367,11 +415,20 @@ void HotkeyScheduler::Run()
         case AspectMode::Stretch:
           OSD::AddMessage("Stretch");
           break;
-        case AspectMode::Analog:
+        case AspectMode::ForceStandard:
           OSD::AddMessage("Force 4:3");
           break;
-        case AspectMode::AnalogWide:
+        case AspectMode::ForceWide:
           OSD::AddMessage("Force 16:9");
+          break;
+        case AspectMode::Custom:
+          OSD::AddMessage("Custom");
+          break;
+        case AspectMode::CustomStretch:
+          OSD::AddMessage("Custom (Stretch)");
+          break;
+        case AspectMode::Raw:
+          OSD::AddMessage("Raw (Square Pixels)");
           break;
         case AspectMode::Auto:
         default:
@@ -379,16 +436,24 @@ void HotkeyScheduler::Run()
           break;
         }
       }
+
+      if (IsHotkey(HK_TOGGLE_SKIP_EFB_ACCESS))
+      {
+        const bool new_value = !Config::Get(Config::GFX_HACK_EFB_ACCESS_ENABLE);
+        Config::SetCurrent(Config::GFX_HACK_EFB_ACCESS_ENABLE, new_value);
+        OSD::AddMessage(fmt::format("{} EFB Access from CPU", new_value ? "Skip" : "Don't skip"));
+      }
+
       if (IsHotkey(HK_TOGGLE_EFBCOPIES))
       {
         const bool new_value = !Config::Get(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM);
         Config::SetCurrent(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM, new_value);
-        OSD::AddMessage(StringFromFormat("Copy EFB: %s", new_value ? "to Texture" : "to RAM"));
+        OSD::AddMessage(fmt::format("Copy EFB: {}", new_value ? "to Texture" : "to RAM"));
       }
 
-      auto ShowXFBCopies = []() {
-        OSD::AddMessage(StringFromFormat(
-            "Copy XFB: %s%s", Config::Get(Config::GFX_HACK_IMMEDIATE_XFB) ? " (Immediate)" : "",
+      auto ShowXFBCopies = [] {
+        OSD::AddMessage(fmt::format(
+            "Copy XFB: {}{}", Config::Get(Config::GFX_HACK_IMMEDIATE_XFB) ? " (Immediate)" : "",
             Config::Get(Config::GFX_HACK_SKIP_XFB_COPY_TO_RAM) ? "to Texture" : "to RAM"));
       };
 
@@ -408,40 +473,75 @@ void HotkeyScheduler::Run()
       {
         const bool new_value = !Config::Get(Config::GFX_DISABLE_FOG);
         Config::SetCurrent(Config::GFX_DISABLE_FOG, new_value);
-        OSD::AddMessage(StringFromFormat("Fog: %s", new_value ? "Enabled" : "Disabled"));
+        OSD::AddMessage(fmt::format("Fog: {}", new_value ? "Enabled" : "Disabled"));
       }
 
       if (IsHotkey(HK_TOGGLE_DUMPTEXTURES))
-        Config::SetCurrent(Config::GFX_DUMP_TEXTURES, !Config::Get(Config::GFX_DUMP_TEXTURES));
+      {
+        const bool enable_dumping = !Config::Get(Config::GFX_DUMP_TEXTURES);
+        Config::SetCurrent(Config::GFX_DUMP_TEXTURES, enable_dumping);
+        OSD::AddMessage(
+            fmt::format("Texture Dumping {}",
+                        enable_dumping ? "enabled. This will reduce performance." : "disabled."),
+            OSD::Duration::NORMAL);
+      }
 
       if (IsHotkey(HK_TOGGLE_TEXTURES))
         Config::SetCurrent(Config::GFX_HIRES_TEXTURES, !Config::Get(Config::GFX_HIRES_TEXTURES));
 
       Core::SetIsThrottlerTempDisabled(IsHotkey(HK_TOGGLE_THROTTLE, true));
 
-      auto ShowEmulationSpeed = []() {
-        OSD::AddMessage(
-            SConfig::GetInstance().m_EmulationSpeed <= 0 ?
-                "Speed Limit: Unlimited" :
-                StringFromFormat("Speed Limit: %li%%",
-                                 std::lround(SConfig::GetInstance().m_EmulationSpeed * 100.f)));
+      if (IsHotkey(HK_TOGGLE_THROTTLE, true) && !Config::Get(Config::MAIN_AUDIO_MUTED) &&
+          Config::Get(Config::MAIN_AUDIO_MUTE_ON_DISABLED_SPEED_LIMIT))
+      {
+        Config::SetCurrent(Config::MAIN_AUDIO_MUTED, true);
+        AudioCommon::UpdateSoundStream(system);
+      }
+      else if (!IsHotkey(HK_TOGGLE_THROTTLE, true) && Config::Get(Config::MAIN_AUDIO_MUTED) &&
+               Config::GetActiveLayerForConfig(Config::MAIN_AUDIO_MUTED) ==
+                   Config::LayerType::CurrentRun)
+      {
+        Config::DeleteKey(Config::LayerType::CurrentRun, Config::MAIN_AUDIO_MUTED);
+        AudioCommon::UpdateSoundStream(system);
+      }
+
+      auto ShowEmulationSpeed = [] {
+        const float emulation_speed = Config::Get(Config::MAIN_EMULATION_SPEED);
+        if (!AchievementManager::GetInstance().IsHardcoreModeActive() ||
+            Config::Get(Config::MAIN_EMULATION_SPEED) >= 1.0f ||
+            Config::Get(Config::MAIN_EMULATION_SPEED) <= 0.0f)
+        {
+          OSD::AddMessage(emulation_speed <= 0 ? "Speed Limit: Unlimited" :
+                                                 fmt::format("Speed Limit: {}%",
+                                                             std::lround(emulation_speed * 100.f)));
+        }
       };
 
       if (IsHotkey(HK_DECREASE_EMULATION_SPEED))
       {
-        auto speed = SConfig::GetInstance().m_EmulationSpeed - 0.1;
-        speed = (speed <= 0 || (speed >= 0.95 && speed <= 1.05)) ? 1.0 : speed;
-        SConfig::GetInstance().m_EmulationSpeed = speed;
+        auto speed = Config::Get(Config::MAIN_EMULATION_SPEED) - 0.1;
+        if (speed > 0)
+        {
+          speed = (speed >= 0.95 && speed <= 1.05) ? 1.0 : speed;
+          Config::SetCurrent(Config::MAIN_EMULATION_SPEED, speed);
+        }
         ShowEmulationSpeed();
       }
 
       if (IsHotkey(HK_INCREASE_EMULATION_SPEED))
       {
-        auto speed = SConfig::GetInstance().m_EmulationSpeed + 0.1;
+        auto speed = Config::Get(Config::MAIN_EMULATION_SPEED) + 0.1;
         speed = (speed >= 0.95 && speed <= 1.05) ? 1.0 : speed;
-        SConfig::GetInstance().m_EmulationSpeed = speed;
+        Config::SetCurrent(Config::MAIN_EMULATION_SPEED, speed);
         ShowEmulationSpeed();
       }
+
+      // USB Device Emulation
+      if (IsHotkey(HK_SKYLANDERS_PORTAL))
+        emit SkylandersPortalHotkey();
+
+      if (IsHotkey(HK_INFINITY_BASE))
+        emit InfinityBaseHotkey();
 
       // Slot Saving / Loading
       if (IsHotkey(HK_SAVE_STATE_SLOT_SELECTED))
@@ -450,16 +550,22 @@ void HotkeyScheduler::Run()
       if (IsHotkey(HK_LOAD_STATE_SLOT_SELECTED))
         emit StateLoadSlotHotkey();
 
+      if (IsHotkey(HK_INCREMENT_SELECTED_STATE_SLOT))
+        emit IncrementSelectedStateSlotHotkey();
+
+      if (IsHotkey(HK_DECREMENT_SELECTED_STATE_SLOT))
+        emit DecrementSelectedStateSlotHotkey();
+
       // Stereoscopy
-      if (IsHotkey(HK_TOGGLE_STEREO_SBS))
+      if (IsHotkey(HK_TOGGLE_STEREO_SIDE_BY_SIDE))
       {
-        if (Config::Get(Config::GFX_STEREO_MODE) != StereoMode::SBS)
+        if (Config::Get(Config::GFX_STEREO_MODE) != StereoMode::SideBySide)
         {
           // Disable post-processing shader, as stereoscopy itself is currently a shader
           if (Config::Get(Config::GFX_ENHANCE_POST_SHADER) == DUBOIS_ALGORITHM_SHADER)
             Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
 
-          Config::SetCurrent(Config::GFX_STEREO_MODE, StereoMode::SBS);
+          Config::SetCurrent(Config::GFX_STEREO_MODE, StereoMode::SideBySide);
         }
         else
         {
@@ -467,15 +573,15 @@ void HotkeyScheduler::Run()
         }
       }
 
-      if (IsHotkey(HK_TOGGLE_STEREO_TAB))
+      if (IsHotkey(HK_TOGGLE_STEREO_TOP_AND_BOTTOM))
       {
-        if (Config::Get(Config::GFX_STEREO_MODE) != StereoMode::TAB)
+        if (Config::Get(Config::GFX_STEREO_MODE) != StereoMode::TopAndBottom)
         {
           // Disable post-processing shader, as stereoscopy itself is currently a shader
           if (Config::Get(Config::GFX_ENHANCE_POST_SHADER) == DUBOIS_ALGORITHM_SHADER)
             Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
 
-          Config::SetCurrent(Config::GFX_STEREO_MODE, StereoMode::TAB);
+          Config::SetCurrent(Config::GFX_STEREO_MODE, StereoMode::TopAndBottom);
         }
         else
         {
@@ -496,56 +602,40 @@ void HotkeyScheduler::Run()
           Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
         }
       }
+
+      CheckGBAHotkeys();
     }
 
     const auto stereo_depth = Config::Get(Config::GFX_STEREO_DEPTH);
 
     if (IsHotkey(HK_DECREASE_DEPTH, true))
-      Config::SetCurrent(Config::GFX_STEREO_DEPTH, std::min(stereo_depth - 1, 0));
+      Config::SetCurrent(Config::GFX_STEREO_DEPTH, std::max(stereo_depth - 1, 0.0f));
 
     if (IsHotkey(HK_INCREASE_DEPTH, true))
-      Config::SetCurrent(Config::GFX_STEREO_DEPTH, std::min(stereo_depth + 1, 100));
+      Config::SetCurrent(Config::GFX_STEREO_DEPTH,
+                         std::min(stereo_depth + 1, Config::GFX_STEREO_DEPTH_MAXIMUM));
 
     const auto stereo_convergence = Config::Get(Config::GFX_STEREO_CONVERGENCE);
 
     if (IsHotkey(HK_DECREASE_CONVERGENCE, true))
-      Config::SetCurrent(Config::GFX_STEREO_CONVERGENCE, std::max(stereo_convergence - 5, 0));
+      Config::SetCurrent(Config::GFX_STEREO_CONVERGENCE, std::max(stereo_convergence - 5, 0.0f));
 
     if (IsHotkey(HK_INCREASE_CONVERGENCE, true))
-      Config::SetCurrent(Config::GFX_STEREO_CONVERGENCE, std::min(stereo_convergence + 5, 500));
+      Config::SetCurrent(Config::GFX_STEREO_CONVERGENCE,
+                         std::min(stereo_convergence + 5, Config::GFX_STEREO_CONVERGENCE_MAXIMUM));
 
-    // Freelook
-    static float fl_speed = 1.0;
+    // Free Look
+    if (IsHotkey(HK_FREELOOK_TOGGLE))
+    {
+      const bool new_value = !Config::Get(Config::FREE_LOOK_ENABLED);
+      Config::SetCurrent(Config::FREE_LOOK_ENABLED, new_value);
 
-    if (IsHotkey(HK_FREELOOK_DECREASE_SPEED, true))
-      fl_speed /= 1.1f;
-
-    if (IsHotkey(HK_FREELOOK_INCREASE_SPEED, true))
-      fl_speed *= 1.1f;
-
-    if (IsHotkey(HK_FREELOOK_RESET_SPEED, true))
-      fl_speed = 1.0;
-
-    if (IsHotkey(HK_FREELOOK_UP, true))
-      VertexShaderManager::TranslateView(0.0, 0.0, -fl_speed);
-
-    if (IsHotkey(HK_FREELOOK_DOWN, true))
-      VertexShaderManager::TranslateView(0.0, 0.0, fl_speed);
-
-    if (IsHotkey(HK_FREELOOK_LEFT, true))
-      VertexShaderManager::TranslateView(fl_speed, 0.0);
-
-    if (IsHotkey(HK_FREELOOK_RIGHT, true))
-      VertexShaderManager::TranslateView(-fl_speed, 0.0);
-
-    if (IsHotkey(HK_FREELOOK_ZOOM_IN, true))
-      VertexShaderManager::TranslateView(0.0, fl_speed);
-
-    if (IsHotkey(HK_FREELOOK_ZOOM_OUT, true))
-      VertexShaderManager::TranslateView(0.0, -fl_speed);
-
-    if (IsHotkey(HK_FREELOOK_RESET, true))
-      VertexShaderManager::ResetView();
+      const bool hardcore = AchievementManager::GetInstance().IsHardcoreModeActive();
+      if (hardcore)
+        OSD::AddMessage("Free Look is Disabled in Hardcore Mode");
+      else
+        OSD::AddMessage(fmt::format("Free Look: {}", new_value ? "Enabled" : "Disabled"));
+    }
 
     // Savestates
     for (u32 i = 0; i < State::NUM_STATES; i++)
@@ -605,4 +695,43 @@ void HotkeyScheduler::CheckDebuggingHotkeys()
 
   if (IsHotkey(HK_BP_ADD))
     emit AddBreakpoint();
+}
+
+void HotkeyScheduler::CheckGBAHotkeys()
+{
+#ifdef HAS_LIBMGBA
+  GBAWidget* gba_widget = qobject_cast<GBAWidget*>(QApplication::activeWindow());
+  if (!gba_widget)
+    return;
+
+  if (IsHotkey(HK_GBA_LOAD))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->LoadROM(); });
+
+  if (IsHotkey(HK_GBA_UNLOAD))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->UnloadROM(); });
+
+  if (IsHotkey(HK_GBA_RESET))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->ResetCore(); });
+
+  if (IsHotkey(HK_GBA_VOLUME_DOWN))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->VolumeDown(); });
+
+  if (IsHotkey(HK_GBA_VOLUME_UP))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->VolumeUp(); });
+
+  if (IsHotkey(HK_GBA_TOGGLE_MUTE))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->ToggleMute(); });
+
+  if (IsHotkey(HK_GBA_1X))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->Resize(1); });
+
+  if (IsHotkey(HK_GBA_2X))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->Resize(2); });
+
+  if (IsHotkey(HK_GBA_3X))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->Resize(3); });
+
+  if (IsHotkey(HK_GBA_4X))
+    QueueOnObject(gba_widget, [gba_widget] { gba_widget->Resize(4); });
+#endif
 }

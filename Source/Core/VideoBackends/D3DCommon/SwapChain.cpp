@@ -1,6 +1,5 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoBackends/D3DCommon/SwapChain.h"
 
@@ -9,8 +8,10 @@
 
 #include "Common/Assert.h"
 #include "Common/CommonFuncs.h"
+#include "Common/HRWrap.h"
 #include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
+
 #include "VideoCommon/VideoConfig.h"
 
 static bool IsTearingSupported(IDXGIFactory2* dxgi_factory)
@@ -50,13 +51,18 @@ bool SwapChain::WantsStereo()
   return g_ActiveConfig.stereo_mode == StereoMode::QuadBuffer;
 }
 
+bool SwapChain::WantsHDR()
+{
+  return g_ActiveConfig.bHDR;
+}
+
 u32 SwapChain::GetSwapChainFlags() const
 {
   // This flag is necessary if we want to use a flip-model swapchain without locking the framerate
   return m_allow_tearing_supported ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
 }
 
-bool SwapChain::CreateSwapChain(bool stereo)
+bool SwapChain::CreateSwapChain(bool stereo, bool hdr)
 {
   RECT client_rc;
   if (GetClientRect(static_cast<HWND>(m_wsi.render_surface), &client_rc))
@@ -64,6 +70,9 @@ bool SwapChain::CreateSwapChain(bool stereo)
     m_width = client_rc.right - client_rc.left;
     m_height = client_rc.bottom - client_rc.top;
   }
+
+  m_stereo = false;
+  m_hdr = false;
 
   // Try using the Win8 version if available.
   Microsoft::WRL::ComPtr<IDXGIFactory2> dxgi_factory2;
@@ -80,6 +89,7 @@ bool SwapChain::CreateSwapChain(bool stereo)
     swap_chain_desc.SampleDesc.Count = 1;
     swap_chain_desc.SampleDesc.Quality = 0;
     swap_chain_desc.Format = GetDXGIFormatForAbstractFormat(m_texture_format, false);
+
     swap_chain_desc.Scaling = DXGI_SCALING_STRETCH;
     swap_chain_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     swap_chain_desc.Stereo = stereo;
@@ -107,6 +117,8 @@ bool SwapChain::CreateSwapChain(bool stereo)
   // support the newer DXGI interface aren't going to support DX12 anyway.
   if (FAILED(hr))
   {
+    hdr = false;
+
     DXGI_SWAP_CHAIN_DESC desc = {};
     desc.BufferDesc.Width = m_width;
     desc.BufferDesc.Height = m_height;
@@ -126,7 +138,7 @@ bool SwapChain::CreateSwapChain(bool stereo)
 
   if (FAILED(hr))
   {
-    PanicAlert("Failed to create swap chain with HRESULT %08X", hr);
+    PanicAlertFmt("Failed to create swap chain: {}", Common::HRWrap(hr));
     return false;
   }
 
@@ -134,12 +146,43 @@ bool SwapChain::CreateSwapChain(bool stereo)
   hr = m_dxgi_factory->MakeWindowAssociation(static_cast<HWND>(m_wsi.render_surface),
                                              DXGI_MWA_NO_WINDOW_CHANGES | DXGI_MWA_NO_ALT_ENTER);
   if (FAILED(hr))
-    WARN_LOG(VIDEO, "MakeWindowAssociation() failed with HRESULT %08X", hr);
+    WARN_LOG_FMT(VIDEO, "MakeWindowAssociation() failed: {}", Common::HRWrap(hr));
 
   m_stereo = stereo;
+
+  if (hdr)
+  {
+    // Only try to activate HDR here, to avoid failing when creating the swapchain
+    // (we can't know if the format is supported upfront)
+    Microsoft::WRL::ComPtr<IDXGISwapChain4> swap_chain4;
+    hr = m_swap_chain.As(&swap_chain4);
+    if (SUCCEEDED(hr))
+    {
+      UINT color_space_support = 0;
+      // Note that this should succeed even if HDR is not currently engaged on the monitor,
+      // but it should display fine nonetheless.
+      // We need to check for DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020 as checking for
+      // scRGB always returns false (DX bug).
+      hr = swap_chain4->CheckColorSpaceSupport(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020,
+                                               &color_space_support);
+      if (SUCCEEDED(hr) && (color_space_support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT))
+      {
+        hr = swap_chain4->ResizeBuffers(SWAP_CHAIN_BUFFER_COUNT, 0, 0,
+                                        GetDXGIFormatForAbstractFormat(m_texture_format_hdr, false),
+                                        GetSwapChainFlags());
+        if (SUCCEEDED(hr))
+        {
+          hr = swap_chain4->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709);
+          if (SUCCEEDED(hr))
+            m_hdr = hdr;
+        }
+      }
+    }
+  }
+
   if (!CreateSwapChainBuffers())
   {
-    PanicAlert("Failed to create swap chain buffers");
+    PanicAlertFmt("Failed to create swap chain buffers");
     DestroySwapChainBuffers();
     m_swap_chain.Reset();
     return false;
@@ -163,11 +206,18 @@ bool SwapChain::ResizeSwapChain()
 {
   DestroySwapChainBuffers();
 
-  HRESULT hr = m_swap_chain->ResizeBuffers(SWAP_CHAIN_BUFFER_COUNT, 0, 0,
-                                           GetDXGIFormatForAbstractFormat(m_texture_format, false),
+  // The swap chain fills up the size of the window if no size is specified
+  HRESULT hr = m_swap_chain->ResizeBuffers(SWAP_CHAIN_BUFFER_COUNT, 0, 0, DXGI_FORMAT_UNKNOWN,
                                            GetSwapChainFlags());
+
   if (FAILED(hr))
-    WARN_LOG(VIDEO, "ResizeBuffers() failed with HRESULT %08X", hr);
+    WARN_LOG_FMT(VIDEO, "ResizeBuffers() failed: {}", Common::HRWrap(hr));
+
+  Microsoft::WRL::ComPtr<IDXGISwapChain4> swap_chain4;
+  hr = m_swap_chain.As(&swap_chain4);
+  if (SUCCEEDED(hr))
+    hr = swap_chain4->SetColorSpace1(m_hdr ? DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 :
+                                             DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);
 
   DXGI_SWAP_CHAIN_DESC desc;
   if (SUCCEEDED(m_swap_chain->GetDesc(&desc)))
@@ -185,10 +235,28 @@ void SwapChain::SetStereo(bool stereo)
     return;
 
   DestroySwapChain();
-  if (!CreateSwapChain(stereo))
+  // Do not try to re-activate HDR here if it had already failed
+  if (!CreateSwapChain(stereo, m_hdr))
   {
-    PanicAlert("Failed to switch swap chain stereo mode");
-    CreateSwapChain(false);
+    PanicAlertFmt("Failed to switch swap chain stereo mode");
+    CreateSwapChain(false, false);
+  }
+}
+
+void SwapChain::SetHDR(bool hdr)
+{
+  if (m_hdr == hdr)
+    return;
+
+  // NOTE: as an optimization here we could just call "ResizeSwapChain()"
+  // by adding some code to check if we could change the format to HDR.
+
+  DestroySwapChain();
+  // Do not try to re-activate stereo mode here if it had already failed
+  if (!CreateSwapChain(m_stereo, hdr))
+  {
+    PanicAlertFmt("Failed to switch swap chain SDR/HDR mode");
+    CreateSwapChain(false, false);
   }
 }
 
@@ -237,7 +305,7 @@ bool SwapChain::Present()
   HRESULT hr = m_swap_chain->Present(static_cast<UINT>(g_ActiveConfig.bVSyncActive), present_flags);
   if (FAILED(hr))
   {
-    WARN_LOG(VIDEO, "Swap chain present failed with HRESULT %08X", hr);
+    WARN_LOG_FMT(VIDEO, "Swap chain present failed: {}", Common::HRWrap(hr));
     return false;
   }
 
@@ -248,7 +316,8 @@ bool SwapChain::ChangeSurface(void* native_handle)
 {
   DestroySwapChain();
   m_wsi.render_surface = native_handle;
-  return CreateSwapChain(m_stereo);
+  // We only keep the swap chain settings (HDR/Stereo) that had successfully applied before
+  return CreateSwapChain(m_stereo, m_hdr);
 }
 
 }  // namespace D3DCommon

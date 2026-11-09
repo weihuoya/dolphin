@@ -1,16 +1,18 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/EXI/EXI_DeviceAD16.h"
 
 #include "Common/Assert.h"
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
+#include "Common/Swap.h"
 
 namespace ExpansionInterface
 {
-CEXIAD16::CEXIAD16() = default;
+CEXIAD16::CEXIAD16(Core::System& system) : IEXIDevice(system)
+{
+}
 
 void CEXIAD16::SetCS(int cs)
 {
@@ -35,7 +37,7 @@ void CEXIAD16::TransferByte(u8& byte)
     {
     case init:
     {
-      m_ad16_register.U32 = 0x04120000;
+      m_ad16_register.U32 = Common::swap32(0x04120000);
       switch (m_position)
       {
       case 1:
@@ -72,6 +74,7 @@ void CEXIAD16::TransferByte(u8& byte)
         break;
       case 4:
         m_ad16_register.U8[3] = byte;
+        INFO_LOG_FMT(EXPANSIONINTERFACE, "AD16 received: 0x{:08X}", m_ad16_register.U32);
         break;
       }
     }

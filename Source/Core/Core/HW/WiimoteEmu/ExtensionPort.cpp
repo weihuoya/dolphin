@@ -1,10 +1,7 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WiimoteEmu/ExtensionPort.h"
-
-#include "Common/ChunkFile.h"
 
 namespace WiimoteEmu
 {
@@ -23,7 +20,6 @@ void ExtensionPort::AttachExtension(Extension* ext)
 
   m_extension = ext;
   m_i2c_bus.AddSlave(m_extension);
-  ;
 }
 
 }  // namespace WiimoteEmu

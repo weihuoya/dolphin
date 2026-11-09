@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -12,41 +11,13 @@
 
 namespace ciface::evdev
 {
-void Init();
-void PopulateDevices();
-void Shutdown();
+class InputBackend;
+
+std::unique_ptr<ciface::InputBackend> CreateInputBackend(ControllerInterface* controller_interface);
 
 class evdevDevice : public Core::Device
 {
 private:
-  class Button : public Core::Device::Input
-  {
-  public:
-    std::string GetName() const override;
-    Button(u8 index, u16 code, libevdev* dev) : m_index(index), m_code(code), m_dev(dev) {}
-    ControlState GetState() const override;
-
-  private:
-    const u8 m_index;
-    const u16 m_code;
-    libevdev* m_dev;
-  };
-
-  class Axis : public Core::Device::Input
-  {
-  public:
-    std::string GetName() const override;
-    Axis(u8 index, u16 code, bool upper, libevdev* dev);
-    ControlState GetState() const override;
-
-  private:
-    const u16 m_code;
-    const u8 m_index;
-    int m_range;
-    int m_base;
-    libevdev* m_dev;
-  };
-
   class Effect : public Core::Device::Output
   {
   public:
@@ -101,21 +72,33 @@ private:
   };
 
 public:
-  void UpdateInput() override;
+  Core::DeviceRemoval UpdateInput() override;
   bool IsValid() const override;
 
-  evdevDevice(const std::string& devnode);
+  evdevDevice(InputBackend* input_backend);
   ~evdevDevice();
+
+  // Return true if node was "interesting".
+  bool AddNode(std::string devnode, int fd, libevdev* dev);
+
+  const char* GetUniqueID() const;
+  const char* GetPhysicalLocation() const;
 
   std::string GetName() const override { return m_name; }
   std::string GetSource() const override { return "evdev"; }
-  bool IsInteresting() const { return m_interesting; }
 
 private:
-  const std::string m_devfile;
-  int m_fd;
-  libevdev* m_dev;
   std::string m_name;
-  bool m_interesting = false;
+
+  struct Node
+  {
+    std::string devnode;
+    int fd;
+    libevdev* device;
+  };
+
+  std::vector<Node> m_nodes;
+
+  InputBackend& m_input_backend;
 };
 }  // namespace ciface::evdev

@@ -1,35 +1,30 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/DVD/FileMonitor.h"
 
-#include <algorithm>
-#include <cctype>
 #include <memory>
 #include <string>
 #include <unordered_set>
+
+#include <fmt/format.h>
 
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
 #include "Common/Logging/LogManager.h"
 #include "Common/StringUtil.h"
 
-#include "DiscIO/Enums.h"
 #include "DiscIO/Filesystem.h"
 #include "DiscIO/Volume.h"
 
 namespace FileMonitor
 {
-static DiscIO::Partition s_previous_partition;
-static u64 s_previous_file_offset;
-
 // Filtered files
 static bool IsSoundFile(const std::string& filename)
 {
   std::string extension;
   SplitPath(filename, nullptr, nullptr, &extension);
-  std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+  Common::ToLower(&extension);
 
   static const std::unordered_set<std::string> extensions = {
       ".adp",    // 1080 Avalanche, Crash Bandicoot, etc.
@@ -47,14 +42,21 @@ static bool IsSoundFile(const std::string& filename)
       ".str",    // Harry Potter & the Sorcerer's Stone
   };
 
-  return extensions.find(extension) != extensions.end();
+  return extensions.contains(extension);
 }
 
-void Log(const DiscIO::Volume& volume, const DiscIO::Partition& partition, u64 offset)
+FileLogger::FileLogger() = default;
+
+FileLogger::~FileLogger() = default;
+
+void FileLogger::Log(const DiscIO::Volume& volume, const DiscIO::Partition& partition, u64 offset)
 {
   // Do nothing if the log isn't selected
-  if (!LogManager::GetInstance()->IsEnabled(LogTypes::FILEMON, LogTypes::LWARNING))
+  if (!Common::Log::LogManager::GetInstance()->IsEnabled(Common::Log::LogType::FILEMON,
+                                                         Common::Log::LogLevel::LWARNING))
+  {
     return;
+  }
 
   const DiscIO::FileSystem* file_system = volume.GetFileSystem(partition);
 
@@ -71,20 +73,20 @@ void Log(const DiscIO::Volume& volume, const DiscIO::Partition& partition, u64 o
   const u64 file_offset = file_info->GetOffset();
 
   // Do nothing if we found the same file again
-  if (s_previous_partition == partition && s_previous_file_offset == file_offset)
+  if (m_previous_partition == partition && m_previous_file_offset == file_offset)
     return;
 
-  const std::string size_string = ThousandSeparate(file_info->GetSize() / 1000, 7);
+  const std::string size_string = Common::ThousandSeparate(file_info->GetSize() / 1000, 7);
   const std::string path = file_info->GetPath();
-  const std::string log_string = StringFromFormat("%s kB %s", size_string.c_str(), path.c_str());
+  const std::string log_string = fmt::format("{} kB {}", size_string, path);
   if (IsSoundFile(path))
-    INFO_LOG(FILEMON, "%s", log_string.c_str());
+    INFO_LOG_FMT(FILEMON, "{}", log_string);
   else
-    WARN_LOG(FILEMON, "%s", log_string.c_str());
+    WARN_LOG_FMT(FILEMON, "{}", log_string);
 
   // Update the last accessed file
-  s_previous_partition = partition;
-  s_previous_file_offset = file_offset;
+  m_previous_partition = partition;
+  m_previous_file_offset = file_offset;
 }
 
 }  // namespace FileMonitor

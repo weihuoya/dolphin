@@ -1,23 +1,27 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <charconv>
+#include <concepts>
 #include <cstdarg>
 #include <cstddef>
+#include <cstdlib>
+#include <filesystem>
 #include <iomanip>
+#include <limits>
+#include <locale>
+#include <ranges>
+#include <span>
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "Common/CommonTypes.h"
-
-#ifdef _MSC_VER
-#include <filesystem>
-#define HAS_STD_FILESYSTEM
-#endif
+#include "Common/TypeUtils.h"
 
 std::string StringFromFormatV(const char* format, va_list args);
 
@@ -44,23 +48,82 @@ inline void CharArrayFromFormat(char (&out)[Count], const char* format, ...)
 // Good
 std::string ArrayToString(const u8* data, u32 size, int line_len = 20, bool spaces = true);
 
+std::string_view StripWhitespace(std::string_view s);
+std::string_view StripLeadingWhitespace(std::string_view s);
+std::string_view StripTrailingWhitespace(std::string_view s);
 std::string_view StripSpaces(std::string_view s);
 std::string_view StripQuotes(std::string_view s);
 
+std::string ReplaceAll(std::string result, std::string_view src, std::string_view dest);
+
+void ReplaceBreaksWithSpaces(std::string& str);
+
+void TruncateToCString(std::string* s);
+
 bool TryParse(const std::string& str, bool* output);
-bool TryParse(const std::string& str, u16* output);
-bool TryParse(const std::string& str, u32* output);
-bool TryParse(const std::string& str, u64* output);
 
-template <typename N>
-static bool TryParse(const std::string& str, N* const output)
+template <typename T>
+requires(std::is_integral_v<T> || (std::is_enum_v<T> && !Common::BooleanEnum<T>))
+bool TryParse(const std::string& str, T* output, int base = 0)
 {
-  std::istringstream iss(str);
-  // is this right? not doing this breaks reading floats on locales that use different decimal
-  // separators
-  iss.imbue(std::locale("C"));
+  char* end_ptr = nullptr;
 
-  N tmp;
+  // Set errno to a clean slate.
+  errno = 0;
+
+  // Read a u64 for unsigned types and s64 otherwise.
+  using ReadType = std::conditional_t<std::is_unsigned_v<T>, u64, s64>;
+  ReadType value;
+
+  if constexpr (std::is_unsigned_v<T>)
+    value = std::strtoull(str.c_str(), &end_ptr, base);
+  else
+    value = std::strtoll(str.c_str(), &end_ptr, base);
+
+  // Fail if the end of the string wasn't reached.
+  if (end_ptr == nullptr || *end_ptr != '\0')
+    return false;
+
+  // Fail if the value was out of 64-bit range.
+  if (errno == ERANGE)
+    return false;
+
+  using LimitsType = typename std::conditional_t<std::is_enum_v<T>, std::underlying_type<T>,
+                                                 std::common_type<T>>::type;
+  // Fail if outside numeric limits.
+  if (value < std::numeric_limits<LimitsType>::min() ||
+      value > std::numeric_limits<LimitsType>::max())
+  {
+    return false;
+  }
+
+  *output = static_cast<T>(value);
+  return true;
+}
+
+template <Common::BooleanEnum T>
+bool TryParse(const std::string& str, T* output)
+{
+  bool value;
+  if (!TryParse(str, &value))
+    return false;
+
+  *output = static_cast<T>(value);
+  return true;
+}
+
+template <std::floating_point T>
+bool TryParse(std::string str, T* const output)
+{
+  // Replace commas with dots.
+  std::istringstream iss(ReplaceAll(std::move(str), ",", "."));
+
+  // Use "classic" locale to force a "dot" decimal separator.
+  iss.imbue(std::locale::classic());
+
+  T tmp;
+
+  // Succeed if a value was read and the entire string was used.
   if (iss >> tmp && iss.eof())
   {
     *output = tmp;
@@ -95,54 +158,102 @@ std::string ValueToString(double value);
 std::string ValueToString(int value);
 std::string ValueToString(s64 value);
 std::string ValueToString(bool value);
-template <typename T, std::enable_if_t<std::is_enum<T>::value>* = nullptr>
-std::string ValueToString(T value)
+std::string ValueToString(Common::Enum auto value)
 {
-  return ValueToString(static_cast<std::underlying_type_t<T>>(value));
+  return ValueToString(std::to_underlying(value));
 }
 
 // Generates an hexdump-like representation of a binary data blob.
 std::string HexDump(const u8* data, size_t size);
 
-// TODO: kill this
-bool AsciiToHex(const std::string& _szValue, u32& result);
+inline auto HexDump(std::span<const u8> data)
+{
+  return HexDump(data.data(), data.size());
+}
 
-std::string TabsToSpaces(int tab_size, std::string str);
+namespace Common
+{
+std::from_chars_result FromChars(std::string_view sv, std::integral auto& value, int base = 10)
+{
+  const char* const first = sv.data();
+  const char* const last = first + sv.size();
+  return std::from_chars(first, last, value, base);
+}
+std::from_chars_result FromChars(std::string_view sv, std::floating_point auto& value,
+                                 std::chars_format fmt = std::chars_format::general)
+{
+  const char* const first = sv.data();
+  const char* const last = first + sv.size();
+  return std::from_chars(first, last, value, fmt);
+}
+}  // namespace Common
 
 std::vector<std::string> SplitString(const std::string& str, char delim);
-std::string JoinStrings(const std::vector<std::string>& strings, const std::string& delimiter);
+
+// Returns `nullopt` if subject does not contain exactly (Count - 1) delim.
+template <std::size_t Count>
+requires(Count > 1)
+std::optional<std::array<std::string_view, Count>> SplitStringIntoArray(std::string_view subject,
+                                                                        char delim)
+{
+  std::optional<std::array<std::string_view, Count>> result;
+  result.emplace();
+
+  std::size_t index = 0;
+  for (auto&& item : subject | std::views::split(delim))
+  {
+    // Too many delim.
+    if (index == Count)
+      return std::nullopt;
+
+    (*result)[index++] = std::string_view{item};
+  }
+
+  // Too few delim.
+  if (index != Count)
+    return std::nullopt;
+
+  return result;
+}
 
 // "C:/Windows/winhelp.exe" to "C:/Windows/", "winhelp", ".exe"
+// This requires forward slashes to be used for the path separators, even on Windows.
 bool SplitPath(std::string_view full_path, std::string* path, std::string* filename,
                std::string* extension);
 
-void BuildCompleteFilename(std::string& complete_filename, std::string_view path,
-                           std::string_view filename);
-std::string ReplaceAll(std::string result, std::string_view src, std::string_view dest);
+// Converts the path separators of a path into forward slashes on Windows, which is assumed to be
+// true for paths at various places in the codebase.
+void UnifyPathSeparators(std::string& path);
+std::string WithUnifiedPathSeparators(std::string path);
 
-bool StringBeginsWith(std::string_view str, std::string_view begin);
-bool StringEndsWith(std::string_view str, std::string_view end);
+// Extracts just the filename (including extension) from a full path.
+// This requires forward slashes to be used for the path separators, even on Windows.
+std::string PathToFileName(std::string_view path);
+
 void StringPopBackIf(std::string* s, char c);
+size_t StringUTF8CodePointCount(std::string_view str);
 
-std::string CP1252ToUTF8(std::string_view str);
-std::string SHIFTJISToUTF8(std::string_view str);
-std::string UTF8ToSHIFTJIS(std::string_view str);
-std::string UTF16ToUTF8(std::wstring_view str);
+std::string CP1252ToUTF8(std::string_view input);
+std::string SHIFTJISToUTF8(std::string_view input);
+std::string UTF8ToSHIFTJIS(std::string_view input);
+std::string WStringToUTF8(std::wstring_view input);
 std::string UTF16BEToUTF8(const char16_t* str, size_t max_size);  // Stops at \0
+std::string UTF16ToUTF8(std::u16string_view input);
+std::u16string UTF8ToUTF16(std::string_view input);
 
 #ifdef _WIN32
 
-std::wstring UTF8ToUTF16(std::string_view str);
+std::wstring UTF8ToWString(std::string_view str);
 
 #ifdef _UNICODE
 inline std::string TStrToUTF8(std::wstring_view str)
 {
-  return UTF16ToUTF8(str);
+  return WStringToUTF8(str);
 }
 
 inline std::wstring UTF8ToTStr(std::string_view str)
 {
-  return UTF8ToUTF16(str);
+  return UTF8ToWString(str);
 }
 #else
 inline std::string TStrToUTF8(std::string_view str)
@@ -158,10 +269,51 @@ inline std::string UTF8ToTStr(std::string_view str)
 
 #endif
 
-#ifdef HAS_STD_FILESYSTEM
 std::filesystem::path StringToPath(std::string_view path);
 std::string PathToString(const std::filesystem::path& path);
-#endif
+
+namespace Common
+{
+/// Returns whether a character is printable, i.e. whether 0x20 <= c <= 0x7e is true.
+/// Use this instead of calling std::isprint directly to ensure
+/// the C locale is being used and to avoid possibly undefined behaviour.
+inline bool IsPrintableCharacter(char c)
+{
+  return std::isprint(c, std::locale::classic());
+}
+
+/// Returns whether a character is a letter, i.e. whether 'a' <= c <= 'z' || 'A' <= c <= 'Z'
+/// is true. Use this instead of calling std::isalpha directly to ensure
+/// the C locale is being used and to avoid possibly undefined behaviour.
+inline bool IsAlpha(char c)
+{
+  return std::isalpha(c, std::locale::classic());
+}
+
+inline bool IsAlnum(char c)
+{
+  return std::isalnum(c, std::locale::classic());
+}
+
+inline bool IsUpper(char c)
+{
+  return std::isupper(c, std::locale::classic());
+}
+
+inline bool IsXDigit(char c)
+{
+  return std::isxdigit(c /* no locale needed */) != 0;
+}
+
+inline char ToLower(char ch)
+{
+  return std::tolower(ch, std::locale::classic());
+}
+
+inline char ToUpper(char ch)
+{
+  return std::toupper(ch, std::locale::classic());
+}
 
 // Thousand separator. Turns 12345678 into 12,345,678
 template <typename I>
@@ -176,8 +328,29 @@ std::string ThousandSeparate(I value, int spaces = 0)
   stream << std::setw(spaces) << value;
 
 #ifdef _WIN32
-  return UTF16ToUTF8(stream.str());
+  return WStringToUTF8(stream.str());
 #else
   return stream.str();
 #endif
 }
+
+#ifdef _WIN32
+std::vector<std::string> CommandLineToUtf8Argv(const wchar_t* command_line);
+#endif
+
+std::string GetEscapedHtml(std::string html);
+
+void ToLower(std::string* str);
+void ToUpper(std::string* str);
+bool CaseInsensitiveEquals(std::string_view a, std::string_view b);
+bool CaseInsensitiveContains(std::string_view haystack, std::string_view needle);
+
+// 'std::less'-like comparison function object type for case-insensitive strings.
+struct CaseInsensitiveLess
+{
+  using is_transparent = void;  // Allow heterogeneous lookup.
+  bool operator()(std::string_view a, std::string_view b) const;
+};
+
+std::string BytesToHexString(std::span<const u8> bytes);
+}  // namespace Common

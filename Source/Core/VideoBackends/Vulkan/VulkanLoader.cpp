@@ -1,18 +1,22 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <atomic>
-#include <cstdarg>
-#include <cstdlib>
-
-#include "Common/CommonFuncs.h"
-#include "Common/DynamicLibrary.h"
-#include "Common/FileUtil.h"
-#include "Common/Logging/Log.h"
-#include "Common/StringUtil.h"
-
+#define VMA_IMPLEMENTATION
 #include "VideoBackends/Vulkan/VulkanLoader.h"
+
+#if defined(ANDROID)
+#include <adrenotools/driver.h>
+#include <dlfcn.h>
+#endif
+
+#include "Common/DynamicLibrary.h"
+#if defined(__APPLE__)
+#include "Common/FileUtil.h"
+#elif defined(ANDROID) && _M_ARM_64
+#include "Common/FileUtil.h"
+
+#include "VideoCommon/VideoConfig.h"
+#endif
 
 #define VULKAN_MODULE_ENTRY_POINT(name, required) PFN_##name name;
 #define VULKAN_INSTANCE_ENTRY_POINT(name, required) PFN_##name name;
@@ -37,18 +41,47 @@ static void ResetVulkanLibraryFunctionPointers()
 
 static Common::DynamicLibrary s_vulkan_module;
 
-static bool OpenVulkanLibrary()
+static bool OpenVulkanLibrary(bool force_system_library)
 {
-#ifdef __APPLE__
+#if defined(__APPLE__)
   // Check if a path to a specific Vulkan library has been specified.
   char* libvulkan_env = getenv("LIBVULKAN_PATH");
   if (libvulkan_env && s_vulkan_module.Open(libvulkan_env))
     return true;
 
-  // Use the libvulkan.dylib from the application bundle.
-  std::string filename = File::GetBundleDirectory() + "/Contents/Frameworks/libvulkan.dylib";
+  // Use the libMoltenVK.dylib from the application bundle.
+  std::string filename = File::GetBundleDirectory() + "/Contents/Frameworks/libMoltenVK.dylib";
   return s_vulkan_module.Open(filename.c_str());
 #else
+
+#if defined(ANDROID) && _M_ARM_64
+  const std::string& driver_lib_name = g_Config.customDriverLibraryName;
+
+  if (!force_system_library && !driver_lib_name.empty() && SupportsCustomDriver())
+  {
+    std::string tmp_dir = File::GetGpuDriverDirectory(D_GPU_DRIVERS_TMP);
+    std::string hook_dir = File::GetGpuDriverDirectory(D_GPU_DRIVERS_HOOKS);
+    std::string file_redirect_dir = File::GetGpuDriverDirectory(D_GPU_DRIVERS_FILE_REDIRECT);
+    std::string driver_dir = File::GetGpuDriverDirectory(D_GPU_DRIVERS_EXTRACTED);
+    INFO_LOG_FMT(HOST_GPU, "Loading driver: {}", driver_lib_name);
+
+    s_vulkan_module = adrenotools_open_libvulkan(
+        RTLD_NOW, ADRENOTOOLS_DRIVER_FILE_REDIRECT | ADRENOTOOLS_DRIVER_CUSTOM, tmp_dir.c_str(),
+        hook_dir.c_str(), driver_dir.c_str(), driver_lib_name.c_str(), file_redirect_dir.c_str(),
+        nullptr);
+    if (s_vulkan_module.IsOpen())
+    {
+      INFO_LOG_FMT(HOST_GPU, "Successfully loaded driver: {}", driver_lib_name);
+      return true;
+    }
+    else
+    {
+      WARN_LOG_FMT(HOST_GPU, "Loading driver {} failed.", driver_lib_name);
+    }
+  }
+#endif
+
+  WARN_LOG_FMT(HOST_GPU, "Loading system driver");
   std::string filename = Common::DynamicLibrary::GetVersionedFilename("vulkan", 1);
   if (s_vulkan_module.Open(filename.c_str()))
     return true;
@@ -59,15 +92,15 @@ static bool OpenVulkanLibrary()
 #endif
 }
 
-bool LoadVulkanLibrary()
+bool LoadVulkanLibrary(bool force_system_library)
 {
-  if (!s_vulkan_module.IsOpen() && !OpenVulkanLibrary())
+  if (!s_vulkan_module.IsOpen() && !OpenVulkanLibrary(force_system_library))
     return false;
 
 #define VULKAN_MODULE_ENTRY_POINT(name, required)                                                  \
   if (!s_vulkan_module.GetSymbol(#name, &name) && required)                                        \
   {                                                                                                \
-    ERROR_LOG(VIDEO, "Vulkan: Failed to load required module function %s", #name);                 \
+    ERROR_LOG_FMT(VIDEO, "Vulkan: Failed to load required module function {}", #name);             \
     ResetVulkanLibraryFunctionPointers();                                                          \
     s_vulkan_module.Close();                                                                       \
     return false;                                                                                  \
@@ -92,7 +125,7 @@ bool LoadVulkanInstanceFunctions(VkInstance instance)
     *func_ptr = vkGetInstanceProcAddr(instance, name);
     if (!(*func_ptr) && is_required)
     {
-      ERROR_LOG(VIDEO, "Vulkan: Failed to load required instance function %s", name);
+      ERROR_LOG_FMT(HOST_GPU, "Vulkan: Failed to load required instance function {}", name);
       required_functions_missing = true;
     }
   };
@@ -112,7 +145,7 @@ bool LoadVulkanDeviceFunctions(VkDevice device)
     *func_ptr = vkGetDeviceProcAddr(device, name);
     if (!(*func_ptr) && is_required)
     {
-      ERROR_LOG(VIDEO, "Vulkan: Failed to load required device function %s", name);
+      ERROR_LOG_FMT(HOST_GPU, "Vulkan: Failed to load required device function {}", name);
       required_functions_missing = true;
     }
   };
@@ -206,17 +239,32 @@ const char* VkResultToString(VkResult res)
   }
 }
 
-void LogVulkanResult(int level, const char* func_name, VkResult res, const char* msg, ...)
+void LogVulkanResult(Common::Log::LogLevel level, const char* func_name, const int line,
+                     VkResult res, const char* msg)
 {
-  std::va_list ap;
-  va_start(ap, msg);
-  std::string real_msg = StringFromFormatV(msg, ap);
-  va_end(ap);
-
-  real_msg = StringFromFormat("(%s) %s (%d: %s)", func_name, real_msg.c_str(),
-                              static_cast<int>(res), VkResultToString(res));
-
-  GENERIC_LOG(LogTypes::VIDEO, static_cast<LogTypes::LOG_LEVELS>(level), "%s", real_msg.c_str());
+  GENERIC_LOG_FMT(Common::Log::LogType::VIDEO, level, "({}:{}) {} ({}: {})", func_name, line, msg,
+                  static_cast<int>(res), VkResultToString(res));
 }
+
+#ifdef ANDROID
+static bool CheckKgslPresent()
+{
+  constexpr auto KgslPath{"/dev/kgsl-3d0"};
+
+  return access(KgslPath, F_OK) == 0;
+}
+
+static bool CheckKbasePresent()
+{
+  constexpr auto KbasePath{"/dev/mali0"};
+
+  return access(KbasePath, F_OK) == 0;
+}
+
+bool SupportsCustomDriver()
+{
+  return android_get_device_api_level() >= 28 && (CheckKgslPresent() || CheckKbasePresent());
+}
+#endif
 
 }  // namespace Vulkan

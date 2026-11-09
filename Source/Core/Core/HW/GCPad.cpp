@@ -1,21 +1,17 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/GCPad.h"
-
-#include <cstring>
 
 #include "Common/Common.h"
 #include "Core/HW/GCPadEmu.h"
 #include "InputCommon/ControllerEmu/ControlGroup/ControlGroup.h"
-#include "InputCommon/ControllerInterface/ControllerInterface.h"
 #include "InputCommon/GCPadStatus.h"
 #include "InputCommon/InputConfig.h"
 
 namespace Pad
 {
-static InputConfig s_config("GCPadNew", _trans("Pad"), "GCPad");
+static InputConfig s_config("GCPadNew", _trans("Pad"), "GCPad", "Pad");
 InputConfig* GetConfig()
 {
   return &s_config;
@@ -39,12 +35,17 @@ void Initialize()
   s_config.RegisterHotplugCallback();
 
   // Load the saved controller config
-  s_config.LoadConfig(true);
+  s_config.LoadConfig();
 }
 
 void LoadConfig()
 {
-  s_config.LoadConfig(true);
+  s_config.LoadConfig();
+}
+
+void GenerateDynamicInputTextures()
+{
+  s_config.GenerateControllerTextures();
 }
 
 bool IsInitialized()

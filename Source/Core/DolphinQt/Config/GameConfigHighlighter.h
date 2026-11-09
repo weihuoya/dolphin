@@ -1,28 +1,27 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <vector>
 
-#include <QRegularExpression>
-#include <QSyntaxHighlighter>
-#include <QTextCharFormat>
+#include <QObject>
 
 struct HighlightingRule;
 
-class GameConfigHighlighter : public QSyntaxHighlighter
+class QTextBlock;
+class QTextDocument;
+
+class GameConfigHighlighter : public QObject
 {
   Q_OBJECT
 
 public:
-  explicit GameConfigHighlighter(QTextDocument* parent = nullptr);
-  ~GameConfigHighlighter();
-
-protected:
-  void highlightBlock(const QString& text) override;
+  explicit GameConfigHighlighter(QTextDocument* parent);
+  ~GameConfigHighlighter() override;
 
 private:
+  void HighlightBlock(const QTextBlock& block);
+
   std::vector<HighlightingRule> m_rules;
 };

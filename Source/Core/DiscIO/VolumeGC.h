@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -14,6 +13,7 @@
 #include "Common/Lazy.h"
 #include "DiscIO/Filesystem.h"
 #include "DiscIO/Volume.h"
+#include "DiscIO/VolumeDisc.h"
 
 namespace DiscIO
 {
@@ -25,39 +25,37 @@ enum class Language;
 enum class Region;
 enum class Platform;
 
-class VolumeGC : public VolumeDisc
+class VolumeGC final : public VolumeDisc
 {
 public:
   VolumeGC(std::unique_ptr<BlobReader> reader);
-  ~VolumeGC();
+  ~VolumeGC() override;
   bool Read(u64 offset, u64 length, u8* buffer,
             const Partition& partition = PARTITION_NONE) const override;
   const FileSystem* GetFileSystem(const Partition& partition = PARTITION_NONE) const override;
-  std::string GetGameID(const Partition& partition = PARTITION_NONE) const override;
   std::string GetGameTDBID(const Partition& partition = PARTITION_NONE) const override;
-  std::string GetMakerID(const Partition& partition = PARTITION_NONE) const override;
-  std::optional<u16> GetRevision(const Partition& partition = PARTITION_NONE) const override;
-  std::string GetInternalName(const Partition& partition = PARTITION_NONE) const override;
   std::map<Language, std::string> GetShortNames() const override;
   std::map<Language, std::string> GetLongNames() const override;
   std::map<Language, std::string> GetShortMakers() const override;
   std::map<Language, std::string> GetLongMakers() const override;
   std::map<Language, std::string> GetDescriptions() const override;
   std::vector<u32> GetBanner(u32* width, u32* height) const override;
-  std::string GetApploaderDate(const Partition& partition = PARTITION_NONE) const override;
-  std::optional<u8> GetDiscNumber(const Partition& partition = PARTITION_NONE) const override;
 
   Platform GetVolumeType() const override;
+  bool IsDatelDisc() const override;
   Region GetRegion() const override;
-  Country GetCountry(const Partition& partition = PARTITION_NONE) const override;
   BlobType GetBlobType() const override;
-  u64 GetSize() const override;
-  bool IsSizeAccurate() const override;
+  u64 GetDataSize() const override;
+  DataSizeType GetDataSizeType() const override;
   u64 GetRawSize() const override;
+  const BlobReader& GetBlobReader() const override;
+  std::array<u8, 20> GetSyncHash() const override;
+
+  const BootID* GetTriforceBootID() const { return &m_triforce_header; }
 
 private:
-  static const u32 GC_BANNER_WIDTH = 96;
-  static const u32 GC_BANNER_HEIGHT = 32;
+  static constexpr u32 GC_BANNER_WIDTH = 96;
+  static constexpr u32 GC_BANNER_HEIGHT = 32;
 
   struct GCBannerInformation
   {
@@ -98,14 +96,18 @@ private:
   ConvertedGCBanner LoadBannerFile() const;
   ConvertedGCBanner ExtractBannerInformation(const GCBanner& banner_file, bool is_bnr1) const;
 
-  static const size_t BNR1_SIZE = sizeof(GCBanner) - sizeof(GCBannerInformation) * 5;
-  static const size_t BNR2_SIZE = sizeof(GCBanner);
+  static constexpr size_t BNR1_SIZE = sizeof(GCBanner) - sizeof(GCBannerInformation) * 5;
+  static constexpr size_t BNR2_SIZE = sizeof(GCBanner);
 
   Common::Lazy<ConvertedGCBanner> m_converted_banner;
 
   Common::Lazy<std::unique_ptr<FileSystem>> m_file_system;
 
   std::unique_ptr<BlobReader> m_reader;
+
+  BootID m_triforce_header;
+
+  bool m_is_triforce;
 };
 
 }  // namespace DiscIO

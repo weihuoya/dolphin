@@ -1,8 +1,9 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Config/CheatWarningWidget.h"
+
+#include <utility>
 
 #include <QHBoxLayout>
 #include <QLabel>
@@ -12,48 +13,39 @@
 
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
+#include "Core/System.h"
 
+#include "DolphinQt/QtUtils/QtUtils.h"
 #include "DolphinQt/Settings.h"
 
-CheatWarningWidget::CheatWarningWidget(const std::string& game_id, bool restart_required,
-                                       QWidget* parent)
-    : QWidget(parent), m_game_id(game_id), m_restart_required(restart_required)
+CheatWarningWidget::CheatWarningWidget(std::string game_id, bool restart_required, QWidget* parent)
+    : QWidget(parent), m_game_id(std::move(game_id)), m_restart_required(restart_required)
 {
   CreateWidgets();
   ConnectWidgets();
 
   connect(&Settings::Instance(), &Settings::EnableCheatsChanged, this,
-          [this] { Update(Core::IsRunning()); });
-  connect(&Settings::Instance(), &Settings::EmulationStateChanged, this,
-          [this](Core::State state) { Update(state == Core::State::Running); });
+          [this] { Update(Core::IsRunning(Core::System::GetInstance())); });
+  connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, [this](Core::State state) {
+    Update(state == Core::State::Running || state == Core::State::Paused);
+  });
 
-  Update(Core::IsRunning());
+  Update(Core::IsRunning(Core::System::GetInstance()));
 }
 
 void CheatWarningWidget::CreateWidgets()
 {
-  auto* icon = new QLabel;
-
-  const auto size = 1.5 * QFontMetrics(font()).height();
-
-  QPixmap warning_icon = style()->standardIcon(QStyle::SP_MessageBoxWarning).pixmap(size, size);
-
-  icon->setPixmap(warning_icon);
-
   m_text = new QLabel();
   m_config_button = new QPushButton(tr("Configure Dolphin"));
 
   m_config_button->setHidden(true);
 
-  auto* layout = new QHBoxLayout;
+  auto* const layout = new QHBoxLayout{this};
 
-  layout->addWidget(icon);
-  layout->addWidget(m_text, 1);
+  layout->addWidget(QtUtils::CreateIconWarning(this, QStyle::SP_MessageBoxWarning, m_text));
   layout->addWidget(m_config_button);
 
   layout->setContentsMargins(0, 0, 0, 0);
-
-  setLayout(layout);
 }
 
 void CheatWarningWidget::Update(bool running)

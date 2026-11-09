@@ -1,6 +1,7 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "InputCommon/ControllerInterface/Pipes/Pipes.h"
 
 #include <algorithm>
 #include <array>
@@ -11,14 +12,13 @@
 #include <map>
 #include <sstream>
 #include <string>
-#include <sys/stat.h>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #include "Common/FileUtil.h"
 #include "Common/StringUtil.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
-#include "InputCommon/ControllerInterface/Pipes/Pipes.h"
 
 namespace ciface::Pipes
 {
@@ -39,7 +39,19 @@ static double StringToDouble(const std::string& text)
   return result;
 }
 
-void PopulateDevices()
+class InputBackend final : public ciface::InputBackend
+{
+public:
+  using ciface::InputBackend::InputBackend;
+  void PopulateDevices() override;
+};
+
+std::unique_ptr<ciface::InputBackend> CreateInputBackend(ControllerInterface* controller_interface)
+{
+  return std::make_unique<InputBackend>(controller_interface);
+}
+
+void InputBackend::PopulateDevices()
 {
   // Search the Pipes directory for files that we can open in read-only,
   // non-blocking mode. The device name is the virtual name of the file.
@@ -62,7 +74,7 @@ void PopulateDevices()
   }
 }
 
-PipeDevice::PipeDevice(int fd, const std::string& name) : m_fd(fd), m_name(name)
+PipeDevice::PipeDevice(int fd, std::string name) : m_fd(fd), m_name(std::move(name))
 {
   for (const auto& tok : s_button_tokens)
   {
@@ -86,7 +98,7 @@ PipeDevice::~PipeDevice()
   close(m_fd);
 }
 
-void PipeDevice::UpdateInput()
+Core::DeviceRemoval PipeDevice::UpdateInput()
 {
   // Read any pending characters off the pipe. If we hit a newline,
   // then dequeue a command off the front of m_buf and parse it.
@@ -105,6 +117,7 @@ void PipeDevice::UpdateInput()
     m_buf.erase(0, newline + 1);
     newline = m_buf.find("\n");
   }
+  return Core::DeviceRemoval::Keep;
 }
 
 void PipeDevice::AddAxis(const std::string& name, double value)
@@ -116,7 +129,7 @@ void PipeDevice::AddAxis(const std::string& name, double value)
   ax_lo->SetState(value);
   m_axes[name + " +"] = ax_hi;
   m_axes[name + " -"] = ax_lo;
-  AddAnalogInputs(ax_lo, ax_hi);
+  AddFullAnalogSurfaceInputs(ax_lo, ax_hi);
 }
 
 void PipeDevice::SetAxis(const std::string& entry, double value)

@@ -1,14 +1,14 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // TODO(ector): Tons of pshufb optimization of the loads/stores, for SSSE3+, possibly SSE4, only.
-// Should give a very noticable speed boost to paired single heavy code.
+// Should give a very noticeable speed boost to paired single heavy code.
 
 #include "Core/PowerPC/Jit64/Jit.h"
 
 #include "Common/Assert.h"
 #include "Common/BitSet.h"
+#include "Common/CPUDetect.h"
 #include "Common/CommonTypes.h"
 #include "Common/MsgHandler.h"
 #include "Common/x64ABI.h"
@@ -16,12 +16,15 @@
 
 #include "Core/ConfigManager.h"
 #include "Core/CoreTiming.h"
+#include "Core/Debugger/BranchWatch.h"
 #include "Core/HW/CPU.h"
 #include "Core/HW/Memmap.h"
 #include "Core/PowerPC/Jit64/RegCache/JitRegCache.h"
 #include "Core/PowerPC/Jit64Common/Jit64PowerPCState.h"
 #include "Core/PowerPC/JitInterface.h"
+#include "Core/PowerPC/MMU.h"
 #include "Core/PowerPC/PowerPC.h"
+#include "Core/System.h"
 
 using namespace Gen;
 
@@ -33,11 +36,9 @@ void Jit64::lXXx(UGeckoInstruction inst)
   int a = inst.RA, b = inst.RB, d = inst.RD;
 
   // Skip disabled JIT instructions
-  FALLBACK_IF(SConfig::GetInstance().bJITLoadStorelbzxOff && (inst.OPCD == 31) &&
-              (inst.SUBOP10 == 87));
-  FALLBACK_IF(SConfig::GetInstance().bJITLoadStorelXzOff &&
-              ((inst.OPCD == 34) || (inst.OPCD == 40) || (inst.OPCD == 32)));
-  FALLBACK_IF(SConfig::GetInstance().bJITLoadStorelwzOff && (inst.OPCD == 32));
+  FALLBACK_IF(bJITLoadStorelbzxOff && (inst.OPCD == 31) && (inst.SUBOP10 == 87));
+  FALLBACK_IF(bJITLoadStorelXzOff && ((inst.OPCD == 34) || (inst.OPCD == 40) || (inst.OPCD == 32)));
+  FALLBACK_IF(bJITLoadStorelwzOff && (inst.OPCD == 32));
 
   // Determine memory access size and sign extend
   int accessSize = 0;
@@ -74,6 +75,7 @@ void Jit64::lXXx(UGeckoInstruction inst)
     {
     case 534:  // lwbrx
       byte_reversed = true;
+      [[fallthrough]];
     case 23:  // lwzx
     case 55:  // lwzux
       accessSize = 32;
@@ -87,6 +89,7 @@ void Jit64::lXXx(UGeckoInstruction inst)
       break;
     case 790:  // lhbrx
       byte_reversed = true;
+      [[fallthrough]];
     case 279:  // lhzx
     case 311:  // lhzux
       accessSize = 16;
@@ -100,13 +103,15 @@ void Jit64::lXXx(UGeckoInstruction inst)
       break;
 
     default:
-      PanicAlert("Invalid instruction");
+      PanicAlertFmt("Invalid instruction");
     }
     break;
 
   default:
-    PanicAlert("Invalid instruction");
+    PanicAlertFmt("Invalid instruction");
   }
+
+  FlushRegistersBeforeSlowAccess();
 
   // PowerPC has no 8-bit sign extended load, but x86 does, so merge extsb with the load if we find
   // it.
@@ -150,7 +155,7 @@ void Jit64::lXXx(UGeckoInstruction inst)
   }
   else if (update && ((a == 0) || (d == a)))
   {
-    PanicAlert("Invalid instruction");
+    PanicAlertFmt("Invalid instruction");
   }
   else
   {
@@ -231,39 +236,168 @@ void Jit64::dcbx(UGeckoInstruction inst)
 {
   INSTRUCTION_START
   JITDISABLE(bJITLoadStoreOff);
+  FALLBACK_IF(m_accurate_cpu_cache_enabled);
 
-  X64Reg addr = RSCRATCH;
-  X64Reg value = RSCRATCH2;
+  // Check if the next instructions match a known looping pattern:
+  // - dcbx rX
+  // - addi rX,rX,32
+  // - bdnz+ -8
+  const bool make_loop = inst.RA == 0 && inst.RB != 0 && CanMergeNextInstructions(2) &&
+                         (js.op[1].inst.hex & 0xfc00'ffff) == 0x38000020 &&
+                         js.op[1].inst.RA_6 == inst.RB && js.op[1].inst.RD_2 == inst.RB &&
+                         js.op[2].inst.hex == 0x4200fff8;
+
   RCOpArg Ra = inst.RA ? gpr.Use(inst.RA, RCMode::Read) : RCOpArg::Imm32(0);
-  RCOpArg Rb = gpr.Use(inst.RB, RCMode::Read);
-  RCX64Reg tmp = gpr.Scratch();
-  RegCache::Realize(Ra, Rb, tmp);
+  RCX64Reg Rb = gpr.Bind(inst.RB, make_loop ? RCMode::ReadWrite : RCMode::Read);
+  RegCache::Realize(Ra, Rb);
 
-  MOV_sum(32, addr, Ra, Rb);
+  RCX64Reg loop_counter;
+  if (make_loop)
+  {
+    // We'll execute somewhere between one single cacheline invalidation and however many are needed
+    // to reduce the downcount to zero, never exceeding the amount requested by the game.
+    // To stay consistent with the rest of the code we adjust the involved registers (CTR and Rb)
+    // by the amount of cache lines we invalidate minus one -- since we'll run the regular addi and
+    // bdnz afterwards! So if we invalidate a single cache line, we don't adjust the registers at
+    // all, if we invalidate 2 cachelines we adjust the registers by one step, and so on.
+
+    RCX64Reg reg_cycle_count = gpr.Scratch();
+    RCX64Reg reg_downcount = gpr.Scratch();
+    loop_counter = gpr.Scratch();
+    RegCache::Realize(reg_cycle_count, reg_downcount, loop_counter);
+
+    // This must be true in order for us to pick up the DIV results and not trash any data.
+    static_assert(RSCRATCH == Gen::EAX && RSCRATCH2 == Gen::EDX);
+
+    // Alright, now figure out how many loops we want to do.
+    const u8 cycle_count_per_loop =
+        js.op[0].opinfo->num_cycles + js.op[1].opinfo->num_cycles + js.op[2].opinfo->num_cycles;
+
+    // This is both setting the adjusted loop count to 0 for the downcount <= 0 case and clearing
+    // the upper bits for the DIV instruction in the downcount > 0 case.
+    XOR(32, R(RSCRATCH2), R(RSCRATCH2));
+
+    MOV(32, R(RSCRATCH), PPCSTATE(downcount));
+    TEST(32, R(RSCRATCH), R(RSCRATCH));                       // if (downcount <= 0)
+    FixupBranch downcount_is_zero_or_negative = J_CC(CC_LE);  // only do 1 invalidation; else:
+    MOV(32, R(loop_counter), PPCSTATE_CTR);
+    MOV(32, R(reg_downcount), R(RSCRATCH));
+    MOV(32, R(reg_cycle_count), Imm32(cycle_count_per_loop));
+    DIV(32, R(reg_cycle_count));                  // RSCRATCH = downcount / cycle_count
+    LEA(32, RSCRATCH2, MDisp(loop_counter, -1));  // RSCRATCH2 = CTR - 1
+    // ^ Note that this CTR-1 implicitly handles the CTR == 0 case correctly.
+    CMP(32, R(RSCRATCH), R(RSCRATCH2));
+    CMOVcc(32, RSCRATCH2, R(RSCRATCH), CC_B);  // RSCRATCH2 = min(RSCRATCH, RSCRATCH2)
+
+    // RSCRATCH2 now holds the amount of loops to execute minus 1, which is the amount we need to
+    // adjust downcount, CTR, and Rb by to exit the loop construct with the right values in those
+    // registers.
+    SUB(32, R(loop_counter), R(RSCRATCH2));
+    MOV(32, PPCSTATE_CTR, R(loop_counter));  // CTR -= RSCRATCH2
+    IMUL(32, reg_cycle_count, R(RSCRATCH2));
+    // ^ Note that this cannot overflow because it's limited by (downcount/cycle_count).
+    SUB(32, R(reg_downcount), R(reg_cycle_count));
+    MOV(32, PPCSTATE(downcount), R(reg_downcount));  // downcount -= (RSCRATCH2 * reg_cycle_count)
+
+    SetJumpTarget(downcount_is_zero_or_negative);
+
+    // Load the loop_counter register with the amount of invalidations to execute.
+    LEA(32, loop_counter, MDisp(RSCRATCH2, 1));
+
+    if (IsBranchWatchEnabled())
+    {
+      const BitSet32 bw_caller_save = (CallerSavedRegistersInUse() | BitSet32{RSCRATCH2}) &
+                                      ~BitSet32{int(reg_cycle_count), int(reg_downcount)};
+
+      // Assert RSCRATCH2 won't be clobbered before it is moved from.
+      static_assert(RSCRATCH2 != ABI_PARAM1);
+
+      ABI_PushRegistersAndAdjustStack(bw_caller_save, 0);
+      MOV(64, R(ABI_PARAM1), ImmPtr(&m_branch_watch));
+      // RSCRATCH2 holds the amount of faked branch watch hits. Move RSCRATCH2 first, because
+      // ABI_PARAM2 clobbers RSCRATCH2 on Windows and ABI_PARAM3 clobbers RSCRATCH2 on Linux!
+      MOV(32, R(ABI_PARAM4), R(RSCRATCH2));
+      const PPCAnalyst::CodeOp& op = js.op[2];
+      MOV(64, R(ABI_PARAM2), Imm64(Core::FakeBranchWatchCollectionKey{op.address, op.branchTo}));
+      MOV(32, R(ABI_PARAM3), Imm32(op.inst.hex));
+      ABI_CallFunction(m_ppc_state.msr.IR ? &Core::BranchWatch::HitVirtualTrue_fk_n :
+                                            &Core::BranchWatch::HitPhysicalTrue_fk_n);
+      ABI_PopRegistersAndAdjustStack(bw_caller_save, 0);
+    }
+  }
+
+  X64Reg effective_address = RSCRATCH;
+  MOV_sum(32, effective_address, Ra, Rb);
+
+  if (make_loop)
+  {
+    // This is the best place to adjust Rb to what it should be since RSCRATCH2 still has the
+    // adjusted loop count and we're done reading from Rb.
+    SHL(32, R(RSCRATCH2), Imm8(5));
+    ADD(32, R(Rb), R(RSCRATCH2));  // Rb += (RSCRATCH2 * 32)
+  }
+
+  X64Reg tmp = RSCRATCH2;
+  RCX64Reg addr = gpr.Scratch();
+  RegCache::Realize(addr);
+
+  FixupBranch bat_lookup_failed;
+  const u8* loop_start = GetCodePtr();
+  MOV(32, R(addr), R(effective_address));
+  if (m_ppc_state.feature_flags & FEATURE_FLAG_MSR_IR)
+  {
+    // Translate effective address to physical address.
+    bat_lookup_failed = BATAddressLookup(addr, tmp, m_jit.m_mmu.GetIBATTable().data());
+    MOV(32, R(tmp), R(effective_address));
+    AND(32, R(tmp), Imm32(PowerPC::BAT_PAGE_SIZE - 1));
+    AND(32, R(addr), Imm32(~(PowerPC::BAT_PAGE_SIZE - 1)));
+    OR(32, R(addr), R(tmp));
+  }
 
   // Check whether a JIT cache line needs to be invalidated.
-  LEA(32, value, MScaled(addr, SCALE_8, 0));  // addr << 3 (masks the first 3 bits)
-  SHR(32, R(value), Imm8(3 + 5 + 5));         // >> 5 for cache line size, >> 5 for width of bitset
+  SHR(32, R(addr), Imm8(5 + 5));  // >> 5 for cache line size, >> 5 for width of bitset
   MOV(64, R(tmp), ImmPtr(GetBlockCache()->GetBlockBitSet()));
-  MOV(32, R(value), MComplex(tmp, value, SCALE_4, 0));
-  SHR(32, R(addr), Imm8(5));
-  BT(32, R(value), R(addr));
+  MOV(32, R(addr), MComplex(tmp, addr, SCALE_4, 0));
+  MOV(32, R(tmp), R(effective_address));
+  SHR(32, R(tmp), Imm8(5));
+  BT(32, R(addr), R(tmp));
+  FixupBranch invalidate_needed = J_CC(CC_C, Jump::Near);
 
-  FixupBranch c = J_CC(CC_C, true);
+  if (make_loop)
+  {
+    ADD(32, R(effective_address), Imm8(32));
+    SUB(32, R(loop_counter), Imm8(1));
+    J_CC(CC_NZ, loop_start);
+  }
+
   SwitchToFarCode();
-  SetJumpTarget(c);
+  SetJumpTarget(invalidate_needed);
+  if (m_ppc_state.feature_flags & FEATURE_FLAG_MSR_IR)
+    SetJumpTarget(bat_lookup_failed);
+
   BitSet32 registersInUse = CallerSavedRegistersInUse();
+  registersInUse[X64Reg(tmp)] = false;
+  registersInUse[X64Reg(effective_address)] = false;
+  registersInUse[X64Reg(addr)] = false;
+  if (make_loop)
+    registersInUse[X64Reg(loop_counter)] = false;
   ABI_PushRegistersAndAdjustStack(registersInUse, 0);
-  MOV(32, R(ABI_PARAM1), R(addr));
-  SHL(32, R(ABI_PARAM1), Imm8(5));
-  MOV(32, R(ABI_PARAM2), Imm32(32));
-  XOR(32, R(ABI_PARAM3), R(ABI_PARAM3));
-  ABI_CallFunction(JitInterface::InvalidateICache);
+  if (make_loop)
+  {
+    ABI_CallFunctionPRR(JitInterface::InvalidateICacheLinesFromJIT, &m_system.GetJitInterface(),
+                        effective_address, loop_counter);
+  }
+  else
+  {
+    ABI_CallFunctionPR(JitInterface::InvalidateICacheLineFromJIT, &m_system.GetJitInterface(),
+                       effective_address);
+  }
   ABI_PopRegistersAndAdjustStack(registersInUse, 0);
   asm_routines.ResetStack(*this);
-  c = J(true);
+
+  FixupBranch done = J(Jump::Near);
   SwitchToNearCode();
-  SetJumpTarget(c);
+  SetJumpTarget(done);
 }
 
 void Jit64::dcbt(UGeckoInstruction inst)
@@ -290,10 +424,11 @@ void Jit64::dcbz(UGeckoInstruction inst)
 {
   INSTRUCTION_START
   JITDISABLE(bJITLoadStoreOff);
-  FALLBACK_IF(SConfig::GetInstance().bLowDCBZHack);
 
   int a = inst.RA;
   int b = inst.RB;
+
+  FlushRegistersBeforeSlowAccess();
 
   {
     RCOpArg Ra = a ? gpr.Use(a, RCMode::Read) : RCOpArg::Imm32(0);
@@ -304,37 +439,60 @@ void Jit64::dcbz(UGeckoInstruction inst)
     AND(32, R(RSCRATCH), Imm32(~31));
   }
 
-  if (MSR.DR)
+  FixupBranch end_dcbz_hack;
+  if (m_low_dcbz_hack)
+  {
+    // HACK: Don't clear any memory in the [0x8000'0000, 0x8000'8000) region.
+    CMP(32, R(RSCRATCH), Imm32(0x8000'8000));
+    end_dcbz_hack = J_CC(CC_L);
+  }
+
+  bool emit_fast_path = (m_ppc_state.feature_flags & FEATURE_FLAG_MSR_DR) &&
+                        m_jit.jo.fastmem_arena && !m_accurate_cpu_cache_enabled;
+
+  if (emit_fast_path)
   {
     // Perform lookup to see if we can use fast path.
-    MOV(64, R(RSCRATCH2), ImmPtr(&PowerPC::dbat_table[0]));
+    MOV(64, R(RSCRATCH2), ImmPtr(m_mmu.GetDBATTable().data()));
     PUSH(RSCRATCH);
     SHR(32, R(RSCRATCH), Imm8(PowerPC::BAT_INDEX_SHIFT));
     TEST(32, MComplex(RSCRATCH2, RSCRATCH, SCALE_4, 0), Imm32(PowerPC::BAT_PHYSICAL_BIT));
     POP(RSCRATCH);
-    FixupBranch slow = J_CC(CC_Z, true);
+    FixupBranch slow = J_CC(CC_Z, Jump::Near);
 
     // Fast path: compute full address, then zero out 32 bytes of memory.
-    XORPS(XMM0, R(XMM0));
-    MOVAPS(MComplex(RMEM, RSCRATCH, SCALE_1, 0), XMM0);
-    MOVAPS(MComplex(RMEM, RSCRATCH, SCALE_1, 16), XMM0);
+    if (cpu_info.bAVX)
+    {
+      VXORPS(XMM0, XMM0, R(XMM0));
+      VMOVAPS(MComplex(RMEM, RSCRATCH, SCALE_1, 0), YMM0);
+      VZEROUPPER();
+    }
+    else
+    {
+      XORPS(XMM0, R(XMM0));
+      MOVAPS(MComplex(RMEM, RSCRATCH, SCALE_1, 0), XMM0);
+      MOVAPS(MComplex(RMEM, RSCRATCH, SCALE_1, 16), XMM0);
+    }
 
     // Slow path: call the general-case code.
     SwitchToFarCode();
     SetJumpTarget(slow);
   }
-  MOV(32, PPCSTATE(pc), Imm32(js.compilerPC));
+  FlushPCBeforeSlowAccess();
   BitSet32 registersInUse = CallerSavedRegistersInUse();
   ABI_PushRegistersAndAdjustStack(registersInUse, 0);
-  ABI_CallFunctionR(PowerPC::ClearCacheLine, RSCRATCH);
+  ABI_CallFunctionPR(PowerPC::ClearDCacheLineFromJit, &m_mmu, RSCRATCH);
   ABI_PopRegistersAndAdjustStack(registersInUse, 0);
 
-  if (MSR.DR)
+  if (emit_fast_path)
   {
-    FixupBranch end = J(true);
+    FixupBranch end_far_code = J(Jump::Near);
     SwitchToNearCode();
-    SetJumpTarget(end);
+    SetJumpTarget(end_far_code);
   }
+
+  if (m_low_dcbz_hack)
+    SetJumpTarget(end_dcbz_hack);
 }
 
 void Jit64::stX(UGeckoInstruction inst)
@@ -348,7 +506,7 @@ void Jit64::stX(UGeckoInstruction inst)
   bool update = (inst.OPCD & 1) && offset;
 
   if (!a && update)
-    PanicAlert("Invalid stX");
+    PanicAlertFmt("Invalid stX");
 
   int accessSize;
   switch (inst.OPCD & ~1)
@@ -367,6 +525,8 @@ void Jit64::stX(UGeckoInstruction inst)
     return;
   }
 
+  FlushRegistersBeforeSlowAccess();
+
   // If we already know the address of the write
   if (!a || gpr.IsImm(a))
   {
@@ -384,10 +544,10 @@ void Jit64::stX(UGeckoInstruction inst)
       }
       else
       {
-        RCOpArg Ra = gpr.UseNoImm(a, RCMode::ReadWrite);
+        RCOpArg Ra = gpr.RevertableBind(a, RCMode::Write);
         RegCache::Realize(Ra);
         MemoryExceptionCheck();
-        ADD(32, Ra, Imm32((u32)offset));
+        MOV(32, Ra, Imm32(addr));
       }
     }
   }
@@ -395,12 +555,19 @@ void Jit64::stX(UGeckoInstruction inst)
   {
     RCX64Reg Ra = gpr.Bind(a, update ? RCMode::ReadWrite : RCMode::Read);
     RCOpArg reg_value;
-    if (!gpr.IsImm(s) && WriteClobbersRegValue(accessSize, /* swap */ true))
+    if (WriteClobbersRegValue(accessSize, /* swap */ true))
     {
-      RCOpArg Rs = gpr.Use(s, RCMode::Read);
-      RegCache::Realize(Rs);
-      reg_value = RCOpArg::R(RSCRATCH2);
-      MOV(32, reg_value, Rs);
+      if (gpr.IsImm(s))
+      {
+        reg_value = RCOpArg::Imm32(gpr.Imm32(s));
+      }
+      else
+      {
+        RCOpArg Rs = gpr.Use(s, RCMode::Read);
+        RegCache::Realize(Rs);
+        reg_value = RCOpArg::R(RSCRATCH2);
+        MOV(32, reg_value, Rs);
+      }
     }
     else
     {
@@ -440,16 +607,20 @@ void Jit64::stXx(UGeckoInstruction inst)
     accessSize = 8;
     break;
   default:
-    PanicAlert("stXx: invalid access size");
+    PanicAlertFmt("stXx: invalid access size");
     accessSize = 0;
     break;
   }
+
+  FlushRegistersBeforeSlowAccess();
 
   const bool does_clobber = WriteClobbersRegValue(accessSize, /* swap */ !byte_reverse);
 
   RCOpArg Ra = update ? gpr.Bind(a, RCMode::ReadWrite) : gpr.Use(a, RCMode::Read);
   RCOpArg Rb = gpr.Use(b, RCMode::Read);
-  RCOpArg Rs = does_clobber ? gpr.Use(s, RCMode::Read) : gpr.BindOrImm(s, RCMode::Read);
+  RCOpArg Rs = does_clobber ?
+                   (gpr.IsImm(s) ? RCOpArg::Imm32(gpr.Imm32(s)) : gpr.Use(s, RCMode::Read)) :
+                   gpr.BindOrImm(s, RCMode::Read);
   RegCache::Realize(Ra, Rb, Rs);
 
   MOV_sum(32, RSCRATCH2, Ra, Rb);
@@ -477,6 +648,8 @@ void Jit64::lmw(UGeckoInstruction inst)
 
   int a = inst.RA, d = inst.RD;
 
+  FlushRegistersBeforeSlowAccess();
+
   // TODO: This doesn't handle rollback on DSI correctly
   {
     RCOpArg Ra = a ? gpr.Use(a, RCMode::Read) : RCOpArg::Imm32(0);
@@ -499,6 +672,8 @@ void Jit64::stmw(UGeckoInstruction inst)
   JITDISABLE(bJITLoadStoreOff);
 
   int a = inst.RA, d = inst.RD;
+
+  FlushRegistersBeforeSlowAccess();
 
   // TODO: This doesn't handle rollback on DSI correctly
   for (int i = d; i < 32; i++)

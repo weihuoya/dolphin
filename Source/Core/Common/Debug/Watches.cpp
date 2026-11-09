@@ -1,11 +1,13 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/Debug/Watches.h"
 
 #include <algorithm>
+#include <locale>
 #include <sstream>
+
+#include <fmt/format.h>
 
 namespace Common::Debug
 {
@@ -41,9 +43,7 @@ const std::vector<Watch>& Watches::GetWatches() const
 
 void Watches::UnsetWatch(u32 address)
 {
-  m_watches.erase(std::remove_if(m_watches.begin(), m_watches.end(),
-                                 [address](const auto& watch) { return watch.address == address; }),
-                  m_watches.end());
+  std::erase_if(m_watches, [address](const auto& watch) { return watch.address == address; });
 }
 
 void Watches::UpdateWatch(std::size_t index, u32 address, std::string name)
@@ -62,6 +62,11 @@ void Watches::UpdateWatchName(std::size_t index, std::string name)
   m_watches[index].name = std::move(name);
 }
 
+void Watches::UpdateWatchLockedState(std::size_t index, bool locked)
+{
+  m_watches[index].locked = locked;
+}
+
 void Watches::EnableWatch(std::size_t index)
 {
   m_watches[index].is_enabled = Watch::State::Enabled;
@@ -74,7 +79,7 @@ void Watches::DisableWatch(std::size_t index)
 
 bool Watches::HasEnabledWatch(u32 address) const
 {
-  return std::any_of(m_watches.begin(), m_watches.end(), [address](const auto& watch) {
+  return std::ranges::any_of(m_watches, [address](const auto& watch) {
     return watch.address == address && watch.is_enabled == Watch::State::Enabled;
   });
 }
@@ -84,15 +89,15 @@ void Watches::RemoveWatch(std::size_t index)
   m_watches.erase(m_watches.begin() + index);
 }
 
-void Watches::LoadFromStrings(const std::vector<std::string>& watches)
+void Watches::LoadFromStrings(std::span<const std::string> watches)
 {
   for (const std::string& watch : watches)
   {
-    std::stringstream ss;
+    std::istringstream ss(watch);
+    ss.imbue(std::locale::classic());
     u32 address;
     std::string name;
-    ss << std::hex << watch;
-    ss >> address;
+    ss >> std::hex >> address;
     ss >> std::ws;
     std::getline(ss, name);
     SetWatch(address, name);
@@ -102,12 +107,9 @@ void Watches::LoadFromStrings(const std::vector<std::string>& watches)
 std::vector<std::string> Watches::SaveToStrings() const
 {
   std::vector<std::string> watches;
+  watches.reserve(m_watches.size());
   for (const auto& watch : m_watches)
-  {
-    std::stringstream ss;
-    ss << std::hex << watch.address << " " << watch.name;
-    watches.push_back(ss.str());
-  }
+    watches.emplace_back(fmt::format("{:x} {}", watch.address, watch.name));
   return watches;
 }
 

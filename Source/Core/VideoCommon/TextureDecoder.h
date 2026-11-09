@@ -1,18 +1,22 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <array>
+#include <span>
 #include <tuple>
+
 #include "Common/CommonTypes.h"
+#include "Common/EnumFormatter.h"
+#include "Common/SpanUtils.h"
 
 enum
 {
   TMEM_SIZE = 1024 * 1024,
   TMEM_LINE_SIZE = 32,
 };
-alignas(16) extern u8 texMem[TMEM_SIZE];
+alignas(16) extern std::array<u8, TMEM_SIZE> s_tex_mem;
 
 enum class TextureFormat
 {
@@ -32,13 +36,27 @@ enum class TextureFormat
   // Special texture format used to represent YUVY xfb copies.
   // They aren't really textures, but they share so much hardware and usecases that it makes sense
   // to emulate them as part of texture cache.
+  // This isn't a real value that can be used on console; it only exists for ease of implementation.
   XFB = 0xF,
+};
+template <>
+struct fmt::formatter<TextureFormat> : EnumFormatter<TextureFormat::CMPR>
+{
+  static constexpr array_type names = {"I4",     "I8",    "IA4",   "IA8",   "RGB565",
+                                       "RGB5A3", "RGBA8", nullptr, "C4",    "C8",
+                                       "C14X2",  nullptr, nullptr, nullptr, "CMPR"};
+  constexpr formatter() : EnumFormatter(names) {}
 };
 
 static inline bool IsColorIndexed(TextureFormat format)
 {
   return format == TextureFormat::C4 || format == TextureFormat::C8 ||
          format == TextureFormat::C14X2;
+}
+
+static inline bool IsValidTextureFormat(TextureFormat format)
+{
+  return format <= TextureFormat::RGBA8 || IsColorIndexed(format) || format == TextureFormat::CMPR;
 }
 
 // The EFB Copy pipeline looks like:
@@ -82,7 +100,19 @@ enum class EFBCopyFormat
   // Special texture format used to represent YUVY xfb copies.
   // They aren't really textures, but they share so much hardware and usecases that it makes sense
   // to emulate them as part of texture cache.
+  // This isn't a real value that can be used on console; it only exists for ease of implementation.
   XFB = 0xF,
+};
+template <>
+struct fmt::formatter<EFBCopyFormat> : EnumFormatter<EFBCopyFormat::GB8>
+{
+  static constexpr array_type names = {
+      "R4/I4/Z4",  "R8/I8/Z8H (?)", "RA4/IA4", "RA8/IA8 (Z16 too?)",
+      "RGB565",    "RGB5A3",        "RGBA8",   "A8",
+      "R8/I8/Z8H", "G8/Z8M",        "B8/Z8L",  "RG8/Z16R (Note: G and R are reversed)",
+      "GB8/Z16L",
+  };
+  constexpr formatter() : EnumFormatter(names) {}
 };
 
 enum class TLUTFormat
@@ -91,6 +121,11 @@ enum class TLUTFormat
   IA8 = 0x0,
   RGB565 = 0x1,
   RGB5A3 = 0x2,
+};
+template <>
+struct fmt::formatter<TLUTFormat> : EnumFormatter<TLUTFormat::RGB5A3>
+{
+  constexpr formatter() : EnumFormatter({"IA8", "RGB565", "RGB5A3"}) {}
 };
 
 static inline bool IsValidTLUTFormat(TLUTFormat tlutfmt)
@@ -140,6 +175,11 @@ static inline bool CanReinterpretTextureOnGPU(TextureFormat from_format, Texture
   }
 }
 
+inline std::span<u8> TexDecoder_GetTmemSpan(size_t offset = 0)
+{
+  return Common::SafeSubspan(std::span<u8>(s_tex_mem), offset);
+}
+
 int TexDecoder_GetTexelSizeInNibbles(TextureFormat format);
 int TexDecoder_GetTextureSizeInBytes(int width, int height, TextureFormat format);
 int TexDecoder_GetBlockWidthInTexels(TextureFormat format);
@@ -153,10 +193,13 @@ void TexDecoder_Decode(u8* dst, const u8* src, int width, int height, TextureFor
                        const u8* tlut, TLUTFormat tlutfmt);
 void TexDecoder_DecodeRGBA8FromTmem(u8* dst, const u8* src_ar, const u8* src_gb, int width,
                                     int height);
-void TexDecoder_DecodeTexel(u8* dst, const u8* src, int s, int t, int imageWidth,
-                            TextureFormat texformat, const u8* tlut, TLUTFormat tlutfmt);
+void TexDecoder_DecodeTexel(u8* dst, std::span<const u8> src, int s, int t, int image_width_minus_1,
+                            TextureFormat texformat, std::span<const u8> tlut, TLUTFormat tlutfmt);
+void TexDecoder_DecodeTexelRGBA8FromTmem(u8* dst, std::span<const u8> src_ar,
+                                         std::span<const u8> src_gb, int s, int t,
+                                         int image_width_minus_1);
 void TexDecoder_DecodeTexelRGBA8FromTmem(u8* dst, const u8* src_ar, const u8* src_gb, int s, int t,
-                                         int imageWidth);
+                                         int image_width_minus_1);
 void TexDecoder_DecodeXFB(u8* dst, const u8* src, u32 width, u32 height, u32 stride);
 
 void TexDecoder_SetTexFmtOverlayOptions(bool enable, bool center);

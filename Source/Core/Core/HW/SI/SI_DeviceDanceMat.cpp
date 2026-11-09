@@ -1,33 +1,28 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/SI/SI_DeviceDanceMat.h"
 
-#include <cstring>
-
 #include "Common/CommonTypes.h"
-#include "Common/Swap.h"
 #include "InputCommon/GCPadStatus.h"
 
 namespace SerialInterface
 {
-CSIDevice_DanceMat::CSIDevice_DanceMat(SIDevices device, int device_number)
-    : CSIDevice_GCController(device, device_number)
+CSIDevice_DanceMat::CSIDevice_DanceMat(Core::System& system, SIDevices device, int device_number)
+    : CSIDevice_GCController(system, device, device_number)
 {
 }
 
 int CSIDevice_DanceMat::RunBuffer(u8* buffer, int request_length)
 {
   // Read the command
-  EBufferCommands command = static_cast<EBufferCommands>(buffer[0]);
-  if (command == CMD_RESET)
+  const auto command = static_cast<EBufferCommands>(buffer[0]);
+  if (command == EBufferCommands::CMD_STATUS)
   {
+    // Only used for logging.
     ISIDevice::RunBuffer(buffer, request_length);
 
-    u32 id = Common::swap32(SI_DANCEMAT);
-    std::memcpy(buffer, &id, sizeof(id));
-    return sizeof(id);
+    return CreateStatusResponse(SI_DANCEMAT, buffer);
   }
   return CSIDevice_GCController::RunBuffer(buffer, request_length);
 }
@@ -61,13 +56,13 @@ u32 CSIDevice_DanceMat::MapPadStatus(const GCPadStatus& pad_status)
   return (u32)(map << 16) | 0x8080;
 }
 
-bool CSIDevice_DanceMat::GetData(u32& hi, u32& low)
+DataResponse CSIDevice_DanceMat::GetData(u32& hi, u32& low)
 {
   CSIDevice_GCController::GetData(hi, low);
 
   // Identifies the dance mat
   low = 0x8080ffff;
 
-  return true;
+  return DataResponse::Success;
 }
 }  // namespace SerialInterface

@@ -1,11 +1,11 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <bitset>
 #include <unordered_map>
+
 #include "VideoBackends/D3D12/Common.h"
 #include "VideoCommon/RenderState.h"
 
@@ -42,7 +42,6 @@ private:
   u32 m_descriptor_increment_size = 0;
 
   D3D12_CPU_DESCRIPTOR_HANDLE m_heap_base_cpu = {};
-  D3D12_GPU_DESCRIPTOR_HANDLE m_heap_base_gpu = {};
 
   static constexpr u32 BITSET_SIZE = 1024;
   using BitSetType = std::bitset<BITSET_SIZE>;
@@ -67,8 +66,8 @@ private:
   u32 m_descriptor_increment_size = 0;
   u32 m_current_offset = 0;
 
-  D3D12_CPU_DESCRIPTOR_HANDLE m_heap_base_cpu;
+  D3D12_CPU_DESCRIPTOR_HANDLE m_heap_base_cpu{};
 
-  std::unordered_map<SamplerState::StorageType, D3D12_CPU_DESCRIPTOR_HANDLE> m_sampler_map;
+  std::unordered_map<SamplerState, D3D12_CPU_DESCRIPTOR_HANDLE> m_sampler_map;
 };
 }  // namespace DX12

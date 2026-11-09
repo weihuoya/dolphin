@@ -1,12 +1,11 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/NetPlay/ChunkedProgressDialog.h"
 
-#include <algorithm>
 #include <cmath>
-#include <functional>
+
+#include <fmt/format.h>
 
 #include <QDialogButtonBox>
 #include <QGroupBox>
@@ -15,8 +14,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include "Common/StringUtil.h"
-
+#include "Common/Contains.h"
 #include "Core/NetPlayClient.h"
 #include "Core/NetPlayServer.h"
 
@@ -25,7 +23,7 @@
 static QString GetPlayerNameFromPID(int pid)
 {
   QString player_name = QObject::tr("Invalid Player ID");
-  auto client = Settings::Instance().GetNetPlayClient();
+  const auto client = Settings::Instance().GetNetPlayClient();
   if (!client)
     return player_name;
 
@@ -45,7 +43,6 @@ ChunkedProgressDialog::ChunkedProgressDialog(QWidget* parent) : QDialog(parent)
   CreateWidgets();
   ConnectWidgets();
   setWindowTitle(tr("Data Transfer"));
-  setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 }
 
 void ChunkedProgressDialog::CreateWidgets()
@@ -68,18 +65,18 @@ void ChunkedProgressDialog::ConnectWidgets()
 }
 
 void ChunkedProgressDialog::show(const QString& title, const u64 data_size,
-                                 const std::vector<int>& players)
+                                 std::span<const int> players)
 {
   m_progress_box->setTitle(title);
   m_data_size = data_size;
 
-  for (auto& pair : m_progress_bars)
+  for (const auto& pair : m_progress_bars)
   {
     m_progress_layout->removeWidget(pair.second);
     pair.second->deleteLater();
   }
 
-  for (auto& pair : m_status_labels)
+  for (const auto& pair : m_status_labels)
   {
     m_progress_layout->removeWidget(pair.second);
     pair.second->deleteLater();
@@ -88,7 +85,7 @@ void ChunkedProgressDialog::show(const QString& title, const u64 data_size,
   m_progress_bars.clear();
   m_status_labels.clear();
 
-  auto client = Settings::Instance().GetNetPlayClient();
+  const auto client = Settings::Instance().GetNetPlayClient();
   if (!client)
     return;
 
@@ -109,7 +106,7 @@ void ChunkedProgressDialog::show(const QString& title, const u64 data_size,
 
   for (const auto* player : client->GetPlayers())
   {
-    if (std::find(players.begin(), players.end(), player->pid) == players.end())
+    if (!Common::Contains(players, player->pid))
       continue;
 
     m_progress_bars[player->pid] = new QProgressBar;
@@ -126,7 +123,7 @@ void ChunkedProgressDialog::SetProgress(const int pid, const u64 progress)
 {
   QString player_name = GetPlayerNameFromPID(pid);
 
-  if (!m_status_labels.count(pid))
+  if (!m_status_labels.contains(pid))
     return;
 
   const float acquired = progress / 1024.0f / 1024.0f;
@@ -135,14 +132,14 @@ void ChunkedProgressDialog::SetProgress(const int pid, const u64 progress)
 
   m_status_labels[pid]->setText(tr("%1[%2]: %3/%4 MiB")
                                     .arg(player_name, QString::number(pid),
-                                         QString::fromStdString(StringFromFormat("%.2f", acquired)),
-                                         QString::fromStdString(StringFromFormat("%.2f", total))));
+                                         QString::fromStdString(fmt::format("{:.2f}", acquired)),
+                                         QString::fromStdString(fmt::format("{:.2f}", total))));
   m_progress_bars[pid]->setValue(prog);
 }
 
 void ChunkedProgressDialog::reject()
 {
-  auto server = Settings::Instance().GetNetPlayServer();
+  const auto server = Settings::Instance().GetNetPlayServer();
 
   if (server)
     server->AbortGameStart();

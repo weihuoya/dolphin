@@ -1,6 +1,5 @@
 // Copyright 2011 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -19,18 +18,16 @@ class Mapping;
 }
 class PointerWrap;
 
+class AbstractGfx;
+class BoundingBox;
+class TextureCacheBase;
+class VertexManagerBase;
+class EFBInterfaceBase;
+
 enum class FieldType
 {
   Odd,
   Even,
-};
-
-enum class EFBAccessType
-{
-  PeekZ,
-  PokeZ,
-  PeekColor,
-  PokeColor
 };
 
 class VideoBackendBase
@@ -40,40 +37,50 @@ public:
   virtual bool Initialize(const WindowSystemInfo& wsi) = 0;
   virtual void Shutdown() = 0;
 
-  virtual std::string GetName() const = 0;
-  virtual std::string GetDisplayName() const { return GetName(); }
-  virtual void InitBackendInfo() = 0;
+  virtual std::string GetConfigName() const = 0;
+  virtual std::string GetDisplayName() const { return GetConfigName(); }
+  virtual void InitBackendInfo(const WindowSystemInfo& wsi) = 0;
   virtual std::optional<std::string> GetWarningMessage() const { return {}; }
 
   // Prepares a native window for rendering. This is called on the main thread, or the
   // thread which owns the window.
-  virtual void PrepareWindow(const WindowSystemInfo& wsi) {}
+  virtual void PrepareWindow(WindowSystemInfo& wsi) {}
 
-  void Video_ExitLoop();
+  static std::string BadShaderFilename(const char* shader_stage, int counter);
 
-  void Video_BeginField(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height, u64 ticks);
+  void Video_OutputXFB(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height, u64 ticks);
 
-  u32 Video_AccessEFB(EFBAccessType type, u32 x, u32 y, u32 data);
   u32 Video_GetQueryResult(PerfQueryType type);
   u16 Video_GetBoundingBox(int index);
 
-  static void PopulateList();
-  static void ClearList();
+  static std::string GetDefaultBackendConfigName();
+  static std::string GetDefaultBackendDisplayName();
+  static const std::vector<std::unique_ptr<VideoBackendBase>>& GetAvailableBackends();
   static void ActivateBackend(const std::string& name);
 
   // Fills the backend_info fields with the capabilities of the selected backend/device.
-  // Called by the UI thread when the graphics config is opened.
-  static void PopulateBackendInfo();
+  static void PopulateBackendInfo(const WindowSystemInfo& wsi);
 
   // Wrapper function which pushes the event to the GPU thread.
   void DoState(PointerWrap& p);
 
 protected:
-  void InitializeShared();
+  // For hardware backends
+  bool InitializeShared(std::unique_ptr<AbstractGfx> gfx,
+                        std::unique_ptr<VertexManagerBase> vertex_manager,
+                        std::unique_ptr<PerfQueryBase> perf_query,
+                        std::unique_ptr<BoundingBox> bounding_box);
+
+  // For software and null backends. Allows overriding the default EFBInterface and TextureCache
+  bool InitializeShared(std::unique_ptr<AbstractGfx> gfx,
+                        std::unique_ptr<VertexManagerBase> vertex_manager,
+                        std::unique_ptr<PerfQueryBase> perf_query,
+                        std::unique_ptr<BoundingBox> bounding_box,
+                        std::unique_ptr<EFBInterfaceBase> efb_interface,
+                        std::unique_ptr<TextureCacheBase> texture_cache);
   void ShutdownShared();
 
   bool m_initialized = false;
 };
 
-extern std::vector<std::unique_ptr<VideoBackendBase>> g_available_video_backends;
 extern VideoBackendBase* g_video_backend;

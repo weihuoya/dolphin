@@ -1,10 +1,10 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <cstddef>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -23,6 +23,7 @@ struct Watch
   u32 address;
   std::string name;
   State is_enabled;
+  bool locked = false;
 
   Watch(u32 address, std::string name, State is_enabled);
 };
@@ -37,11 +38,12 @@ public:
   void UpdateWatch(std::size_t index, u32 address, std::string name);
   void UpdateWatchAddress(std::size_t index, u32 address);
   void UpdateWatchName(std::size_t index, std::string name);
+  void UpdateWatchLockedState(std::size_t index, bool locked);
   void EnableWatch(std::size_t index);
   void DisableWatch(std::size_t index);
   bool HasEnabledWatch(u32 address) const;
   void RemoveWatch(std::size_t index);
-  void LoadFromStrings(const std::vector<std::string>& watches);
+  void LoadFromStrings(std::span<const std::string> watches);
   std::vector<std::string> SaveToStrings() const;
   void Clear();
 

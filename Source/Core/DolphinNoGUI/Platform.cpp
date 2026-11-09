@@ -1,16 +1,12 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinNoGUI/Platform.h"
+
+#include "Core/HW/ProcessorInterface.h"
 #include "Core/IOS/IOS.h"
 #include "Core/IOS/STM/STM.h"
-#include "Core/State.h"
-
-namespace ProcessorInterface
-{
-void PowerButton_Tap();
-}
+#include "Core/System.h"
 
 Platform::~Platform() = default;
 
@@ -27,12 +23,13 @@ void Platform::UpdateRunningFlag()
 {
   if (m_shutdown_requested.TestAndClear())
   {
-    const auto ios = IOS::HLE::GetIOS();
+    const auto& system = Core::System::GetInstance();
+    const auto ios = system.GetIOS();
     const auto stm = ios ? ios->GetDeviceByName("/dev/stm/eventhook") : nullptr;
     if (!m_tried_graceful_shutdown.IsSet() && stm &&
-        std::static_pointer_cast<IOS::HLE::Device::STMEventHook>(stm)->HasHookInstalled())
+        std::static_pointer_cast<IOS::HLE::STMEventHookDevice>(stm)->HasHookInstalled())
     {
-      ProcessorInterface::PowerButton_Tap();
+      system.GetProcessorInterface().PowerButton_Tap();
       m_tried_graceful_shutdown.Set();
     }
     else

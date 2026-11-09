@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -33,42 +32,41 @@ struct SQueuedEvent
   SQueuedEvent() = default;
 };
 
-namespace Device
-{
 // Important to remember that this class is for /dev/usb/oh1/57e/305 ONLY
 // /dev/usb/oh1 -> internal usb bus
 // 57e/305 -> VendorID/ProductID of device on usb bus
 // This device is ONLY the internal Bluetooth module (based on BCM2045 chip)
-class BluetoothEmu final : public BluetoothBase
+class BluetoothEmuDevice final : public BluetoothBaseDevice
 {
 public:
-  BluetoothEmu(Kernel& ios, const std::string& device_name);
+  BluetoothEmuDevice(EmulationKernel& ios, const std::string& device_name);
 
-  virtual ~BluetoothEmu();
+  ~BluetoothEmuDevice() override;
 
-  IPCCommandResult Close(u32 fd) override;
-  IPCCommandResult IOCtlV(const IOCtlVRequest& request) override;
+  std::optional<IPCReply> Close(u32 fd) override;
+  std::optional<IPCReply> IOCtlV(const IOCtlVRequest& request) override;
 
   void Update() override;
 
   // Send ACL data back to Bluetooth stack
-  void SendACLPacket(u16 connection_handle, const u8* data, u32 size);
+  void SendACLPacket(const bdaddr_t& source, const u8* data, u32 size);
 
-  bool RemoteDisconnect(u16 connection_handle);
+  // Returns true if controller is configured to see the connection request.
+  bool RemoteConnect(WiimoteDevice&);
+  bool RemoteDisconnect(const bdaddr_t& address);
 
   WiimoteDevice* AccessWiimoteByIndex(std::size_t index);
 
   void DoState(PointerWrap& p) override;
 
 private:
-  std::vector<WiimoteDevice> m_wiimotes;
+  std::array<std::unique_ptr<WiimoteDevice>, MAX_BBMOTES> m_wiimotes;
 
   bdaddr_t m_controller_bd{{0x11, 0x02, 0x19, 0x79, 0x00, 0xff}};
 
   // this is used to trigger connecting via ACL
   u8 m_scan_enable = 0;
 
-  std::unique_ptr<USB::V0CtrlMessage> m_ctrl_setup;
   std::unique_ptr<USB::V0IntrMessage> m_hci_endpoint;
   std::unique_ptr<USB::V0BulkMessage> m_acl_endpoint;
   std::deque<SQueuedEvent> m_event_queue;
@@ -76,7 +74,7 @@ private:
   class ACLPool
   {
   public:
-    explicit ACLPool(Kernel& ios) : m_ios(ios), m_queue() {}
+    explicit ACLPool(EmulationKernel& ios) : m_ios(ios), m_queue() {}
     void Store(const u8* data, const u16 size, const u16 conn_handle);
 
     void WriteToEndpoint(const USB::V0BulkMessage& endpoint);
@@ -93,15 +91,19 @@ private:
       u16 conn_handle;
     };
 
-    Kernel& m_ios;
+    EmulationKernel& m_ios;
     std::deque<Packet> m_queue;
-  } m_acl_pool{m_ios};
+  } m_acl_pool{GetEmulationKernel()};
 
   u32 m_packet_count[MAX_BBMOTES] = {};
   u64 m_last_ticks = 0;
 
+  static u16 GetConnectionHandle(const bdaddr_t&);
+
   WiimoteDevice* AccessWiimote(const bdaddr_t& address);
   WiimoteDevice* AccessWiimote(u16 connection_handle);
+
+  static u32 GetWiimoteNumberFromConnectionHandle(u16 connection_handle);
 
   // Send ACL data to a device (wiimote)
   void IncDataPacket(u16 connection_handle);
@@ -112,10 +114,10 @@ private:
   bool SendEventCommandStatus(u16 opcode);
   void SendEventCommandComplete(u16 opcode, const void* data, u32 data_size);
   bool SendEventInquiryResponse();
-  bool SendEventInquiryComplete();
+  bool SendEventInquiryComplete(u8 num_responses);
   bool SendEventRemoteNameReq(const bdaddr_t& bd);
   bool SendEventRequestConnection(const WiimoteDevice& wiimote);
-  bool SendEventConnectionComplete(const bdaddr_t& bd);
+  bool SendEventConnectionComplete(const bdaddr_t& bd, u8 status);
   bool SendEventReadClockOffsetComplete(u16 connection_handle);
   bool SendEventConPacketTypeChange(u16 connection_handle, u16 packet_type);
   bool SendEventReadRemoteVerInfo(u16 connection_handle);
@@ -132,51 +134,49 @@ private:
   void ExecuteHCICommandMessage(const USB::V0CtrlMessage& ctrl_message);
 
   // OGF 0x01 - Link control commands and return parameters
-  void CommandWriteInquiryMode(const u8* input);
-  void CommandWritePageScanType(const u8* input);
-  void CommandHostBufferSize(const u8* input);
-  void CommandInquiryCancel(const u8* input);
-  void CommandRemoteNameReq(const u8* input);
-  void CommandCreateCon(const u8* input);
-  void CommandAcceptCon(const u8* input);
-  void CommandReadClockOffset(const u8* input);
-  void CommandReadRemoteVerInfo(const u8* input);
-  void CommandReadRemoteFeatures(const u8* input);
-  void CommandAuthenticationRequested(const u8* input);
-  void CommandInquiry(const u8* input);
-  void CommandDisconnect(const u8* input);
-  void CommandLinkKeyNegRep(const u8* input);
-  void CommandLinkKeyRep(const u8* input);
-  void CommandDeleteStoredLinkKey(const u8* input);
-  void CommandChangeConPacketType(const u8* input);
+  void CommandWriteInquiryMode(u32 input_address);
+  void CommandWritePageScanType(u32 input_address);
+  void CommandHostBufferSize(u32 input_address);
+  void CommandInquiryCancel(u32 input_address);
+  void CommandRemoteNameReq(u32 input_address);
+  void CommandCreateCon(u32 input_address);
+  void CommandAcceptCon(u32 input_address);
+  void CommandReadClockOffset(u32 input_address);
+  void CommandReadRemoteVerInfo(u32 input_address);
+  void CommandReadRemoteFeatures(u32 input_address);
+  void CommandAuthenticationRequested(u32 input_address);
+  void CommandInquiry(u32 input_address);
+  void CommandDisconnect(u32 input_address);
+  void CommandLinkKeyNegRep(u32 input_address);
+  void CommandLinkKeyRep(u32 input_address);
+  void CommandDeleteStoredLinkKey(u32 input_address);
+  void CommandChangeConPacketType(u32 input_address);
 
   // OGF 0x02 - Link policy commands and return parameters
-  void CommandWriteLinkPolicy(const u8* input);
-  void CommandSniffMode(const u8* input);
+  void CommandWriteLinkPolicy(u32 input_address);
+  void CommandSniffMode(u32 input_address);
 
   // OGF 0x03 - Host Controller and Baseband commands and return parameters
-  void CommandReset(const u8* input);
-  void CommandWriteLocalName(const u8* input);
-  void CommandWritePageTimeOut(const u8* input);
-  void CommandWriteScanEnable(const u8* input);
-  void CommandWriteUnitClass(const u8* input);
-  void CommandReadStoredLinkKey(const u8* input);
-  void CommandWritePinType(const u8* input);
-  void CommandSetEventFilter(const u8* input);
-  void CommandWriteInquiryScanType(const u8* input);
-  void CommandWriteLinkSupervisionTimeout(const u8* input);
+  void CommandReset(u32 input_address);
+  void CommandWriteLocalName(u32 input_address);
+  void CommandWritePageTimeOut(u32 input_address);
+  void CommandWriteScanEnable(u32 input_address);
+  void CommandWriteUnitClass(u32 input_address);
+  void CommandReadStoredLinkKey(u32 input_address);
+  void CommandWritePinType(u32 input_address);
+  void CommandSetEventFilter(u32 input_address);
+  void CommandWriteInquiryScanType(u32 input_address);
+  void CommandWriteLinkSupervisionTimeout(u32 input_address);
 
   // OGF 0x04 - Informational commands and return parameters
-  void CommandReadBufferSize(const u8* input);
-  void CommandReadLocalVer(const u8* input);
-  void CommandReadLocalFeatures(const u8* input);
-  void CommandReadBDAdrr(const u8* input);
+  void CommandReadBufferSize(u32 input_address);
+  void CommandReadLocalVer(u32 input_address);
+  void CommandReadLocalFeatures(u32 input_address);
+  void CommandReadBDAdrr(u32 input_address);
 
   // OGF 0x3F - Vendor specific
-  void CommandVendorSpecific_FC4C(const u8* input, u32 size);
-  void CommandVendorSpecific_FC4F(const u8* input, u32 size);
-
-  static void DisplayDisconnectMessage(int wiimote_number, int reason);
+  void CommandVendorSpecific_FC4C(u32 input_address, u32 size);
+  void CommandVendorSpecific_FC4F(u32 input_address, u32 size);
 
 #pragma pack(push, 1)
 #define CONF_PAD_MAX_REGISTERED 10
@@ -196,5 +196,4 @@ private:
   };
 #pragma pack(pop)
 };
-}  // namespace Device
 }  // namespace IOS::HLE

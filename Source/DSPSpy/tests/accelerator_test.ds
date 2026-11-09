@@ -2,7 +2,6 @@
 ; See https://github.com/dolphin-emu/dolphin/pull/5997
 incdir  "tests"
 include "dsp_base.inc"
-jmp test_main
 
 ; Writes the passed format, start and end addresses to the accelerator registers,
 ; then reads them back to registers.
@@ -13,7 +12,7 @@ jmp test_main
 ;   AC1.M/L: end address
 test_accelerator_addrs_ex:
   ; Set the sample format
-  sr @0xffd1, $AC0.H
+  sr @FORMAT, $AC0.H
 
   ; Set the accelerator start and current address.
   srs @ACSAH, $AC0.M
@@ -36,8 +35,8 @@ test_accelerator_addrs_ex:
   lrs $AX0.L, @ACCAL
 
   ; Make the accelerator read memory
-  lrs $AX1.H, @ARAM
-  lrs $AX1.H, @ARAM
+  lrs $AX1.H, @ACDSAMP
+  lrs $AX1.H, @ACDSAMP
   ; AX1 -> new current position after read
   lrs $AX1.H, @ACCAH
   lrs $AX1.L, @ACCAL

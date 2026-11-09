@@ -1,60 +1,47 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <fmt/ranges.h>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
-#include "Common/CommonTypes.h"
-#include "VideoCommon/TextureConfig.h"
+#include "VideoCommon/TextureInfo.h"
+
+namespace VideoCommon
+{
+class TextureDataResource;
+}
 
 enum class TextureFormat;
+
+std::set<std::string> GetTextureDirectoriesWithGameId(const std::string& root_directory,
+                                                      const std::string& game_id);
+
+// Tries each id in priority order, returning the directories for the first id that matches
+// anything. Returns an empty set if none of the ids match.
+std::set<std::string>
+GetTextureDirectoriesForFirstMatchingGameId(const std::string& root_directory,
+                                            const std::vector<std::string>& game_ids);
 
 class HiresTexture
 {
 public:
-  static void Init();
   static void Update();
+  static void Clear();
   static void Shutdown();
+  static std::shared_ptr<HiresTexture> Search(const TextureInfo& texture_info);
 
-  static std::shared_ptr<HiresTexture> Search(const u8* texture, size_t texture_size,
-                                              const u8* tlut, size_t tlut_size, u32 width,
-                                              u32 height, TextureFormat format, bool has_mipmaps);
+  HiresTexture(bool has_arbitrary_mipmaps, std::string id);
 
-  static std::string GenBaseName(const u8* texture, size_t texture_size, const u8* tlut,
-                                 size_t tlut_size, u32 width, u32 height, TextureFormat format,
-                                 bool has_mipmaps, bool dump = false);
-
-  static u32 CalculateMipCount(u32 width, u32 height);
-
-  ~HiresTexture();
-
-  AbstractTextureFormat GetFormat() const;
-  bool HasArbitraryMipmaps() const;
-
-  struct Level
-  {
-    std::vector<u8> data;
-    AbstractTextureFormat format = AbstractTextureFormat::RGBA8;
-    u32 width = 0;
-    u32 height = 0;
-    u32 row_length = 0;
-  };
-  std::vector<Level> m_levels;
+  bool HasArbitraryMipmaps() const { return m_has_arbitrary_mipmaps; }
+  VideoCommon::TextureDataResource* LoadTexture() const;
+  const std::string& GetId() const { return m_id; }
 
 private:
-  static std::unique_ptr<HiresTexture> Load(const std::string& base_filename, u32 width,
-                                            u32 height);
-  static bool LoadDDSTexture(HiresTexture* tex, const std::string& filename);
-  static bool LoadDDSTexture(Level& level, const std::string& filename, u32 mip_level);
-  static bool LoadTexture(Level& level, const std::vector<u8>& buffer);
-  static void Prefetch();
-
-  static std::string GetTextureDirectory(const std::string& game_id);
-
-  HiresTexture() {}
-  bool m_has_arbitrary_mipmaps;
+  bool m_has_arbitrary_mipmaps = false;
+  std::string m_id;
 };

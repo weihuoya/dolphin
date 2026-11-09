@@ -1,10 +1,10 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
-#include <unordered_map>
+#include <map>
+#include <vector>
 
 #include "Common/BitSet.h"
 #include "Common/CommonTypes.h"
@@ -50,12 +50,14 @@ public:
     return Gen::M(m_const_pool.GetConstant(&value, sizeof(T), N, index));
   }
 
+  void FlushPCBeforeSlowAccess();
+
+  // Writes upper 15 bits of physical address to addr and clobbers the lower 17 bits of addr.
+  // Jumps to the returned FixupBranch if lookup fails.
+  Gen::FixupBranch BATAddressLookup(Gen::X64Reg addr, Gen::X64Reg tmp, const void* bat_table);
+
   Gen::FixupBranch CheckIfSafeAddress(const Gen::OpArg& reg_value, Gen::X64Reg reg_addr,
                                       BitSet32 registers_in_use);
-  void UnsafeLoadRegToReg(Gen::X64Reg reg_addr, Gen::X64Reg reg_value, int accessSize,
-                          s32 offset = 0, bool signExtend = false);
-  void UnsafeLoadRegToRegNoSwap(Gen::X64Reg reg_addr, Gen::X64Reg reg_value, int accessSize,
-                                s32 offset, bool signExtend = false);
   // these return the address of the MOV, for backpatching
   void UnsafeWriteRegToReg(Gen::OpArg reg_value, Gen::X64Reg reg_addr, int accessSize,
                            s32 offset = 0, bool swap = true, Gen::MovInfo* info = nullptr);
@@ -77,8 +79,8 @@ public:
     // This indicates that the write being generated cannot be patched (and thus can't use fastmem)
     SAFE_LOADSTORE_NO_FASTMEM = 4,
     SAFE_LOADSTORE_CLOBBER_RSCRATCH_INSTEAD_OF_ADDR = 8,
-    // Force slowmem (used when generating fallbacks in trampolines)
-    SAFE_LOADSTORE_FORCE_SLOWMEM = 16,
+    // Always call into C++ (used when generating fallbacks in trampolines)
+    SAFE_LOADSTORE_FORCE_SLOW_ACCESS = 16,
     SAFE_LOADSTORE_DR_ON = 32,
     // Generated from a context that doesn't have the PC of the instruction that caused it
     SAFE_LOADSTORE_NO_UPDATE_PC = 64,
@@ -112,27 +114,43 @@ public:
   void avx_op(void (Gen::XEmitter::*avxOp)(Gen::X64Reg, Gen::X64Reg, const Gen::OpArg&),
               void (Gen::XEmitter::*sseOp)(Gen::X64Reg, const Gen::OpArg&), Gen::X64Reg regOp,
               const Gen::OpArg& arg1, const Gen::OpArg& arg2, bool packed = true,
-              bool reversible = false);
+              bool reversible = false, Gen::X64Reg scratch = Gen::XMM0);
   void avx_op(void (Gen::XEmitter::*avxOp)(Gen::X64Reg, Gen::X64Reg, const Gen::OpArg&, u8),
               void (Gen::XEmitter::*sseOp)(Gen::X64Reg, const Gen::OpArg&, u8), Gen::X64Reg regOp,
-              const Gen::OpArg& arg1, const Gen::OpArg& arg2, u8 imm);
+              const Gen::OpArg& arg1, const Gen::OpArg& arg2, u8 imm,
+              Gen::X64Reg scratch = Gen::XMM0);
+  void avx_op(void (Gen::XEmitter::*avxOp)(Gen::X64Reg, Gen::X64Reg, u8),
+              void (Gen::XEmitter::*sseOp)(Gen::X64Reg, u8), Gen::X64Reg regOp1, Gen::X64Reg regOp2,
+              u8 imm);
 
-  void ForceSinglePrecision(Gen::X64Reg output, const Gen::OpArg& input, bool packed = true,
-                            bool duplicate = false);
   void Force25BitPrecision(Gen::X64Reg output, const Gen::OpArg& input, Gen::X64Reg tmp);
 
   // RSCRATCH might get trashed
   void ConvertSingleToDouble(Gen::X64Reg dst, Gen::X64Reg src, bool src_is_gpr = false);
   void ConvertDoubleToSingle(Gen::X64Reg dst, Gen::X64Reg src);
-  void SetFPRF(Gen::X64Reg xmm);
+  void SetFPRF(Gen::X64Reg xmm, bool single);
   void Clear();
 
 protected:
   Jit64& m_jit;
   ConstantPool m_const_pool;
   FarCodeCache m_far_code;
-  u8* m_near_code;  // Backed up when we switch to far code.
 
-  std::unordered_map<u8*, TrampolineInfo> m_back_patch_info;
-  std::unordered_map<u8*, u8*> m_exception_handler_at_loc;
+  // Backed up when we switch to far code.
+  u8* m_near_code = nullptr;
+  u8* m_near_code_end = nullptr;
+  bool m_near_code_write_failed = false;
+
+  // The keys store the entry point of a block. Lookups find the currently running block through
+  // lower_bound (which is why the comparison is std::greater), and then linearly search the vector
+  // for the specific address.
+  //
+  // Because the total number of entries is in the 100s of thousands, and std::map is inefficient,
+  // this improves performance mostly by allowing to batch insert all the info for each block. (Even
+  // a better ordered map like b-trees would probably benefit.)
+  //
+  // Note that this would have had to be an ordered structure even without this optimization (to
+  // erase the entries when a block is destroyed).
+  std::map<const u8*, std::vector<TrampolineInfo>, std::greater<const u8*>> m_back_patch_info;
+  std::vector<TrampolineInfo> m_back_patch_info_temp;
 };

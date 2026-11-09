@@ -1,4 +1,4 @@
-// This file is under the public domain.
+// SPDX-License-Identifier: CC0-1.0
 
 #pragma once
 
@@ -7,18 +7,26 @@
 
 namespace Common
 {
-template <typename T>
-constexpr T AlignUp(T value, size_t size)
-{
-  static_assert(std::is_unsigned<T>(), "T must be an unsigned value.");
-  return static_cast<T>(value + (size - value % size) % size);
-}
 
 template <typename T>
 constexpr T AlignDown(T value, size_t size)
 {
   static_assert(std::is_unsigned<T>(), "T must be an unsigned value.");
   return static_cast<T>(value - value % size);
+}
+
+template <typename T>
+constexpr T AlignUp(T value, size_t size)
+{
+  static_assert(std::is_unsigned<T>(), "T must be an unsigned value.");
+  return AlignDown<T>(static_cast<T>(value + (size - 1)), size);
+}
+
+template <typename T>
+constexpr T DivideRoundingUp(T numerator, size_t denominator)
+{
+  static_assert(std::is_unsigned<T>(), "T must be an unsigned value.");
+  return static_cast<T>((numerator + (denominator - 1)) / denominator);
 }
 
 }  // namespace Common

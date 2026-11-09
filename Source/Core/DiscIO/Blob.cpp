@@ -1,29 +1,65 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "DiscIO/Blob.h"
 
 #include <algorithm>
-#include <cstddef>
-#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 
-#include "Common/CDUtils.h"
+#include "Common/BitUtils.h"
 #include "Common/CommonTypes.h"
-#include "Common/File.h"
+#include "Common/DirectIOFile.h"
+#include "Common/MsgHandler.h"
 
-#include "DiscIO/Blob.h"
 #include "DiscIO/CISOBlob.h"
 #include "DiscIO/CompressedBlob.h"
 #include "DiscIO/DirectoryBlob.h"
-#include "DiscIO/DriveBlob.h"
 #include "DiscIO/FileBlob.h"
+#include "DiscIO/NFSBlob.h"
+#include "DiscIO/SplitFileBlob.h"
 #include "DiscIO/TGCBlob.h"
+#include "DiscIO/WIABlob.h"
 #include "DiscIO/WbfsBlob.h"
 
 namespace DiscIO
 {
+std::string GetName(BlobType blob_type, bool translate)
+{
+  const auto translate_str = [translate](const std::string& str) {
+    return translate ? Common::GetStringT(str.c_str()) : str;
+  };
+
+  switch (blob_type)
+  {
+  case BlobType::PLAIN:
+    return "ISO";
+  case BlobType::DIRECTORY:
+    return translate_str("Directory");
+  case BlobType::GCZ:
+    return "GCZ";
+  case BlobType::CISO:
+    return "CISO";
+  case BlobType::WBFS:
+    return "WBFS";
+  case BlobType::TGC:
+    return "TGC";
+  case BlobType::WIA:
+    return "WIA";
+  case BlobType::RVZ:
+    return "RVZ";
+  case BlobType::MOD_DESCRIPTOR:
+    return translate_str("Mod");
+  case BlobType::NFS:
+    return "NFS";
+  case BlobType::SPLIT_PLAIN:
+    return translate_str("Multi-part ISO");
+  default:
+    return "";
+  }
+}
+
 void SectorReader::SetSectorSize(int blocksize)
 {
   m_block_size = std::max(blocksize, 0);
@@ -41,14 +77,12 @@ void SectorReader::SetChunkSize(int block_cnt)
   SetSectorSize(m_block_size);
 }
 
-SectorReader::~SectorReader()
-{
-}
+SectorReader::~SectorReader() = default;
 
 const SectorReader::Cache* SectorReader::FindCacheLine(u64 block_num)
 {
-  auto itr = std::find_if(m_cache.begin(), m_cache.end(),
-                          [&](const Cache& entry) { return entry.Contains(block_num); });
+  auto itr =
+      std::ranges::find_if(m_cache, [&](const Cache& entry) { return entry.Contains(block_num); });
   if (itr == m_cache.end())
     return nullptr;
 
@@ -96,6 +130,9 @@ const SectorReader::Cache* SectorReader::GetCacheLine(u64 block_num)
 
 bool SectorReader::Read(u64 offset, u64 size, u8* out_ptr)
 {
+  if (offset + size > GetDataSize())
+    return false;
+
   u64 remain = size;
   u64 block = 0;
   u32 position_in_block = static_cast<u32>(offset % m_block_size);
@@ -113,8 +150,7 @@ bool SectorReader::Read(u64 offset, u64 size, u8* out_ptr)
     u32 can_read = m_block_size * cache->num_blocks - read_offset;
     u32 was_read = static_cast<u32>(std::min<u64>(can_read, remain));
 
-    std::copy(cache->data.begin() + read_offset, cache->data.begin() + read_offset + was_read,
-              out_ptr);
+    std::copy_n(cache->data.begin() + read_offset, was_read, out_ptr);
 
     offset += was_read;
     out_ptr += was_read;
@@ -164,7 +200,7 @@ u32 SectorReader::ReadChunk(u8* buffer, u64 chunk_num)
     {
       if (!GetBlock(block_num + i, buffer))
       {
-        std::fill(buffer, buffer + (cnt_blocks - i) * m_block_size, 0u);
+        std::fill_n(buffer, (cnt_blocks - i) * m_block_size, 0u);
         return i;
       }
       buffer += m_block_size;
@@ -176,12 +212,9 @@ u32 SectorReader::ReadChunk(u8* buffer, u64 chunk_num)
 
 std::unique_ptr<BlobReader> CreateBlobReader(const std::string& filename)
 {
-  if (Common::IsCDROMDevice(filename))
-    return DriveReader::Create(filename);
-
-  File::IOFile file(filename, "rb");
+  File::DirectIOFile file(filename, File::AccessMode::Read);
   u32 magic;
-  if (!file.ReadArray(&magic, 1))
+  if (!file.Read(Common::AsWritableU8Span(magic)))
     return nullptr;
 
   // Conveniently, every supported file format (except for plain disc images and
@@ -202,9 +235,17 @@ std::unique_ptr<BlobReader> CreateBlobReader(const std::string& filename)
     return TGCFileReader::Create(std::move(file));
   case WBFS_MAGIC:
     return WbfsFileReader::Create(std::move(file), filename);
+  case WIA_MAGIC:
+    return WIAFileReader::Create(std::move(file), filename);
+  case RVZ_MAGIC:
+    return RVZFileReader::Create(std::move(file), filename);
+  case NFS_MAGIC:
+    return NFSFileReader::Create(std::move(file), filename);
   default:
     if (auto directory_blob = DirectoryBlobReader::Create(filename))
       return std::move(directory_blob);
+    if (auto split_blob = SplitPlainFileReader::Create(filename))
+      return std::move(split_blob);
 
     return PlainFileReader::Create(std::move(file));
   }

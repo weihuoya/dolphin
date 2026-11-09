@@ -1,48 +1,87 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <array>
+#include <span>
 #include <string>
 
 #include "Common/CommonTypes.h"
+#include "Common/Matrix.h"
 #include "VideoCommon/ConstantManager.h"
+#include "VideoCommon/NativeVertexFormat.h"
 
 class PointerWrap;
+struct PortableVertexDeclaration;
+class XFStateManager;
 
 // The non-API dependent parts.
-class VertexShaderManager
+class alignas(16) VertexShaderManager
 {
 public:
-  static void Init();
-  static void Dirty();
-  static void DoState(PointerWrap& p);
+  void Init();
+  void DoState(PointerWrap& p);
 
   // constant management
-  static void SetConstants();
-
-  static void InvalidateXFRange(int start, int end);
-  static void SetTexMatrixChangedA(u32 value);
-  static void SetTexMatrixChangedB(u32 value);
-  static void SetViewportChanged();
-  static void SetProjectionChanged();
-  static void SetMaterialColorChanged(int index);
-
-  static void TranslateView(float x, float y, float z = 0.0f);
-  static void RotateView(float x, float y, float z);
-  static void ResetView();
-
-  static void SetVertexFormat(u32 components);
-  static void SetTexMatrixInfoChanged(int index);
-  static void SetLightingConfigChanged();
+  void SetProjectionMatrix(XFStateManager& xf_state_manager);
+  void SetConstants(std::span<const std::string> textures, XFStateManager& xf_state_manager);
 
   // data: 3 floats representing the X, Y and Z vertex model coordinates and the posmatrix index.
   // out:  4 floats which will be initialized with the corresponding clip space coordinates
-  // NOTE: g_fProjectionMatrix must be up to date when this is called
+  // NOTE: m_projection_matrix must be up to date when this is called
   //       (i.e. VertexShaderManager::SetConstants needs to be called before using this!)
-  static void TransformToClipSpace(const float* data, float* out, u32 mtxIdx);
+  void TransformToClipSpace(const float* data, float* out, u32 mtxIdx);
 
-  static VertexShaderConstants constants;
-  static bool dirty;
+  static bool UseVertexDepthRange();
+
+  VertexShaderConstants constants{};
+  bool dirty = false;
+
+  static DOLPHIN_FORCE_INLINE void UpdateValue(bool* dirty, u32* old_value, u32 new_value)
+  {
+    if (*old_value == new_value)
+      return;
+    *old_value = new_value;
+    *dirty = true;
+  }
+
+  static DOLPHIN_FORCE_INLINE void UpdateOffset(bool* dirty, bool include_components,
+                                                u32* old_value, const AttributeFormat& attribute)
+  {
+    if (!attribute.enable)
+      return;
+    u32 new_value = attribute.offset / 4;  // GPU uses uint offsets
+    if (include_components)
+      new_value |= attribute.components << 16;
+    UpdateValue(dirty, old_value, new_value);
+  }
+
+  template <size_t N>
+  static DOLPHIN_FORCE_INLINE void UpdateOffsets(bool* dirty, bool include_components,
+                                                 std::array<u32, N>* old_value,
+                                                 const std::array<AttributeFormat, N>& attribute)
+  {
+    for (size_t i = 0; i < N; i++)
+      UpdateOffset(dirty, include_components, &(*old_value)[i], attribute[i]);
+  }
+
+  DOLPHIN_FORCE_INLINE void SetVertexFormat(u32 components, const PortableVertexDeclaration& format)
+  {
+    UpdateValue(&dirty, &constants.components, components);
+    UpdateValue(&dirty, &constants.vertex_stride, format.stride / 4);
+    UpdateOffset(&dirty, true, &constants.vertex_offset_position, format.position);
+    UpdateOffset(&dirty, false, &constants.vertex_offset_posmtx, format.posmtx);
+    UpdateOffsets(&dirty, true, &constants.vertex_offset_texcoords, format.texcoords);
+    UpdateOffsets(&dirty, false, &constants.vertex_offset_colors, format.colors);
+    UpdateOffsets(&dirty, false, &constants.vertex_offset_normals, format.normals);
+  }
+
+private:
+  alignas(16) std::array<float, 16> m_projection_matrix;
+
+  // track changes
+  bool m_projection_graphics_mod_change = false;
+
+  Common::Matrix44 LoadProjectionMatrix();
 };

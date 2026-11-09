@@ -1,120 +1,216 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "DolphinQt/TAS/TASInputWindow.h"
 
 #include <cmath>
+#include <utility>
 
+#include <QApplication>
 #include <QCheckBox>
+#include <QEvent>
+#include <QGridLayout>
 #include <QGroupBox>
-#include <QHBoxLayout>
 #include <QLabel>
+#include <QScrollArea>
 #include <QShortcut>
 #include <QSlider>
 #include <QSpinBox>
-#include <QVBoxLayout>
 
-#include "Common/CommonTypes.h"
-
+#include "DolphinQt/Host.h"
 #include "DolphinQt/QtUtils/AspectRatioWidget.h"
-#include "DolphinQt/QtUtils/QueueOnObject.h"
+#include "DolphinQt/Resources.h"
 #include "DolphinQt/TAS/StickWidget.h"
 #include "DolphinQt/TAS/TASCheckBox.h"
-#include "DolphinQt/TAS/TASInputWindow.h"
+#include "DolphinQt/TAS/TASSlider.h"
+#include "DolphinQt/TAS/TASSpinBox.h"
 
-#include "InputCommon/GCPadStatus.h"
+#include "InputCommon/ControllerEmu/ControllerEmu.h"
+#include "InputCommon/ControllerEmu/StickGate.h"
+
+void InputOverrider::AddFunction(std::string_view group_name, std::string_view control_name,
+                                 OverrideFunction function)
+{
+  m_functions.emplace(std::make_pair(group_name, control_name), std::move(function));
+}
+
+ControllerEmu::InputOverrideFunction InputOverrider::GetInputOverrideFunction() const
+{
+  return [this](std::string_view group_name, std::string_view control_name,
+                ControlState controller_state) {
+    const auto it = m_functions.find(std::make_pair(group_name, control_name));
+    return it != m_functions.end() ? it->second(controller_state) : std::nullopt;
+  };
+}
 
 TASInputWindow::TASInputWindow(QWidget* parent) : QDialog(parent)
 {
-  setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
-  m_use_controller = new QCheckBox(QStringLiteral("Enable Controller Inpu&t"));
+  setWindowIcon(Resources::GetAppIcon());
+
+  QGridLayout* settings_layout = new QGridLayout;
+
+  m_use_controller = new QCheckBox(tr("Enable Controller Inpu&t"));
   m_use_controller->setToolTip(tr("Warning: Analog inputs may reset to controller values at "
                                   "random. In some cases this can be fixed by adding a deadzone."));
+  settings_layout->addWidget(m_use_controller, 0, 0, 1, 2);
+
+  QLabel* turbo_press_label = new QLabel(tr("Duration of Turbo Button Press (frames):"));
+  m_turbo_press_frames = new QSpinBox();
+  m_turbo_press_frames->setMinimum(1);
+  settings_layout->addWidget(turbo_press_label, 1, 0);
+  settings_layout->addWidget(m_turbo_press_frames, 1, 1);
+
+  QLabel* turbo_release_label = new QLabel(tr("Duration of Turbo Button Release (frames):"));
+  m_turbo_release_frames = new QSpinBox();
+  m_turbo_release_frames->setMinimum(1);
+  settings_layout->addWidget(turbo_release_label, 2, 0);
+  settings_layout->addWidget(m_turbo_release_frames, 2, 1);
+
+  m_settings_box = new QGroupBox(tr("Settings"));
+  m_settings_box->setLayout(settings_layout);
 }
 
-QGroupBox* TASInputWindow::CreateStickInputs(QString name, QSpinBox*& x_value, QSpinBox*& y_value,
-                                             u16 max_x, u16 max_y, Qt::Key x_shortcut_key,
+int TASInputWindow::GetTurboPressFrames() const
+{
+  return m_turbo_press_frames->value();
+}
+
+int TASInputWindow::GetTurboReleaseFrames() const
+{
+  return m_turbo_release_frames->value();
+}
+
+TASCheckBox* TASInputWindow::CreateButton(const QString& text, std::string_view group_name,
+                                          std::string_view control_name, InputOverrider* overrider)
+{
+  TASCheckBox* checkbox = new TASCheckBox(text, this);
+
+  overrider->AddFunction(group_name, control_name, [this, checkbox](ControlState controller_state) {
+    return GetButton(checkbox, controller_state);
+  });
+
+  return checkbox;
+}
+
+QGroupBox* TASInputWindow::CreateStickInputs(const QString& text, std::string_view group_name,
+                                             InputOverrider* overrider, int min_x, int min_y,
+                                             int max_x, int max_y, Qt::Key x_shortcut_key,
                                              Qt::Key y_shortcut_key)
 {
-  const QKeySequence x_shortcut_key_sequence = QKeySequence(Qt::ALT + x_shortcut_key);
-  const QKeySequence y_shortcut_key_sequence = QKeySequence(Qt::ALT + y_shortcut_key);
+  const QKeySequence x_shortcut_key_sequence = QKeySequence(Qt::ALT | x_shortcut_key);
+  const QKeySequence y_shortcut_key_sequence = QKeySequence(Qt::ALT | y_shortcut_key);
 
   auto* box =
       new QGroupBox(QStringLiteral("%1 (%2/%3)")
-                        .arg(name, x_shortcut_key_sequence.toString(QKeySequence::NativeText),
+                        .arg(text, x_shortcut_key_sequence.toString(QKeySequence::NativeText),
                              y_shortcut_key_sequence.toString(QKeySequence::NativeText)));
 
-  auto* x_layout = new QHBoxLayout;
-  x_value = CreateSliderValuePair(x_layout, max_x, x_shortcut_key_sequence, Qt::Horizontal, box);
+  const int x_default = static_cast<int>(std::round(max_x / 2.));
+  const int y_default = static_cast<int>(std::round(max_y / 2.));
 
-  auto* y_layout = new QVBoxLayout;
-  y_value = CreateSliderValuePair(y_layout, max_y, y_shortcut_key_sequence, Qt::Vertical, box);
-  y_value->setMaximumWidth(60);
+  auto* box_layout = new QGridLayout;
+  TASSpinBox* x_value = CreateSliderValuePair(box_layout, x_default, max_x, x_shortcut_key_sequence,
+                                              Qt::Horizontal, box);
+
+  TASSpinBox* y_value = CreateSliderValuePair(box_layout, y_default, max_y, y_shortcut_key_sequence,
+                                              Qt::Vertical, box);
 
   auto* visual = new StickWidget(this, max_x, max_y);
-  connect(x_value, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), visual,
-          &StickWidget::SetX);
-  connect(y_value, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), visual,
-          &StickWidget::SetY);
+  visual->SetX(x_default);
+  visual->SetY(y_default);
+
+  connect(x_value, &QSpinBox::valueChanged, visual, &StickWidget::SetX);
+  connect(y_value, &QSpinBox::valueChanged, visual, &StickWidget::SetY);
   connect(visual, &StickWidget::ChangedX, x_value, &QSpinBox::setValue);
   connect(visual, &StickWidget::ChangedY, y_value, &QSpinBox::setValue);
 
-  x_value->setValue(static_cast<int>(std::round(max_x / 2.)));
-  y_value->setValue(static_cast<int>(std::round(max_y / 2.)));
-
   auto* visual_ar = new AspectRatioWidget(visual, max_x, max_y);
 
-  auto* visual_layout = new QHBoxLayout;
-  visual_layout->addWidget(visual_ar);
-  visual_layout->addLayout(y_layout);
+  // This is done to prevent the stick widget from stretching
+  box_layout->addItem(new QSpacerItem(0, 0), 2, 1);
+  box_layout->addWidget(visual_ar, 1, 1);
+  box->setLayout(box_layout);
 
-  auto* layout = new QVBoxLayout;
-  layout->addLayout(x_layout);
-  layout->addLayout(visual_layout);
-  box->setLayout(layout);
+  overrider->AddFunction(group_name, ControllerEmu::ReshapableInput::X_INPUT_OVERRIDE,
+                         [this, x_value, x_default, min_x, max_x](ControlState controller_state) {
+                           return GetSpinBox(x_value, x_default, min_x, max_x, controller_state);
+                         });
+
+  overrider->AddFunction(group_name, ControllerEmu::ReshapableInput::Y_INPUT_OVERRIDE,
+                         [this, y_value, y_default, min_y, max_y](ControlState controller_state) {
+                           return GetSpinBox(y_value, y_default, min_y, max_y, controller_state);
+                         });
 
   return box;
 }
 
-QBoxLayout* TASInputWindow::CreateSliderValuePairLayout(QString name, QSpinBox*& value, u16 max,
-                                                        Qt::Key shortcut_key,
-                                                        QWidget* shortcut_widget, bool invert)
+QGridLayout* TASInputWindow::CreateSliderValuePairLayout(
+    const QString& text, std::string_view group_name, std::string_view control_name,
+    InputOverrider* overrider, int zero, int default_, int min, int max, Qt::Key shortcut_key,
+    QWidget* shortcut_widget, std::optional<ControlState> scale)
 {
-  const QKeySequence shortcut_key_sequence = QKeySequence(Qt::ALT + shortcut_key);
+  const QKeySequence shortcut_key_sequence = QKeySequence(Qt::ALT | shortcut_key);
 
   auto* label = new QLabel(QStringLiteral("%1 (%2)").arg(
-      name, shortcut_key_sequence.toString(QKeySequence::NativeText)));
+      text, shortcut_key_sequence.toString(QKeySequence::NativeText)));
 
-  QBoxLayout* layout = new QHBoxLayout;
-  layout->addWidget(label);
+  QGridLayout* layout = new QGridLayout;
+  layout->addWidget(label, 0, 0);
 
-  value = CreateSliderValuePair(layout, max, shortcut_key_sequence, Qt::Horizontal, shortcut_widget,
-                                invert);
+  CreateSliderValuePair(group_name, control_name, overrider, layout, zero, default_, min, max,
+                        shortcut_key_sequence, Qt::Horizontal, shortcut_widget, scale);
 
   return layout;
 }
 
-// The shortcut_widget argument needs to specify the container widget that will be hidden/shown.
-// This is done to avoid ambigous shortcuts
-QSpinBox* TASInputWindow::CreateSliderValuePair(QBoxLayout* layout, u16 max,
-                                                QKeySequence shortcut_key_sequence,
-                                                Qt::Orientation orientation,
-                                                QWidget* shortcut_widget, bool invert)
+TASSpinBox* TASInputWindow::CreateSliderValuePair(
+    std::string_view group_name, std::string_view control_name, InputOverrider* overrider,
+    QGridLayout* layout, int zero, int default_, int min, int max,
+    const QKeySequence& shortcut_key_sequence, Qt::Orientation orientation,
+    QWidget* shortcut_widget, std::optional<ControlState> scale)
 {
-  auto* value = new QSpinBox();
-  value->setRange(0, 99999);
-  connect(value, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
-          [value, max](int i) {
-            if (i > max)
-              value->setValue(max);
-          });
-  auto* slider = new QSlider(orientation);
+  TASSpinBox* value = CreateSliderValuePair(layout, default_, max, shortcut_key_sequence,
+                                            orientation, shortcut_widget);
+
+  InputOverrider::OverrideFunction func;
+  if (scale)
+  {
+    func = [this, value, zero, scale](ControlState controller_state) {
+      return GetSpinBox(value, zero, controller_state, *scale);
+    };
+  }
+  else
+  {
+    func = [this, value, zero, min, max](ControlState controller_state) {
+      return GetSpinBox(value, zero, min, max, controller_state);
+    };
+  }
+
+  overrider->AddFunction(group_name, control_name, std::move(func));
+
+  return value;
+}
+
+// The shortcut_widget argument needs to specify the container widget that will be hidden/shown.
+// This is done to avoid ambiguous shortcuts
+TASSpinBox* TASInputWindow::CreateSliderValuePair(QGridLayout* layout, int default_, int max,
+                                                  const QKeySequence& shortcut_key_sequence,
+                                                  Qt::Orientation orientation,
+                                                  QWidget* shortcut_widget)
+{
+  auto* value = new TASSpinBox();
+  value->setRange(0, max);
+  value->setValue(default_);
+
+  auto* slider = new TASSlider(default_, orientation);
   slider->setRange(0, max);
+  slider->setValue(default_);
   slider->setFocusPolicy(Qt::ClickFocus);
-  slider->setInvertedAppearance(invert);
+
+  value->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
   connect(slider, &QSlider::valueChanged, value, &QSpinBox::setValue);
-  connect(value, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), slider,
-          &QSlider::setValue);
+  connect(value, &QSpinBox::valueChanged, slider, &QSlider::setValue);
 
   auto* shortcut = new QShortcut(shortcut_key_sequence, shortcut_widget);
   connect(shortcut, &QShortcut::activated, [value] {
@@ -122,72 +218,87 @@ QSpinBox* TASInputWindow::CreateSliderValuePair(QBoxLayout* layout, u16 max,
     value->selectAll();
   });
 
-  layout->addWidget(slider);
-  layout->addWidget(value);
   if (orientation == Qt::Vertical)
-    layout->setAlignment(slider, Qt::AlignRight);
+  {
+    layout->addWidget(slider, 1, 2);
+    layout->addWidget(value, 2, 2);
+
+    layout->setAlignment(slider, Qt::AlignHCenter);
+    slider->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+  }
+  else
+  {
+    layout->addWidget(slider, 0, 1);
+    layout->addWidget(value, 0, 2);
+
+    slider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+  }
 
   return value;
 }
 
-template <typename UX>
-void TASInputWindow::GetButton(TASCheckBox* checkbox, UX& buttons, UX mask)
+void TASInputWindow::SetupScrollArea(QLayout* layout)
 {
-  const bool pressed = (buttons & mask) != 0;
-  if (m_use_controller->isChecked())
-  {
-    if (pressed)
-    {
-      m_checkbox_set_by_controller[checkbox] = true;
-      QueueOnObject(checkbox, [checkbox] { checkbox->setChecked(true); });
-    }
-    else if (m_checkbox_set_by_controller.count(checkbox) && m_checkbox_set_by_controller[checkbox])
-    {
-      m_checkbox_set_by_controller[checkbox] = false;
-      QueueOnObject(checkbox, [checkbox] { checkbox->setChecked(false); });
-    }
-  }
+  m_scroll_widget = new QWidget;
+  m_scroll_widget->setLayout(layout);
 
-  if (checkbox->GetValue())
-    buttons |= mask;
-  else
-    buttons &= ~mask;
-}
-template void TASInputWindow::GetButton<u8>(TASCheckBox* button, u8& pad, u8 mask);
-template void TASInputWindow::GetButton<u16>(TASCheckBox* button, u16& pad, u16 mask);
+  auto* scroll_area = new QScrollArea;
+  scroll_area->setWidget(m_scroll_widget);
+  scroll_area->setWidgetResizable(true);
+  scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  scroll_area->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
-void TASInputWindow::GetSpinBoxU8(QSpinBox* spin, u8& controller_value)
-{
-  if (m_use_controller->isChecked())
-  {
-    if (!m_spinbox_most_recent_values_u8.count(spin) ||
-        m_spinbox_most_recent_values_u8[spin] != controller_value)
-      QueueOnObject(spin, [spin, controller_value] { spin->setValue(controller_value); });
+  auto* outer_layout = new QVBoxLayout;
+  outer_layout->setContentsMargins(0, 0, 0, 0);
+  outer_layout->addWidget(scroll_area);
+  setLayout(outer_layout);
 
-    m_spinbox_most_recent_values_u8[spin] = controller_value;
-  }
-  else
-  {
-    m_spinbox_most_recent_values_u8.clear();
-  }
-
-  controller_value = spin->value();
+  layout->activate();
+  m_scroll_widget->layout()->activate();
 }
 
-void TASInputWindow::GetSpinBoxU16(QSpinBox* spin, u16& controller_value)
+std::optional<ControlState> TASInputWindow::GetButton(TASCheckBox* checkbox,
+                                                      ControlState controller_state)
 {
+  const bool pressed = std::llround(controller_state) > 0;
   if (m_use_controller->isChecked())
-  {
-    if (!m_spinbox_most_recent_values_u16.count(spin) ||
-        m_spinbox_most_recent_values_u16[spin] != controller_value)
-      QueueOnObject(spin, [spin, controller_value] { spin->setValue(controller_value); });
+    checkbox->OnControllerValueChanged(pressed);
 
-    m_spinbox_most_recent_values_u16[spin] = controller_value;
-  }
-  else
-  {
-    m_spinbox_most_recent_values_u16.clear();
-  }
+  return checkbox->GetValue() ? 1.0 : 0.0;
+}
 
-  controller_value = spin->value();
+std::optional<ControlState> TASInputWindow::GetSpinBox(TASSpinBox* spin, int zero, int min, int max,
+                                                       ControlState controller_state)
+{
+  const int controller_value = ControllerEmu::MapFloat<int>(controller_state, zero, 0, max);
+
+  if (m_use_controller->isChecked())
+    spin->OnControllerValueChanged(controller_value);
+
+  return ControllerEmu::MapToFloat<ControlState, int>(spin->GetValue(), zero, min, max);
+}
+
+std::optional<ControlState> TASInputWindow::GetSpinBox(TASSpinBox* spin, int zero,
+                                                       ControlState controller_state,
+                                                       ControlState scale)
+{
+  const int controller_value = static_cast<int>(std::llround(controller_state * scale + zero));
+
+  if (m_use_controller->isChecked())
+    spin->OnControllerValueChanged(controller_value);
+
+  return (spin->GetValue() - zero) / scale;
+}
+
+void TASInputWindow::changeEvent(QEvent* const event)
+{
+  if (event->type() == QEvent::ActivationChange)
+  {
+    const bool active_window_is_tas_input =
+        qobject_cast<TASInputWindow*>(QApplication::activeWindow()) != nullptr;
+
+    // Switching between TAS Input windows will call SetTASInputFocus(true) twice, but that's fine.
+    Host::GetInstance()->SetTASInputFocus(active_window_is_tas_input);
+  }
+  QDialog::changeEvent(event);
 }

@@ -1,12 +1,12 @@
 // Copyright 2013 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "Common/GL/GLExtensions/GLExtensions.h"
 
 #include <sstream>
 #include <unordered_map>
 
 #include "Common/GL/GLContext.h"
-#include "Common/GL/GLExtensions/GLExtensions.h"
 #include "Common/Logging/Log.h"
 
 #if defined(__linux__) || defined(__APPLE__)
@@ -996,41 +996,23 @@ PFNDOLDISPATCHCOMPUTEPROC dolDispatchCompute;
 PFNDOLDISPATCHCOMPUTEINDIRECTPROC dolDispatchComputeIndirect;
 
 // Creates a GLFunc object that requires a feature
-#define GLFUNC_REQUIRES(x, y)                                                                      \
-  {                                                                                                \
-    (void**)&x, #x, y                                                                              \
-  }
+#define GLFUNC_REQUIRES(x, y) {(void**)&x, #x, y}
 // Creates a GLFunc object with a different function suffix
 // For when we want to use the same function pointer, but different function name
-#define GLFUNC_SUFFIX(x, y, z)                                                                     \
-  {                                                                                                \
-    (void**)&x, #x #y, z                                                                           \
-  }
+#define GLFUNC_SUFFIX(x, y, z) {(void**)&x, #x #y, z}
 // Creates a GLFunc object that should always be able to get grabbed
 // Used for Desktop OpenGL functions that should /always/ be provided.
 // aka GL 1.1/1.2/1.3/1.4
-#define GLFUNC_ALWAYS_REQUIRED(x)                                                                  \
-  {                                                                                                \
-    (void**)&x, #x, "VERSION_GL"                                                                   \
-  }
+#define GLFUNC_ALWAYS_REQUIRED(x) {(void**)&x, #x, "VERSION_GL"}
 // Creates a GLFunc object that should be able to get grabbed
 // on both GL and ES
-#define GL_ES_FUNC_ALWAYS_REQUIRED(x)                                                              \
-  {                                                                                                \
-    (void**)&x, #x, "VERSION_GL |VERSION_GLES_2"                                                   \
-  }
+#define GL_ES_FUNC_ALWAYS_REQUIRED(x) {(void**)&x, #x, "VERSION_GL |VERSION_GLES_2"}
 // Creates a GLFunc object that should be able to get grabbed
 // on both GL and ES 3.0
-#define GL_ES3_FUNC_ALWAYS_REQUIRED(x)                                                             \
-  {                                                                                                \
-    (void**)&x, #x, "VERSION_GL |VERSION_GLES_3"                                                   \
-  }
+#define GL_ES3_FUNC_ALWAYS_REQUIRED(x) {(void**)&x, #x, "VERSION_GL |VERSION_GLES_3"}
 // Creates a GLFunc object that should be able to get grabbed
 // on both GL and ES 3.2
-#define GL_ES32_FUNC_ALWAYS_REQUIRED(x)                                                            \
-  {                                                                                                \
-    (void**)&x, #x, "VERSION_GL |VERSION_GLES_3_2"                                                 \
-  }
+#define GL_ES32_FUNC_ALWAYS_REQUIRED(x) {(void**)&x, #x, "VERSION_GL |VERSION_GLES_3_2"}
 
 struct GLFunc
 {
@@ -1674,7 +1656,7 @@ const GLFunc gl_function_array[] = {
     GLFUNC_REQUIRES(glDrawArraysInstancedBaseInstance, "VERSION_4_2"),
     GLFUNC_REQUIRES(glDrawElementsInstancedBaseInstance, "VERSION_4_2"),
     GLFUNC_REQUIRES(glDrawElementsInstancedBaseVertexBaseInstance, "VERSION_4_2"),
-    GLFUNC_REQUIRES(glGetInternalformativ, "VERSION_4_2"),
+    GLFUNC_REQUIRES(glGetInternalformativ, "VERSION_4_2 |VERSION_GLES_3"),
     GLFUNC_REQUIRES(glGetActiveAtomicCounterBufferiv, "VERSION_4_2"),
     GLFUNC_REQUIRES(glBindImageTexture, "VERSION_4_2"),
     GLFUNC_REQUIRES(glMemoryBarrier, "VERSION_4_2"),
@@ -2175,8 +2157,10 @@ static void InitExtensionList(GLContext* context)
     default:
     case 320:
       s_extension_list["VERSION_GLES_3_2"] = true;
+      [[fallthrough]];
     case 310:
       s_extension_list["VERSION_GLES_3_1"] = true;
+      [[fallthrough]];
     case 300:
       s_extension_list["VERSION_GLES_3"] = true;
       break;
@@ -2198,7 +2182,7 @@ static void InitExtensionList(GLContext* context)
     default:
     case 450:
     {
-      std::string gl450exts[] = {
+      static const char* const gl450exts[] = {
           "GL_ARB_ES3_1_compatibility",
           "GL_ARB_clip_control",
           "GL_ARB_conditional_render_inverted",
@@ -2213,10 +2197,11 @@ static void InitExtensionList(GLContext* context)
       };
       for (auto it : gl450exts)
         s_extension_list[it] = true;
+      [[fallthrough]];
     }
     case 440:
     {
-      std::string gl440exts[] = {
+      static const char* const gl440exts[] = {
           "GL_ARB_buffer_storage",
           "GL_ARB_clear_texture",
           "GL_ARB_enhanced_layouts",
@@ -2229,10 +2214,11 @@ static void InitExtensionList(GLContext* context)
       };
       for (auto it : gl440exts)
         s_extension_list[it] = true;
+      [[fallthrough]];
     }
     case 430:
     {
-      std::string gl430exts[] = {
+      static const char* const gl430exts[] = {
           "GL_ARB_ES3_compatibility",
           "GL_ARB_arrays_of_arrays",
           "GL_ARB_clear_buffer_object",
@@ -2257,10 +2243,11 @@ static void InitExtensionList(GLContext* context)
       };
       for (auto it : gl430exts)
         s_extension_list[it] = true;
+      [[fallthrough]];
     }
     case 420:
     {
-      std::string gl420exts[] = {
+      static const char* const gl420exts[] = {
           "GL_ARB_base_instance",
           "GL_ARB_compressed_texture_pixel_storage",
           "GL_ARB_conservative_depth",
@@ -2277,10 +2264,11 @@ static void InitExtensionList(GLContext* context)
       };
       for (auto it : gl420exts)
         s_extension_list[it] = true;
+      [[fallthrough]];
     }
     case 410:
     {
-      std::string gl410exts[] = {
+      static const char* const gl410exts[] = {
           "GL_ARB_ES2_compatibility",
           "GL_ARB_get_program_binary",
           "GL_ARB_separate_shader_objects",
@@ -2291,10 +2279,11 @@ static void InitExtensionList(GLContext* context)
       };
       for (auto it : gl410exts)
         s_extension_list[it] = true;
+      [[fallthrough]];
     }
     case 400:
     {
-      std::string gl400exts[] = {
+      static const char* const gl400exts[] = {
           "GL_ARB_draw_indirect",
           "GL_ARB_gpu_shader5",
           "GL_ARB_gpu_shader_fp64",
@@ -2311,10 +2300,11 @@ static void InitExtensionList(GLContext* context)
       };
       for (auto it : gl400exts)
         s_extension_list[it] = true;
+      [[fallthrough]];
     }
     case 330:
     {
-      std::string gl330exts[] = {
+      static const char* const gl330exts[] = {
           "GL_ARB_shader_bit_encoding",
           "GL_ARB_blend_func_extended",
           "GL_ARB_explicit_attrib_location",
@@ -2329,10 +2319,11 @@ static void InitExtensionList(GLContext* context)
       };
       for (auto it : gl330exts)
         s_extension_list[it] = true;
+      [[fallthrough]];
     }
     case 320:
     {
-      std::string gl320exts[] = {
+      static const char* const gl320exts[] = {
           "GL_ARB_geometry_shader4",
           "GL_ARB_sync",
           "GL_ARB_vertex_array_bgra",
@@ -2346,11 +2337,12 @@ static void InitExtensionList(GLContext* context)
       };
       for (auto it : gl320exts)
         s_extension_list[it] = true;
+      [[fallthrough]];
     }
     case 310:
     {
       // Can't add NV_primitive_restart since function name changed
-      std::string gl310exts[] = {
+      static const char* const gl310exts[] = {
           "GL_ARB_draw_instanced",
           "GL_ARB_copy_buffer",
           "GL_ARB_texture_buffer_object",
@@ -2361,12 +2353,13 @@ static void InitExtensionList(GLContext* context)
       };
       for (auto it : gl310exts)
         s_extension_list[it] = true;
+      [[fallthrough]];
     }
     case 300:
     {
       // Quite a lot of these had their names changed when merged in to core
       // Disable the ones that have
-      std::string gl300exts[] = {
+      static const char* const gl300exts[] = {
           "GL_ARB_map_buffer_range",
           "GL_ARB_color_buffer_float",
           "GL_ARB_texture_float",
@@ -2392,6 +2385,7 @@ static void InitExtensionList(GLContext* context)
       };
       for (auto it : gl300exts)
         s_extension_list[it] = true;
+      [[fallthrough]];
     }
     case 210:
     case 200:
@@ -2404,7 +2398,7 @@ static void InitExtensionList(GLContext* context)
     case 100:
       break;
     }
-    // So we can easily determine if we are running dekstop GL
+    // So we can easily determine if we are running desktop GL
     s_extension_list["VERSION_GL"] = true;
   }
 
@@ -2439,7 +2433,7 @@ static void* GetFuncAddress(GLContext* context, const std::string& name, void** 
     *func = dlsym(RTLD_NEXT, name.c_str());
 #endif
     if (*func == nullptr)
-      ERROR_LOG(VIDEO, "Couldn't load function %s", name.c_str());
+      ERROR_LOG_FMT(VIDEO, "Couldn't load function {}", name);
   }
   return *func;
 }

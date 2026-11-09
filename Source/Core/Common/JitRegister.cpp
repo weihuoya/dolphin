@@ -1,20 +1,16 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/JitRegister.h"
 
-#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <string>
 
 #include <fmt/format.h>
 
 #include "Common/CommonTypes.h"
-#include "Common/File.h"
-#include "Common/StringUtil.h"
+#include "Common/IOFile.h"
 
 #ifdef _WIN32
 #include <process.h>
@@ -22,29 +18,20 @@
 #include <unistd.h>
 #endif
 
-#if defined USE_OPROFILE && USE_OPROFILE
-#include <opagent.h>
-#endif
-
 #if defined USE_VTUNE
 #include <jitprofiling.h>
 #pragma comment(lib, "jitprofiling.lib")
 #endif
 
-#if defined USE_OPROFILE && USE_OPROFILE
-static op_agent_t s_agent = nullptr;
-#endif
-
 static File::IOFile s_perf_map_file;
 
-namespace JitRegister
+namespace Common::JitRegister
 {
 static bool s_is_enabled = false;
 
 void Init(const std::string& perf_dir)
 {
-#if defined USE_OPROFILE && USE_OPROFILE
-  s_agent = op_open_agent();
+#ifdef USE_VTUNE
   s_is_enabled = true;
 #endif
 
@@ -52,21 +39,18 @@ void Init(const std::string& perf_dir)
   {
     const std::string dir = perf_dir.empty() ? "/tmp" : perf_dir;
     const std::string filename = fmt::format("{}/perf-{}.map", dir, getpid());
-    s_perf_map_file.Open(filename, "w");
-    // Disable buffering in order to avoid missing some mappings
-    // if the event of a crash:
-    std::setvbuf(s_perf_map_file.GetHandle(), nullptr, _IONBF, 0);
-    s_is_enabled = true;
+    if (s_perf_map_file.Open(filename, "w"))
+    {
+      // Disable buffering in order to avoid missing some mappings
+      // in the event of a crash:
+      std::setvbuf(s_perf_map_file.GetHandle(), nullptr, _IONBF, 0);
+      s_is_enabled = true;
+    }
   }
 }
 
 void Shutdown()
 {
-#if defined USE_OPROFILE && USE_OPROFILE
-  op_close_agent(s_agent);
-  s_agent = nullptr;
-#endif
-
 #ifdef USE_VTUNE
   iJIT_NotifyEvent(iJVM_EVENT_TYPE_SHUTDOWN, nullptr);
 #endif
@@ -82,19 +66,8 @@ bool IsEnabled()
   return s_is_enabled;
 }
 
-void RegisterV(const void* base_address, u32 code_size, const char* format, va_list args)
+void Register(const void* base_address, u32 code_size, const std::string& symbol_name)
 {
-#if !(defined USE_OPROFILE && USE_OPROFILE) && !defined(USE_VTUNE)
-  if (!s_perf_map_file.IsOpen())
-    return;
-#endif
-
-  std::string symbol_name = StringFromFormatV(format, args);
-
-#if defined USE_OPROFILE && USE_OPROFILE
-  op_write_native_code(s_agent, symbol_name.c_str(), (u64)base_address, base_address, code_size);
-#endif
-
 #ifdef USE_VTUNE
   iJIT_Method_Load jmethod = {0};
   jmethod.method_id = iJIT_GetNewMethodID();
@@ -105,10 +78,10 @@ void RegisterV(const void* base_address, u32 code_size, const char* format, va_l
 #endif
 
   // Linux perf /tmp/perf-$pid.map:
-  if (!s_perf_map_file.IsOpen())
+  if (!s_perf_map_file)
     return;
 
   const auto entry = fmt::format("{} {:x} {}\n", fmt::ptr(base_address), code_size, symbol_name);
   s_perf_map_file.WriteBytes(entry.data(), entry.size());
 }
-}  // namespace JitRegister
+}  // namespace Common::JitRegister

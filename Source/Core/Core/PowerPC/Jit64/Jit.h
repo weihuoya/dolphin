@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // ========================
 // See comments in Jit.cpp.
@@ -18,8 +17,10 @@
 // ----------
 #pragma once
 
+#include <optional>
+
 #include "Common/CommonTypes.h"
-#include "Common/x64ABI.h"
+#include "Common/RangeSizeSet.h"
 #include "Common/x64Emitter.h"
 #include "Core/PowerPC/Jit64/JitAsm.h"
 #include "Core/PowerPC/Jit64/RegCache/FPURegCache.h"
@@ -28,9 +29,11 @@
 #include "Core/PowerPC/Jit64Common/BlockCache.h"
 #include "Core/PowerPC/Jit64Common/Jit64AsmCommon.h"
 #include "Core/PowerPC/Jit64Common/TrampolineCache.h"
+#include "Core/PowerPC/JitCommon/ConstantPropagation.h"
 #include "Core/PowerPC/JitCommon/JitBase.h"
 #include "Core/PowerPC/JitCommon/JitCache.h"
 
+class HostDisassembler;
 namespace PPCAnalyst
 {
 struct CodeBlock;
@@ -40,15 +43,18 @@ struct CodeOp;
 class Jit64 : public JitBase, public QuantizedMemoryRoutines
 {
 public:
-  Jit64();
+  explicit Jit64(Core::System& system);
+  Jit64(const Jit64&) = delete;
+  Jit64(Jit64&&) = delete;
+  Jit64& operator=(const Jit64&) = delete;
+  Jit64& operator=(Jit64&&) = delete;
   ~Jit64() override;
 
-  void Init() override;
+  [[nodiscard]] bool Init() override;
   void Shutdown() override;
 
   bool HandleFault(uintptr_t access_address, SContext* ctx) override;
-  bool HandleStackFault() override;
-  bool BackPatch(u32 emAddress, SContext* ctx);
+  bool BackPatch(SContext* ctx);
 
   void EnableOptimization();
   void EnableBlockLink();
@@ -56,12 +62,27 @@ public:
   // Jit!
 
   void Jit(u32 em_address) override;
-  u8* DoJit(u32 em_address, JitBlock* b, u32 nextPC);
+  void Jit(u32 em_address, bool clear_cache_and_retry_on_failure);
+  bool DoJit(u32 em_address, JitBlock* b, u32 nextPC);
 
-  BitSet32 CallerSavedRegistersInUse() const;
+  void EraseSingleBlock(const JitBlock& block) override;
+  std::vector<MemoryStats> GetMemoryStats() const override;
+
+  std::size_t DisassembleNearCode(const JitBlock& block, std::ostream& stream) const override;
+  std::size_t DisassembleFarCode(const JitBlock& block, std::ostream& stream) const override;
+
+  // Finds a free memory region and sets the near and far code emitters to point at that region.
+  // Returns false if no free memory region can be found for either of the two.
+  bool SetEmitterStateToFreeCodeRegion();
+
+  BitSet32 CallerSavedRegistersInUse(BitSet32 additional_registers = {}) const;
   BitSet8 ComputeStaticGQRs(const PPCAnalyst::CodeBlock&) const;
 
   void IntializeSpeculativeConstants();
+
+  void FlushRegistersBeforeSlowAccess();
+
+  JitCommon::ConstantPropagation& GetConstantPropagation() { return m_constant_propagation; }
 
   JitBlockCache* GetBlockCache() override { return &blocks; }
   void Trace();
@@ -76,6 +97,8 @@ public:
 
   // Utilities for use by opcodes
 
+  void EmitUpdateMembase();
+  void MSRUpdated(const Gen::OpArg& msr, Gen::X64Reg scratch_reg);
   void FakeBLCall(u32 after);
   void WriteExit(u32 destination, bool bl = false, u32 after = 0);
   void JustWriteExit(u32 destination, bool bl, u32 after);
@@ -85,17 +108,25 @@ public:
   void WriteExternalExceptionExit();
   void WriteRfiExitDestInRSCRATCH();
   void WriteIdleExit(u32 destination);
+  template <bool condition>
+  void WriteBranchWatch(u32 origin, u32 destination, UGeckoInstruction inst, BitSet32 caller_save);
+  void WriteBranchWatchDestInRSCRATCH(u32 origin, UGeckoInstruction inst, BitSet32 caller_save);
+
   bool Cleanup();
 
   void GenerateConstantOverflow(bool overflow);
   void GenerateConstantOverflow(s64 val);
-  void GenerateOverflow();
+  void GenerateOverflow(Gen::CCFlags cond = Gen::CCFlags::CC_NO);
   void FinalizeCarryOverflow(bool oe, bool inv = false);
   void FinalizeCarry(Gen::CCFlags cond);
   void FinalizeCarry(bool ca);
+  void FlushCarry();
   void ComputeRC(preg_t preg, bool needs_test = true, bool needs_sext = true);
+  void FinalizeImmediateRC(s32 value);
 
   void AndWithMask(Gen::X64Reg reg, u32 mask);
+  void RotateLeft(int bits, Gen::X64Reg regOp, const Gen::OpArg& arg, u8 rotate);
+
   bool CheckMergedBranch(u32 crf) const;
   void DoMergedBranch();
   void DoMergedBranchCondition();
@@ -107,14 +138,21 @@ public:
   void SetCRFieldBit(int field, int bit, Gen::X64Reg in);
   void ClearCRFieldBit(int field, int bit);
   void SetCRFieldBit(int field, int bit);
-
+  void FixGTBeforeSettingCRFieldBit(Gen::X64Reg reg);
   // Generates a branch that will check if a given bit of a CR register part
   // is set or not.
   Gen::FixupBranch JumpIfCRFieldBit(int field, int bit, bool jump_if_set = true);
-  void SetFPRFIfNeeded(Gen::X64Reg xmm);
 
-  void HandleNaNs(UGeckoInstruction inst, Gen::X64Reg xmm_out, Gen::X64Reg xmm_in,
-                  Gen::X64Reg clobber = Gen::XMM0);
+  void UpdateFPExceptionSummary(Gen::X64Reg fpscr, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
+
+  void SetFPRFIfNeeded(const Gen::OpArg& xmm, bool single);
+  void FinalizeSingleResult(Gen::X64Reg output, const Gen::OpArg& input, bool packed = true,
+                            bool duplicate = false);
+  void FinalizeDoubleResult(Gen::X64Reg output, const Gen::OpArg& input);
+  [[nodiscard]] Gen::FixupBranch HandleNaNs(UGeckoInstruction inst, Gen::X64Reg xmm,
+                                            Gen::X64Reg clobber, std::optional<Gen::OpArg> Ra,
+                                            std::optional<Gen::OpArg> Rb,
+                                            std::optional<Gen::OpArg> Rc);
 
   void MultiplyImmediate(u32 imm, int a, int d, bool overflow);
 
@@ -129,16 +167,15 @@ public:
   using Instruction = void (Jit64::*)(UGeckoInstruction instCode);
   void FallBackToInterpreter(UGeckoInstruction _inst);
   void DoNothing(UGeckoInstruction _inst);
-  void HLEFunction(UGeckoInstruction _inst);
+  void HLEFunction(u32 hook_index);
 
-  void DynaRunTable4(UGeckoInstruction _inst);
-  void DynaRunTable19(UGeckoInstruction _inst);
-  void DynaRunTable31(UGeckoInstruction _inst);
-  void DynaRunTable59(UGeckoInstruction _inst);
-  void DynaRunTable63(UGeckoInstruction _inst);
+  void DynaRunTable4(UGeckoInstruction inst);
+  void DynaRunTable19(UGeckoInstruction inst);
+  void DynaRunTable31(UGeckoInstruction inst);
+  void DynaRunTable59(UGeckoInstruction inst);
+  void DynaRunTable63(UGeckoInstruction inst);
 
   void addx(UGeckoInstruction inst);
-  void arithcx(UGeckoInstruction inst);
   void mulli(UGeckoInstruction inst);
   void mulhwXx(UGeckoInstruction inst);
   void mullwx(UGeckoInstruction inst);
@@ -236,13 +273,16 @@ public:
   void eieio(UGeckoInstruction inst);
 
 private:
-  static void InitializeInstructionTables();
   void CompileInstruction(PPCAnalyst::CodeOp& op);
 
   bool HandleFunctionHooking(u32 address);
 
-  void AllocStack();
-  void FreeStack();
+  void FreeRanges();
+  void ResetFreeMemoryRanges();
+
+  void LogGeneratedCode() const;
+
+  static void ImHere(Jit64& jit);
 
   JitBlockCache blocks{*this};
   TrampolineCache trampolines{*this};
@@ -250,12 +290,15 @@ private:
   GPRRegCache gpr{*this};
   FPURegCache fpr{*this};
 
+  JitCommon::ConstantPropagation m_constant_propagation;
+
   Jit64AsmRoutineManager asm_routines{*this};
 
-  bool m_enable_blr_optimization;
-  bool m_cleanup_after_stackfault;
-  u8* m_stack;
-};
+  Common::RangeSizeSet<u8*> m_free_ranges_near;
+  Common::RangeSizeSet<u8*> m_free_ranges_far;
 
-void LogGeneratedX86(size_t size, const PPCAnalyst::CodeBuffer& code_buffer, const u8* normalEntry,
-                     const JitBlock* b);
+  const bool m_im_here_debug = false;
+  const bool m_im_here_log = false;
+  std::map<u32, int> m_been_here;
+  std::unique_ptr<HostDisassembler> m_disassembler;
+};

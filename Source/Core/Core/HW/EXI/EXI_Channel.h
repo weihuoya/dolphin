@@ -1,12 +1,14 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <array>
 #include <memory>
+
 #include "Common/CommonTypes.h"
+
+#include "Core/HW/GCMemcard/GCMemcard.h"
 
 class PointerWrap;
 
@@ -18,23 +20,23 @@ class Mapping;
 namespace ExpansionInterface
 {
 class IEXIDevice;
-enum TEXIDevices : int;
+enum class EXIDeviceType : int;
 
 class CEXIChannel
 {
 public:
-  explicit CEXIChannel(u32 channel_id);
+  explicit CEXIChannel(Core::System& system, u32 channel_id,
+                       const Memcard::HeaderData& memcard_header_data);
   ~CEXIChannel();
 
   // get device
   IEXIDevice* GetDevice(u8 chip_select);
-  IEXIDevice* FindDevice(TEXIDevices device_type, int custom_index = -1);
 
   void RegisterMMIO(MMIO::Mapping* mmio, u32 base);
 
   void SendTransferComplete();
 
-  void AddDevice(TEXIDevices device_type, int device_num);
+  void AddDevice(EXIDeviceType device_type, int device_num);
   void AddDevice(std::unique_ptr<IEXIDevice> device, int device_num,
                  bool notify_presence_changed = true);
 
@@ -43,7 +45,6 @@ public:
 
   bool IsCausingInterrupt();
   void DoState(PointerWrap& p);
-  void PauseAndLock(bool do_lock, bool resume_on_unlock);
 
   // This should only be used to transition interrupts from SP1 to Channel 2
   void SetEXIINT(bool exiint);
@@ -99,12 +100,23 @@ private:
     };
   };
 
+  Core::System& m_system;
+
   // STATE_TO_SAVE
   UEXI_STATUS m_status;
   u32 m_dma_memory_address = 0;
   u32 m_dma_length = 0;
   UEXI_CONTROL m_control;
   u32 m_imm_data = 0;
+
+  // Since channels operate a bit differently from each other
+  u32 m_channel_id;
+
+  // This data is needed in order to reinitialize a GCI folder memory card when switching between
+  // GCI folder and other devices in the memory card slot or after loading a savestate. Even though
+  // this data is only vaguely related to the EXI_Channel, this seems to be the best place to store
+  // it, as this class creates the CEXIMemoryCard instances.
+  Memcard::HeaderData m_memcard_header_data;
 
   // Devices
   enum
@@ -113,8 +125,5 @@ private:
   };
 
   std::array<std::unique_ptr<IEXIDevice>, NUM_DEVICES> m_devices;
-
-  // Since channels operate a bit differently from each other
-  u32 m_channel_id;
 };
 }  // namespace ExpansionInterface

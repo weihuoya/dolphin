@@ -1,22 +1,20 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/TitleDatabase.h"
 
 #include <cstddef>
 #include <fstream>
-#include <functional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <utility>
+
+#include <fmt/format.h>
 
 #include "Common/FileUtil.h"
 #include "Common/MsgHandler.h"
 #include "Common/StringUtil.h"
-#include "Core/ConfigManager.h"
-#include "Core/IOS/ES/Formats.h"
+#include "Core/Config/MainSettings.h"
 #include "DiscIO/Enums.h"
 
 namespace Core
@@ -42,9 +40,9 @@ static Map LoadMap(const std::string& file_path)
     if (equals_index != std::string::npos)
     {
       const std::string_view line_view(line);
-      const std::string_view game_id = StripSpaces(line_view.substr(0, equals_index));
+      const std::string_view game_id = StripWhitespace(line_view.substr(0, equals_index));
       if (game_id.length() >= 4)
-        map.emplace(game_id, StripSpaces(line_view.substr(equals_index + 1)));
+        map.emplace(game_id, StripWhitespace(line_view.substr(equals_index + 1)));
     }
   }
   return map;
@@ -54,6 +52,9 @@ void TitleDatabase::AddLazyMap(DiscIO::Language language, const std::string& lan
 {
   m_title_maps[language] = [language_code]() -> Map {
     return LoadMap(File::GetSysDirectory() + "wiitdb-" + language_code + ".txt");
+  };
+  m_triforce_title_maps[language] = [language_code]() -> Map {
+    return LoadMap(File::GetSysDirectory() + "triforcetdb-" + language_code + ".txt");
   };
 }
 
@@ -96,7 +97,7 @@ const std::string& TitleDatabase::GetTitleName(const std::string& gametdb_id,
   if (it != m_user_title_map.end())
     return it->second;
 
-  if (!SConfig::GetInstance().m_use_builtin_title_database)
+  if (!Config::Get(Config::MAIN_USE_BUILT_IN_TITLE_DATABASE))
     return EMPTY_STRING;
 
   const Map& map = *m_title_maps.at(language);
@@ -132,6 +133,11 @@ std::string TitleDatabase::Describe(const std::string& gametdb_id, DiscIO::Langu
   const std::string& title_name = GetTitleName(gametdb_id, language);
   if (title_name.empty())
     return gametdb_id;
-  return StringFromFormat("%s (%s)", title_name.c_str(), gametdb_id.c_str());
+  return fmt::format("{} ({})", title_name, gametdb_id);
+}
+
+const std::unordered_map<std::string, std::string>& TitleDatabase::GetUserTitleMap() const
+{
+  return m_user_title_map;
 }
 }  // namespace Core

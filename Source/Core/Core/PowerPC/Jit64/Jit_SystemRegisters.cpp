@@ -1,31 +1,34 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "Core/PowerPC/Jit64/Jit.h"
 
 #include "Common/BitSet.h"
 #include "Common/CPUDetect.h"
 #include "Common/CommonTypes.h"
+#include "Common/MathUtil.h"
 #include "Common/x64Emitter.h"
+
 #include "Core/CoreTiming.h"
 #include "Core/HW/ProcessorInterface.h"
-#include "Core/PowerPC/Jit64/Jit.h"
 #include "Core/PowerPC/Jit64/RegCache/JitRegCache.h"
 #include "Core/PowerPC/Jit64Common/Jit64PowerPCState.h"
 #include "Core/PowerPC/PowerPC.h"
+#include "Core/System.h"
 
 using namespace Gen;
 
 static OpArg CROffset(int field)
 {
-  return PPCSTATE(cr.fields[field]);
+  return PPCSTATE_CR(field);
 }
 
 void Jit64::GetCRFieldBit(int field, int bit, X64Reg out, bool negate)
 {
   switch (bit)
   {
-  case PowerPC::CR_SO_BIT:  // check bit 61 set
-    BT(64, CROffset(field), Imm8(61));
+  case PowerPC::CR_SO_BIT:  // check bit 59 set
+    BT(64, CROffset(field), Imm8(PowerPC::CR_EMU_SO_BIT));
     SETcc(negate ? CC_NC : CC_C, R(out));
     break;
 
@@ -40,7 +43,7 @@ void Jit64::GetCRFieldBit(int field, int bit, X64Reg out, bool negate)
     break;
 
   case PowerPC::CR_LT_BIT:  // check bit 62 set
-    BT(64, CROffset(field), Imm8(62));
+    BT(64, CROffset(field), Imm8(PowerPC::CR_EMU_LT_BIT));
     SETcc(negate ? CC_NC : CC_C, R(out));
     break;
 
@@ -54,22 +57,14 @@ void Jit64::SetCRFieldBit(int field, int bit, X64Reg in)
   MOV(64, R(RSCRATCH2), CROffset(field));
   MOVZX(32, 8, in, R(in));
 
-  // Gross but necessary; if the input is totally zero and we set SO or LT,
-  // or even just add the (1<<32), GT will suddenly end up set without us
-  // intending to. This can break actual games, so fix it up.
   if (bit != PowerPC::CR_GT_BIT)
-  {
-    TEST(64, R(RSCRATCH2), R(RSCRATCH2));
-    FixupBranch dont_clear_gt = J_CC(CC_NZ);
-    BTS(64, R(RSCRATCH2), Imm8(63));
-    SetJumpTarget(dont_clear_gt);
-  }
+    FixGTBeforeSettingCRFieldBit(RSCRATCH2);
 
   switch (bit)
   {
-  case PowerPC::CR_SO_BIT:  // set bit 61 to input
-    BTR(64, R(RSCRATCH2), Imm8(61));
-    SHL(64, R(in), Imm8(61));
+  case PowerPC::CR_SO_BIT:  // set bit 59 to input
+    BTR(64, R(RSCRATCH2), Imm8(PowerPC::CR_EMU_SO_BIT));
+    SHL(64, R(in), Imm8(PowerPC::CR_EMU_SO_BIT));
     OR(64, R(RSCRATCH2), R(in));
     break;
 
@@ -88,8 +83,8 @@ void Jit64::SetCRFieldBit(int field, int bit, X64Reg in)
     break;
 
   case PowerPC::CR_LT_BIT:  // set bit 62 to input
-    BTR(64, R(RSCRATCH2), Imm8(62));
-    SHL(64, R(in), Imm8(62));
+    BTR(64, R(RSCRATCH2), Imm8(PowerPC::CR_EMU_LT_BIT));
+    SHL(64, R(in), Imm8(PowerPC::CR_EMU_LT_BIT));
     OR(64, R(RSCRATCH2), R(in));
     break;
   }
@@ -103,11 +98,14 @@ void Jit64::ClearCRFieldBit(int field, int bit)
   switch (bit)
   {
   case PowerPC::CR_SO_BIT:
-    BTR(64, CROffset(field), Imm8(61));
+    BTR(64, CROffset(field), Imm8(PowerPC::CR_EMU_SO_BIT));
     break;
 
   case PowerPC::CR_EQ_BIT:
-    OR(64, CROffset(field), Imm8(1));
+    MOV(64, R(RSCRATCH), CROffset(field));
+    FixGTBeforeSettingCRFieldBit(RSCRATCH);
+    OR(64, R(RSCRATCH), Imm8(1));
+    MOV(64, CROffset(field), R(RSCRATCH));
     break;
 
   case PowerPC::CR_GT_BIT:
@@ -115,7 +113,7 @@ void Jit64::ClearCRFieldBit(int field, int bit)
     break;
 
   case PowerPC::CR_LT_BIT:
-    BTR(64, CROffset(field), Imm8(62));
+    BTR(64, CROffset(field), Imm8(PowerPC::CR_EMU_LT_BIT));
     break;
   }
   // We don't need to set bit 32; the cases where that's needed only come up when setting bits, not
@@ -126,17 +124,12 @@ void Jit64::SetCRFieldBit(int field, int bit)
 {
   MOV(64, R(RSCRATCH), CROffset(field));
   if (bit != PowerPC::CR_GT_BIT)
-  {
-    TEST(64, R(RSCRATCH), R(RSCRATCH));
-    FixupBranch dont_clear_gt = J_CC(CC_NZ);
-    BTS(64, R(RSCRATCH), Imm8(63));
-    SetJumpTarget(dont_clear_gt);
-  }
+    FixGTBeforeSettingCRFieldBit(RSCRATCH);
 
   switch (bit)
   {
   case PowerPC::CR_SO_BIT:
-    BTS(64, R(RSCRATCH), Imm8(61));
+    BTS(64, R(RSCRATCH), Imm8(PowerPC::CR_EMU_SO_BIT));
     break;
 
   case PowerPC::CR_EQ_BIT:
@@ -149,7 +142,7 @@ void Jit64::SetCRFieldBit(int field, int bit)
     break;
 
   case PowerPC::CR_LT_BIT:
-    BTS(64, R(RSCRATCH), Imm8(62));
+    BTS(64, R(RSCRATCH), Imm8(PowerPC::CR_EMU_LT_BIT));
     break;
   }
 
@@ -157,25 +150,37 @@ void Jit64::SetCRFieldBit(int field, int bit)
   MOV(64, CROffset(field), R(RSCRATCH));
 }
 
+void Jit64::FixGTBeforeSettingCRFieldBit(Gen::X64Reg reg)
+{
+  // GT is considered unset if the internal representation is <= 0, or in other words,
+  // if the internal representation either has bit 63 set or has all bits set to zero.
+  // If all bits are zero and we set some bit that's unrelated to GT, we need to set bit 63 so GT
+  // doesn't accidentally become considered set. Gross but necessary; this can break actual games.
+  TEST(64, R(reg), R(reg));
+  FixupBranch dont_clear_gt = J_CC(CC_NZ);
+  BTS(64, R(reg), Imm8(63));
+  SetJumpTarget(dont_clear_gt);
+}
+
 FixupBranch Jit64::JumpIfCRFieldBit(int field, int bit, bool jump_if_set)
 {
   switch (bit)
   {
-  case PowerPC::CR_SO_BIT:  // check bit 61 set
-    BT(64, CROffset(field), Imm8(61));
-    return J_CC(jump_if_set ? CC_C : CC_NC, true);
+  case PowerPC::CR_SO_BIT:  // check bit 59 set
+    BT(64, CROffset(field), Imm8(PowerPC::CR_EMU_SO_BIT));
+    return J_CC(jump_if_set ? CC_C : CC_NC, Jump::Near);
 
   case PowerPC::CR_EQ_BIT:  // check bits 31-0 == 0
     CMP(32, CROffset(field), Imm8(0));
-    return J_CC(jump_if_set ? CC_Z : CC_NZ, true);
+    return J_CC(jump_if_set ? CC_Z : CC_NZ, Jump::Near);
 
   case PowerPC::CR_GT_BIT:  // check val > 0
     CMP(64, CROffset(field), Imm8(0));
-    return J_CC(jump_if_set ? CC_G : CC_LE, true);
+    return J_CC(jump_if_set ? CC_G : CC_LE, Jump::Near);
 
   case PowerPC::CR_LT_BIT:  // check bit 62 set
-    BT(64, CROffset(field), Imm8(62));
-    return J_CC(jump_if_set ? CC_C : CC_NC, true);
+    BT(64, CROffset(field), Imm8(PowerPC::CR_EMU_LT_BIT));
+    return J_CC(jump_if_set ? CC_C : CC_NC, Jump::Near);
 
   default:
     ASSERT_MSG(DYNA_REC, false, "Invalid CR bit");
@@ -185,9 +190,36 @@ FixupBranch Jit64::JumpIfCRFieldBit(int field, int bit, bool jump_if_set)
   return FixupBranch();
 }
 
-static void DoICacheReset()
+// Could be done with one temp register, but with two temp registers it's faster
+void Jit64::UpdateFPExceptionSummary(X64Reg fpscr, X64Reg tmp1, X64Reg tmp2)
 {
-  PowerPC::ppcState.iCache.Reset();
+  // Kill dependency on tmp1 (not required for correctness, since SHL will shift out upper bytes)
+  XOR(32, R(tmp1), R(tmp1));
+
+  // fpscr.VX = (fpscr & FPSCR_VX_ANY) != 0
+  TEST(32, R(fpscr), Imm32(FPSCR_VX_ANY));
+  SETcc(CC_NZ, R(tmp1));
+  SHL(32, R(tmp1), Imm8(MathUtil::IntLog2(FPSCR_VX)));
+  AND(32, R(fpscr), Imm32(~(FPSCR_VX | FPSCR_FEX)));
+  OR(32, R(fpscr), R(tmp1));
+
+  // fpscr.FEX = ((fpscr >> 22) & (fpscr & FPSCR_ANY_E)) != 0
+  MOV(32, R(tmp1), R(fpscr));
+  MOV(32, R(tmp2), R(fpscr));
+  SHR(32, R(tmp1), Imm8(22));
+  AND(32, R(tmp2), Imm32(FPSCR_ANY_E));
+  TEST(32, R(tmp1), R(tmp2));
+  // Unfortunately we eat a partial register stall below - we can't zero any of the registers before
+  // the TEST, and we can't use XOR right after the TEST since that would overwrite flags. However,
+  // there is no false dependency, since SETcc depends on TEST's flags and TEST depends on tmp1.
+  SETcc(CC_NZ, R(tmp1));
+  SHL(32, R(tmp1), Imm8(MathUtil::IntLog2(FPSCR_FEX)));
+  OR(32, R(fpscr), R(tmp1));
+}
+
+static void DoICacheReset(PowerPC::PowerPCState& ppc_state, JitInterface& jit_interface)
+{
+  ppc_state.iCache.Reset(jit_interface);
 }
 
 void Jit64::mtspr(UGeckoInstruction inst)
@@ -251,11 +283,11 @@ void Jit64::mtspr(UGeckoInstruction inst)
 
     MOV(32, R(RSCRATCH), Rd);
     BTR(32, R(RSCRATCH), Imm8(31 - 20));  // ICFI
-    MOV(32, PPCSTATE(spr[iIndex]), R(RSCRATCH));
+    MOV(32, PPCSTATE_SPR(iIndex), R(RSCRATCH));
     FixupBranch dont_reset_icache = J_CC(CC_NC);
     BitSet32 regs = CallerSavedRegistersInUse();
     ABI_PushRegistersAndAdjustStack(regs, 0);
-    ABI_CallFunction(DoICacheReset);
+    ABI_CallFunctionPP(DoICacheReset, &m_ppc_state, &m_system.GetJitInterface());
     ABI_PopRegistersAndAdjustStack(regs, 0);
     SetJumpTarget(dont_reset_icache);
     return;
@@ -268,7 +300,7 @@ void Jit64::mtspr(UGeckoInstruction inst)
   // OK, this is easy.
   RCOpArg Rd = gpr.BindOrImm(d, RCMode::Read);
   RegCache::Realize(Rd);
-  MOV(32, PPCSTATE(spr[iIndex]), Rd);
+  MOV(32, PPCSTATE_SPR(iIndex), Rd);
 }
 
 void Jit64::mfspr(UGeckoInstruction inst)
@@ -292,7 +324,8 @@ void Jit64::mfspr(UGeckoInstruction inst)
     RCX64Reg rax = gpr.Scratch(RAX);
     RCX64Reg rcx = gpr.Scratch(RCX);
 
-    MOV(64, rcx, ImmPtr(&CoreTiming::g));
+    auto& core_timing_globals = m_system.GetCoreTiming().GetGlobals();
+    MOV(64, rcx, ImmPtr(&core_timing_globals));
 
     // An inline implementation of CoreTiming::GetFakeTimeBase, since in timer-heavy games the
     // cost of calling out to C for this is actually significant.
@@ -323,7 +356,7 @@ void Jit64::mfspr(UGeckoInstruction inst)
     MOV(64, rax, MDisp(rcx, offsetof(CoreTiming::Globals, fake_TB_start_value)));
     SHR(64, rdx, Imm8(3));
     ADD(64, rax, rdx);
-    MOV(64, PPCSTATE(spr[SPR_TL]), rax);
+    MOV(64, PPCSTATE_SPR(SPR_TL), rax);
 
     if (CanMergeNextInstructions(1))
     {
@@ -380,12 +413,17 @@ void Jit64::mfspr(UGeckoInstruction inst)
   case SPR_PMC2:
   case SPR_PMC3:
   case SPR_PMC4:
+  case SPR_UPMC1:
+  case SPR_UPMC2:
+  case SPR_UPMC3:
+  case SPR_UPMC4:
+  case SPR_IABR:
     FALLBACK_IF(true);
   default:
   {
     RCX64Reg Rd = gpr.Bind(d, RCMode::Write);
     RegCache::Realize(Rd);
-    MOV(32, Rd, PPCSTATE(spr[iIndex]));
+    MOV(32, Rd, PPCSTATE_SPR(iIndex));
     break;
   }
   }
@@ -395,33 +433,36 @@ void Jit64::mtmsr(UGeckoInstruction inst)
 {
   INSTRUCTION_START
   JITDISABLE(bJITSystemRegistersOff);
+  FALLBACK_IF(jo.fp_exceptions);
 
   {
-    RCOpArg Rs = gpr.BindOrImm(inst.RS, RCMode::Read);
-    RegCache::Realize(Rs);
-    MOV(32, PPCSTATE(msr), Rs);
+    OpArg Rs_op_arg;
+    {
+      RCOpArg Rs = gpr.BindOrImm(inst.RS, RCMode::Read);
+      RegCache::Realize(Rs);
+      MOV(32, PPCSTATE(msr), Rs);
+      Rs_op_arg = Rs;
+    }
+    MSRUpdated(Rs_op_arg, RSCRATCH2);
   }
+
   gpr.Flush();
   fpr.Flush();
-
-  // Our jit cache also stores some MSR bits, as they have changed, we either
-  // have to validate them in the BLR/RET check, or just flush the stack here.
-  asm_routines.ResetStack(*this);
 
   // If some exceptions are pending and EE are now enabled, force checking
   // external exceptions when going out of mtmsr in order to execute delayed
   // interrupts as soon as possible.
   TEST(32, PPCSTATE(msr), Imm32(0x8000));
-  FixupBranch eeDisabled = J_CC(CC_Z, true);
+  FixupBranch eeDisabled = J_CC(CC_Z, Jump::Near);
 
   TEST(32, PPCSTATE(Exceptions),
        Imm32(EXCEPTION_EXTERNAL_INT | EXCEPTION_PERFORMANCE_MONITOR | EXCEPTION_DECREMENTER));
-  FixupBranch noExceptionsPending = J_CC(CC_Z, true);
+  FixupBranch noExceptionsPending = J_CC(CC_Z, Jump::Near);
 
   // Check if a CP interrupt is waiting and keep the GPU emulation in sync (issue 4336)
-  MOV(64, R(RSCRATCH), ImmPtr(&ProcessorInterface::m_InterruptCause));
+  MOV(64, R(RSCRATCH), ImmPtr(&m_system.GetProcessorInterface().m_interrupt_cause));
   TEST(32, MatR(RSCRATCH), Imm32(ProcessorInterface::INT_CAUSE_CP));
-  FixupBranch cpInt = J_CC(CC_NZ);
+  FixupBranch cpInt = J_CC(CC_NZ, Jump::Near);
 
   MOV(32, PPCSTATE(pc), Imm32(js.compilerPC + 4));
   WriteExternalExceptionExit();
@@ -547,8 +588,8 @@ void Jit64::mcrxr(UGeckoInstruction inst)
   MOV(64, CROffset(inst.CRFD), R(RSCRATCH));
 
   // Clear XER[0-3]
-  MOV(8, PPCSTATE(xer_ca), Imm8(0));
-  MOV(8, PPCSTATE(xer_so_ov), Imm8(0));
+  static_assert(PPCSTATE_OFF(xer_ca) + 1 == PPCSTATE_OFF(xer_so_ov));
+  MOV(16, PPCSTATE(xer_ca), Imm16(0));
 }
 
 void Jit64::crXXX(UGeckoInstruction inst)
@@ -557,7 +598,7 @@ void Jit64::crXXX(UGeckoInstruction inst)
   JITDISABLE(bJITSystemRegistersOff);
   DEBUG_ASSERT_MSG(DYNA_REC, inst.OPCD == 19, "Invalid crXXX");
 
-  // TODO(merry): Futher optimizations can be performed here. For example,
+  // TODO(merry): Further optimizations can be performed here. For example,
   // instead of extracting each CR field bit then setting it, the operation
   // could be performed on the internal format directly instead and the
   // relevant bit result can be masked out.
@@ -637,23 +678,45 @@ void Jit64::mcrfs(UGeckoInstruction inst)
   // Only clear exception bits (but not FEX/VX).
   mask &= FPSCR_FX | FPSCR_ANY_X;
 
-  MOV(32, R(RSCRATCH), PPCSTATE(fpscr));
+  RCX64Reg scratch_guard;
+  X64Reg scratch;
+  if (mask != 0)
+  {
+    scratch_guard = gpr.Scratch();
+    RegCache::Realize(scratch_guard);
+    scratch = scratch_guard;
+  }
+  else
+  {
+    scratch = RSCRATCH;
+  }
+
   if (cpu_info.bBMI1)
   {
+    MOV(32, R(RSCRATCH), PPCSTATE(fpscr));
     MOV(32, R(RSCRATCH2), Imm32((4 << 8) | shift));
     BEXTR(32, RSCRATCH2, R(RSCRATCH), RSCRATCH2);
   }
   else
   {
-    MOV(32, R(RSCRATCH2), R(RSCRATCH));
+    MOV(32, R(RSCRATCH2), PPCSTATE(fpscr));
+    if (mask != 0)
+      MOV(32, R(RSCRATCH), R(RSCRATCH2));
+
     SHR(32, R(RSCRATCH2), Imm8(shift));
     AND(32, R(RSCRATCH2), Imm32(0xF));
   }
-  AND(32, R(RSCRATCH), Imm32(~mask));
-  MOV(32, PPCSTATE(fpscr), R(RSCRATCH));
-  LEA(64, RSCRATCH, MConst(PowerPC::ConditionRegister::s_crTable));
-  MOV(64, R(RSCRATCH), MComplex(RSCRATCH, RSCRATCH2, SCALE_8, 0));
-  MOV(64, CROffset(inst.CRFD), R(RSCRATCH));
+
+  LEA(64, scratch, MConst(PowerPC::ConditionRegister::s_crTable));
+  MOV(64, R(scratch), MComplex(scratch, RSCRATCH2, SCALE_8, 0));
+  MOV(64, CROffset(inst.CRFD), R(scratch));
+
+  if (mask != 0)
+  {
+    AND(32, R(RSCRATCH), Imm32(~mask));
+    UpdateFPExceptionSummary(RSCRATCH, RSCRATCH2, scratch);
+    MOV(32, PPCSTATE(fpscr), R(RSCRATCH));
+  }
 }
 
 void Jit64::mffsx(UGeckoInstruction inst)
@@ -663,18 +726,6 @@ void Jit64::mffsx(UGeckoInstruction inst)
   FALLBACK_IF(inst.Rc);
 
   MOV(32, R(RSCRATCH), PPCSTATE(fpscr));
-
-  // FPSCR.FEX = 0 (and VX for below)
-  AND(32, R(RSCRATCH), Imm32(~0x60000000));
-
-  // FPSCR.VX = (FPSCR.Hex & FPSCR_VX_ANY) != 0;
-  XOR(32, R(RSCRATCH2), R(RSCRATCH2));
-  TEST(32, R(RSCRATCH), Imm32(FPSCR_VX_ANY));
-  SETcc(CC_NZ, R(RSCRATCH2));
-  SHL(32, R(RSCRATCH2), Imm8(31 - 2));
-  OR(32, R(RSCRATCH), R(RSCRATCH2));
-
-  MOV(32, PPCSTATE(fpscr), R(RSCRATCH));
 
   int d = inst.FD;
   RCX64Reg Rd = fpr.Bind(d, RCMode::Write);
@@ -704,17 +755,32 @@ void Jit64::mtfsb0x(UGeckoInstruction inst)
   JITDISABLE(bJITSystemRegistersOff);
   FALLBACK_IF(inst.Rc);
 
-  u32 mask = ~(0x80000000 >> inst.CRBD);
-  if (inst.CRBD < 29)
+  const u32 mask = 0x80000000 >> inst.CRBD;
+  const u32 inverted_mask = ~mask;
+
+  if (mask == FPSCR_FEX || mask == FPSCR_VX)
+    return;
+
+  if (inst.CRBD < 29 && (mask & (FPSCR_ANY_X | FPSCR_ANY_E)) == 0)
   {
-    AND(32, PPCSTATE(fpscr), Imm32(mask));
+    AND(32, PPCSTATE(fpscr), Imm32(inverted_mask));
   }
   else
   {
     MOV(32, R(RSCRATCH), PPCSTATE(fpscr));
-    AND(32, R(RSCRATCH), Imm32(mask));
+    AND(32, R(RSCRATCH), Imm32(inverted_mask));
+
+    if ((mask & (FPSCR_ANY_X | FPSCR_ANY_E)) != 0)
+    {
+      RCX64Reg scratch = gpr.Scratch();
+      RegCache::Realize(scratch);
+
+      UpdateFPExceptionSummary(RSCRATCH, RSCRATCH2, scratch);
+    }
+
     MOV(32, PPCSTATE(fpscr), R(RSCRATCH));
-    UpdateMXCSR();
+    if (inst.CRBD >= 29)
+      UpdateMXCSR();
   }
 }
 
@@ -723,10 +789,15 @@ void Jit64::mtfsb1x(UGeckoInstruction inst)
   INSTRUCTION_START
   JITDISABLE(bJITSystemRegistersOff);
   FALLBACK_IF(inst.Rc);
+  FALLBACK_IF(jo.fp_exceptions);
 
-  u32 mask = 0x80000000 >> inst.CRBD;
+  const u32 mask = 0x80000000 >> inst.CRBD;
+
+  if (mask == FPSCR_FEX || mask == FPSCR_VX)
+    return;
+
   MOV(32, R(RSCRATCH), PPCSTATE(fpscr));
-  if (mask & FPSCR_ANY_X)
+  if ((mask & FPSCR_ANY_X) != 0)
   {
     BTS(32, R(RSCRATCH), Imm32(31 - inst.CRBD));
     FixupBranch dont_set_fx = J_CC(CC_C);
@@ -737,6 +808,15 @@ void Jit64::mtfsb1x(UGeckoInstruction inst)
   {
     OR(32, R(RSCRATCH), Imm32(mask));
   }
+
+  if ((mask & (FPSCR_ANY_X | FPSCR_ANY_E)) != 0)
+  {
+    RCX64Reg scratch = gpr.Scratch();
+    RegCache::Realize(scratch);
+
+    UpdateFPExceptionSummary(RSCRATCH, RSCRATCH2, scratch);
+  }
+
   MOV(32, PPCSTATE(fpscr), R(RSCRATCH));
   if (inst.CRBD >= 29)
     UpdateMXCSR();
@@ -747,14 +827,25 @@ void Jit64::mtfsfix(UGeckoInstruction inst)
   INSTRUCTION_START
   JITDISABLE(bJITSystemRegistersOff);
   FALLBACK_IF(inst.Rc);
+  FALLBACK_IF(jo.fp_exceptions);
 
   u8 imm = (inst.hex >> (31 - 19)) & 0xF;
+  u32 mask = 0xF0000000 >> (4 * inst.CRFD);
   u32 or_mask = imm << (28 - 4 * inst.CRFD);
-  u32 and_mask = ~(0xF0000000 >> (4 * inst.CRFD));
+  u32 and_mask = ~mask;
 
   MOV(32, R(RSCRATCH), PPCSTATE(fpscr));
   AND(32, R(RSCRATCH), Imm32(and_mask));
   OR(32, R(RSCRATCH), Imm32(or_mask));
+
+  if ((mask & (FPSCR_FEX | FPSCR_VX | FPSCR_ANY_X | FPSCR_ANY_E)) != 0)
+  {
+    RCX64Reg scratch = gpr.Scratch();
+    RegCache::Realize(scratch);
+
+    UpdateFPExceptionSummary(RSCRATCH, RSCRATCH2, scratch);
+  }
+
   MOV(32, PPCSTATE(fpscr), R(RSCRATCH));
 
   // Field 7 contains NI and RN.
@@ -767,6 +858,7 @@ void Jit64::mtfsfx(UGeckoInstruction inst)
   INSTRUCTION_START
   JITDISABLE(bJITSystemRegistersOff);
   FALLBACK_IF(inst.Rc);
+  FALLBACK_IF(jo.fp_exceptions);
 
   u32 mask = 0;
   for (int i = 0; i < 8; i++)
@@ -785,10 +877,22 @@ void Jit64::mtfsfx(UGeckoInstruction inst)
   else
     MOV(32, R(RSCRATCH), Rb);
 
-  MOV(32, R(RSCRATCH2), PPCSTATE(fpscr));
-  AND(32, R(RSCRATCH), Imm32(mask));
-  AND(32, R(RSCRATCH2), Imm32(~mask));
-  OR(32, R(RSCRATCH), R(RSCRATCH2));
+  if (mask != 0xFFFFFFFF)
+  {
+    MOV(32, R(RSCRATCH2), PPCSTATE(fpscr));
+    AND(32, R(RSCRATCH), Imm32(mask));
+    AND(32, R(RSCRATCH2), Imm32(~mask));
+    OR(32, R(RSCRATCH), R(RSCRATCH2));
+  }
+
+  if ((mask & (FPSCR_FEX | FPSCR_VX | FPSCR_ANY_X | FPSCR_ANY_E)) != 0)
+  {
+    RCX64Reg scratch = gpr.Scratch();
+    RegCache::Realize(scratch);
+
+    UpdateFPExceptionSummary(RSCRATCH, RSCRATCH2, scratch);
+  }
+
   MOV(32, PPCSTATE(fpscr), R(RSCRATCH));
 
   if (inst.FM & 1)

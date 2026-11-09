@@ -1,10 +1,10 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <string>
+
 #include "VideoCommon/VideoBackendBase.h"
 
 namespace DX12
@@ -15,9 +15,11 @@ public:
   bool Initialize(const WindowSystemInfo& wsi) override;
   void Shutdown() override;
 
-  std::string GetName() const override;
+  std::string GetConfigName() const override;
   std::string GetDisplayName() const override;
-  void InitBackendInfo() override;
+  void InitBackendInfo(const WindowSystemInfo& wsi) override;
+
+  static constexpr const char* CONFIG_NAME = "D3D12";
 
 private:
   void FillBackendInfo();

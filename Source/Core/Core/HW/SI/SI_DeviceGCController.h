@@ -1,28 +1,24 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
+
+#include <array>
 
 #include "Core/HW/GCPad.h"
 #include "Core/HW/SI/SI_Device.h"
 #include "InputCommon/GCPadStatus.h"
+
+namespace Movie
+{
+class MovieManager;
+}
 
 namespace SerialInterface
 {
 class CSIDevice_GCController : public ISIDevice
 {
 protected:
-  // Commands
-  enum EBufferCommands
-  {
-    CMD_RESET = 0x00,
-    CMD_DIRECT = 0x40,
-    CMD_ORIGIN = 0x41,
-    CMD_RECALIBRATE = 0x42,
-    CMD_ID = 0xff,
-  };
-
   struct SOrigin
   {
     u16 button;
@@ -34,25 +30,6 @@ protected:
     u8 trigger_right;
     u8 unk_4;
     u8 unk_5;
-  };
-
-  enum EDirectCommands
-  {
-    CMD_WRITE = 0x40
-  };
-
-  union UCommand
-  {
-    u32 hex = 0;
-    struct
-    {
-      u32 parameter1 : 8;
-      u32 parameter2 : 8;
-      u32 command : 8;
-      u32 : 8;
-    };
-    UCommand() = default;
-    UCommand(u32 value) : hex{value} {}
   };
 
   enum EButtonCombo
@@ -81,13 +58,12 @@ protected:
 
 public:
   // Constructor
-  CSIDevice_GCController(SIDevices device, int device_number);
+  CSIDevice_GCController(Core::System& system, SIDevices device, int device_number);
 
   // Run the SI Buffer
   int RunBuffer(u8* buffer, int request_length) override;
 
-  // Return true on new data
-  bool GetData(u32& hi, u32& low) override;
+  DataResponse GetData(u32& hi, u32& low) override;
 
   // Send a command directly
   void SendCommand(u32 command, u8 poll) override;
@@ -104,20 +80,22 @@ public:
   static int NetPlay_InGamePadToLocalPad(int pad_num);
 
   // Direct rumble to the right GC Controller
-  static void Rumble(int pad_num, ControlState strength);
+  static void Rumble(int pad_num, ControlState strength, SIDevices device);
+
+  static void HandleMoviePadStatus(Movie::MovieManager& movie, int device_number,
+                                   GCPadStatus* pad_status);
 
 protected:
-  void HandleMoviePadStatus(GCPadStatus* pad_status);
   void SetOrigin(const GCPadStatus& pad_status);
 };
 
 // "TaruKonga", the DK Bongo controller
-class CSIDevice_TaruKonga : public CSIDevice_GCController
+class CSIDevice_TaruKonga final : public CSIDevice_GCController
 {
 public:
-  CSIDevice_TaruKonga(SIDevices device, int device_number);
+  CSIDevice_TaruKonga(Core::System& system, SIDevices device, int device_number);
 
-  bool GetData(u32& hi, u32& low) override;
+  DataResponse GetData(u32& hi, u32& low) override;
 
   static const u32 HI_BUTTON_MASK =
       (PAD_BUTTON_A | PAD_BUTTON_B | PAD_BUTTON_X | PAD_BUTTON_Y | PAD_BUTTON_START | PAD_TRIGGER_R)

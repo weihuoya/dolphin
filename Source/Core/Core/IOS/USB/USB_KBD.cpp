@@ -1,6 +1,5 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/IOS/USB/USB_KBD.h"
 
@@ -11,16 +10,17 @@
 #include "Common/IniFile.h"
 #include "Common/Logging/Log.h"
 #include "Common/Swap.h"
-#include "Core/ConfigManager.h"
+#include "Core/Config/MainSettings.h"
 #include "Core/Core.h"  // Local core functions
 #include "Core/HW/Memmap.h"
+#include "Core/System.h"
 #include "InputCommon/ControlReference/ControlReference.h"  // For background input check
 
 #ifdef _WIN32
 #include <windows.h>
 #endif
 
-namespace IOS::HLE::Device
+namespace IOS::HLE
 {
 namespace
 {
@@ -139,7 +139,7 @@ constexpr std::array<u8, 256> s_key_codes_azerty{
     0x55,  // Multiply
     0x57,  // Add
     0x00,  // Separator
-    0x56,  // Substract
+    0x56,  // Subtract
     0x63,  // Decimal
     0x54,  // Divide
     // F1 -> F12
@@ -176,22 +176,23 @@ constexpr std::array<u8, 256> s_key_codes_azerty{};
 #endif
 }  // Anonymous namespace
 
-USB_KBD::MessageData::MessageData(MessageType type, u8 modifiers, PressedKeyData pressed_keys)
-    : msg_type{Common::swap32(static_cast<u32>(type))}, modifiers{modifiers}, pressed_keys{
-                                                                                  pressed_keys}
+USB_KBD::MessageData::MessageData(MessageType type, u8 modifiers_, PressedKeyData pressed_keys_)
+    : msg_type{Common::swap32(static_cast<u32>(type))}, modifiers{modifiers_},
+      pressed_keys{pressed_keys_}
 {
 }
 
 // TODO: support in netplay/movies.
 
-USB_KBD::USB_KBD(Kernel& ios, const std::string& device_name) : Device(ios, device_name)
+USB_KBD::USB_KBD(EmulationKernel& ios, const std::string& device_name)
+    : EmulationDevice(ios, device_name)
 {
 }
 
-IPCCommandResult USB_KBD::Open(const OpenRequest& request)
+std::optional<IPCReply> USB_KBD::Open(const OpenRequest& request)
 {
-  INFO_LOG(IOS, "USB_KBD: Open");
-  IniFile ini;
+  INFO_LOG_FMT(IOS, "USB_KBD: Open");
+  Common::IniFile ini;
   ini.Load(File::GetUserPath(F_DOLPHINCONFIG_IDX));
   ini.GetOrCreateSection("USB Keyboard")->Get("Layout", &m_keyboard_layout, KBD_LAYOUT_QWERTY);
 
@@ -203,21 +204,23 @@ IPCCommandResult USB_KBD::Open(const OpenRequest& request)
   return Device::Open(request);
 }
 
-IPCCommandResult USB_KBD::Write(const ReadWriteRequest& request)
+std::optional<IPCReply> USB_KBD::Write(const ReadWriteRequest& request)
 {
   // Stubbed.
-  return GetDefaultReply(IPC_SUCCESS);
+  return IPCReply(IPC_SUCCESS);
 }
 
-IPCCommandResult USB_KBD::IOCtl(const IOCtlRequest& request)
+std::optional<IPCReply> USB_KBD::IOCtl(const IOCtlRequest& request)
 {
-  if (SConfig::GetInstance().m_WiiKeyboard && !Core::WantsDeterminism() &&
-      ControlReference::InputGateOn() && !m_message_queue.empty())
+  if (Config::Get(Config::MAIN_WII_KEYBOARD) && !Core::WantsDeterminism() &&
+      ControlReference::GetInputGate() && !m_message_queue.empty())
   {
-    Memory::CopyToEmu(request.buffer_out, &m_message_queue.front(), sizeof(MessageData));
+    auto& system = GetSystem();
+    auto& memory = system.GetMemory();
+    memory.CopyToEmu(request.buffer_out, &m_message_queue.front(), sizeof(MessageData));
     m_message_queue.pop();
   }
-  return GetDefaultReply(IPC_SUCCESS);
+  return IPCReply(IPC_SUCCESS);
 }
 
 bool USB_KBD::IsKeyPressed(int key) const
@@ -232,7 +235,7 @@ bool USB_KBD::IsKeyPressed(int key) const
 
 void USB_KBD::Update()
 {
-  if (!SConfig::GetInstance().m_WiiKeyboard || Core::WantsDeterminism() || !m_is_active)
+  if (!Config::Get(Config::MAIN_WII_KEYBOARD) || Core::WantsDeterminism() || !m_is_active)
     return;
 
   u8 modifiers = 0x00;
@@ -307,4 +310,4 @@ void USB_KBD::Update()
   if (got_event)
     m_message_queue.emplace(MessageType::Event, modifiers, pressed_keys);
 }
-}  // namespace IOS::HLE::Device
+}  // namespace IOS::HLE

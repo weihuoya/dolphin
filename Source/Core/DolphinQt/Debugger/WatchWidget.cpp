@@ -1,10 +1,10 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Debugger/WatchWidget.h"
 
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QMenu>
 #include <QTableWidget>
 #include <QToolBar>
@@ -16,12 +16,15 @@
 #include "Core/Core.h"
 #include "Core/PowerPC/MMU.h"
 #include "Core/PowerPC/PowerPC.h"
+#include "Core/System.h"
 
+#include "DolphinQt/Host.h"
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
 #include "DolphinQt/Resources.h"
 #include "DolphinQt/Settings.h"
 
-WatchWidget::WatchWidget(QWidget* parent) : QDockWidget(parent)
+WatchWidget::WatchWidget(QWidget* parent)
+    : QDockWidget(parent), m_system(Core::System::GetInstance())
 {
   // i18n: This kind of "watch" is used for watching emulated memory.
   // It's not related to timekeeping devices.
@@ -32,6 +35,8 @@ WatchWidget::WatchWidget(QWidget* parent) : QDockWidget(parent)
 
   setAllowedAreas(Qt::AllDockWidgetAreas);
 
+  CreateWidgets();
+
   auto& settings = Settings::GetQSettings();
 
   restoreGeometry(settings.value(QStringLiteral("watchwidget/geometry")).toByteArray());
@@ -39,19 +44,20 @@ WatchWidget::WatchWidget(QWidget* parent) : QDockWidget(parent)
   // according to Settings
   setFloating(settings.value(QStringLiteral("watchwidget/floating")).toBool());
 
-  CreateWidgets();
   ConnectWidgets();
 
-  connect(&Settings::Instance(), &Settings::EmulationStateChanged, [this](Core::State state) {
+  connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, [this](Core::State state) {
     UpdateButtonsEnabled();
     if (state != Core::State::Starting)
       Update();
   });
 
-  connect(&Settings::Instance(), &Settings::WatchVisibilityChanged,
+  connect(Host::GetInstance(), &Host::UpdateDisasmDialog, this, &WatchWidget::Update);
+
+  connect(&Settings::Instance(), &Settings::WatchVisibilityChanged, this,
           [this](bool visible) { setHidden(!visible); });
 
-  connect(&Settings::Instance(), &Settings::DebugModeToggled,
+  connect(&Settings::Instance(), &Settings::DebugModeToggled, this,
           [this](bool enabled) { setHidden(!enabled || !Settings::Instance().IsWatchVisible()); });
 
   connect(&Settings::Instance(), &Settings::ThemeChanged, this, &WatchWidget::UpdateIcons);
@@ -73,16 +79,34 @@ void WatchWidget::CreateWidgets()
   m_toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
 
   m_table = new QTableWidget;
+  m_table->setTabKeyNavigation(false);
 
   m_table->setContentsMargins(0, 0, 0, 0);
   m_table->setColumnCount(NUM_COLUMNS);
   m_table->verticalHeader()->setHidden(true);
   m_table->setContextMenuPolicy(Qt::CustomContextMenu);
-  m_table->setSelectionMode(QAbstractItemView::SingleSelection);
+  m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_table->setHorizontalHeaderLabels(
+      {tr("Label"), tr("Address"), tr("Hexadecimal"),
+       // i18n: The base 10 numeral system. Not related to non-integer numbers
+       tr("Decimal"),
+       // i18n: Data type used in computing
+       tr("String"),
+       // i18n: Floating-point (non-integer) number
+       tr("Float"), tr("Locked")});
+  m_table->setRowCount(1);
+  SetEmptyRow(0);
 
+  m_new = m_toolbar->addAction(tr("New"), this, &WatchWidget::OnNewWatch);
+  m_delete = m_toolbar->addAction(tr("Delete"), this, &WatchWidget::OnDelete);
+  m_clear = m_toolbar->addAction(tr("Clear"), this, &WatchWidget::OnClear);
   m_load = m_toolbar->addAction(tr("Load"), this, &WatchWidget::OnLoad);
   m_save = m_toolbar->addAction(tr("Save"), this, &WatchWidget::OnSave);
 
+  m_new->setEnabled(false);
+  m_delete->setEnabled(false);
+  m_clear->setEnabled(false);
   m_load->setEnabled(false);
   m_save->setEnabled(false);
 
@@ -106,8 +130,12 @@ void WatchWidget::ConnectWidgets()
 
 void WatchWidget::UpdateIcons()
 {
-  m_load->setIcon(Resources::GetScaledThemeIcon("debugger_load"));
-  m_save->setIcon(Resources::GetScaledThemeIcon("debugger_save"));
+  // TODO: Create a "debugger_add_watch" icon
+  m_new->setIcon(Resources::GetThemeIcon("debugger_add_breakpoint"));
+  m_delete->setIcon(Resources::GetThemeIcon("debugger_delete"));
+  m_clear->setIcon(Resources::GetThemeIcon("debugger_clear"));
+  m_load->setIcon(Resources::GetThemeIcon("debugger_load"));
+  m_save->setIcon(Resources::GetThemeIcon("debugger_save"));
 }
 
 void WatchWidget::UpdateButtonsEnabled()
@@ -115,8 +143,12 @@ void WatchWidget::UpdateButtonsEnabled()
   if (!isVisible())
     return;
 
-  m_load->setEnabled(Core::IsRunning());
-  m_save->setEnabled(Core::IsRunning());
+  const bool is_enabled = Core::IsRunning(m_system);
+  m_new->setEnabled(is_enabled);
+  m_delete->setEnabled(is_enabled);
+  m_clear->setEnabled(is_enabled);
+  m_load->setEnabled(is_enabled);
+  m_save->setEnabled(is_enabled);
 }
 
 void WatchWidget::Update()
@@ -126,24 +158,26 @@ void WatchWidget::Update()
 
   m_updating = true;
 
-  m_table->clear();
+  if (Core::GetState(m_system) != Core::State::Paused)
+  {
+    m_table->setDisabled(true);
+    m_updating = false;
+    return;
+  }
 
-  int size = static_cast<int>(PowerPC::debug_interface.GetWatches().size());
+  m_table->setDisabled(false);
+  m_table->clearContents();
+
+  Core::CPUThreadGuard guard(m_system);
+  auto& debug_interface = guard.GetSystem().GetPowerPC().GetDebugInterface();
+
+  int size = static_cast<int>(debug_interface.GetWatches().size());
 
   m_table->setRowCount(size + 1);
 
-  m_table->setHorizontalHeaderLabels(
-      {tr("Label"), tr("Address"), tr("Hexadecimal"),
-       // i18n: The base 10 numeral system. Not related to non-integer numbers
-       tr("Decimal"),
-       // i18n: Data type used in computing
-       tr("String"),
-       // i18n: Floating-point (non-integer) number
-       tr("Float")});
-
   for (int i = 0; i < size; i++)
   {
-    auto entry = PowerPC::debug_interface.GetWatch(i);
+    const auto& entry = debug_interface.GetWatch(i);
 
     auto* label = new QTableWidgetItem(QString::fromStdString(entry.name));
     auto* address =
@@ -153,23 +187,29 @@ void WatchWidget::Update()
     auto* string = new QTableWidgetItem;
     auto* floatValue = new QTableWidgetItem;
 
-    std::array<QTableWidgetItem*, NUM_COLUMNS> items = {label,   address, hex,
-                                                        decimal, string,  floatValue};
+    auto* lockValue = new QTableWidgetItem;
+    lockValue->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable);
+
+    std::array<QTableWidgetItem*, NUM_COLUMNS> items = {label,  address,    hex,      decimal,
+                                                        string, floatValue, lockValue};
 
     QBrush brush = QPalette().brush(QPalette::Text);
 
-    if (!Core::IsRunning() || !PowerPC::HostIsRAMAddress(entry.address))
+    const bool core_is_running = Core::IsRunning(m_system);
+    if (!core_is_running || !PowerPC::MMU::HostIsRAMAddress(guard, entry.address))
       brush.setColor(Qt::red);
 
-    if (Core::IsRunning())
+    if (core_is_running)
     {
-      if (PowerPC::HostIsRAMAddress(entry.address))
+      if (PowerPC::MMU::HostIsRAMAddress(guard, entry.address))
       {
-        hex->setText(QStringLiteral("%1").arg(PowerPC::HostRead_U32(entry.address), 8, 16,
-                                              QLatin1Char('0')));
-        decimal->setText(QString::number(PowerPC::HostRead_U32(entry.address)));
-        string->setText(QString::fromStdString(PowerPC::HostGetString(entry.address, 32)));
-        floatValue->setText(QString::number(PowerPC::HostRead_F32(entry.address)));
+        hex->setText(QStringLiteral("%1").arg(PowerPC::MMU::HostRead<u32>(guard, entry.address), 8,
+                                              16, QLatin1Char('0')));
+        decimal->setText(QString::number(PowerPC::MMU::HostRead<u32>(guard, entry.address)));
+        string->setText(
+            QString::fromStdString(PowerPC::MMU::HostGetString(guard, entry.address, 32)));
+        floatValue->setText(QString::number(PowerPC::MMU::HostRead<float>(guard, entry.address)));
+        lockValue->setCheckState(entry.locked ? Qt::Checked : Qt::Unchecked);
       }
     }
 
@@ -185,19 +225,24 @@ void WatchWidget::Update()
     }
   }
 
+  SetEmptyRow(size);
+
+  m_updating = false;
+}
+
+void WatchWidget::SetEmptyRow(int row)
+{
   auto* label = new QTableWidgetItem;
   label->setData(Qt::UserRole, -1);
 
-  m_table->setItem(size, 0, label);
+  m_table->setItem(row, 0, label);
 
   for (int i = 1; i < NUM_COLUMNS; i++)
   {
     auto* no_edit = new QTableWidgetItem;
     no_edit->setFlags(Qt::ItemIsEnabled);
-    m_table->setItem(size, i, no_edit);
+    m_table->setItem(row, i, no_edit);
   }
-
-  m_updating = false;
 }
 
 void WatchWidget::closeEvent(QCloseEvent*)
@@ -211,9 +256,41 @@ void WatchWidget::showEvent(QShowEvent* event)
   Update();
 }
 
+void WatchWidget::OnDelete()
+{
+  if (m_table->selectedItems().empty())
+    return;
+
+  DeleteSelectedWatches();
+}
+
+void WatchWidget::OnClear()
+{
+  m_system.GetPowerPC().GetDebugInterface().ClearWatches();
+  Update();
+}
+
+void WatchWidget::OnNewWatch()
+{
+  const QString text =
+      QInputDialog::getText(this, tr("Input"), tr("Enter address to watch:"), QLineEdit::Normal,
+                            QString{}, nullptr, Qt::WindowCloseButtonHint);
+  bool good;
+  const uint address = text.toUInt(&good, 16);
+
+  if (!good)
+  {
+    ModalMessageBox::warning(this, tr("Error"), tr("Invalid watch address: %1").arg(text));
+    return;
+  }
+
+  const QString name = QStringLiteral("mem_%1").arg(address, 8, 16, QLatin1Char('0'));
+  AddWatch(name, address);
+}
+
 void WatchWidget::OnLoad()
 {
-  IniFile ini;
+  Common::IniFile ini;
 
   std::vector<std::string> watches;
 
@@ -223,10 +300,17 @@ void WatchWidget::OnLoad()
     return;
   }
 
+  Core::CPUThreadGuard guard(m_system);
+
   if (ini.GetLines("Watches", &watches, false))
   {
-    PowerPC::debug_interface.ClearWatches();
-    PowerPC::debug_interface.LoadWatchesFromStrings(watches);
+    auto& debug_interface = guard.GetSystem().GetPowerPC().GetDebugInterface();
+    for (const auto& watch : debug_interface.GetWatches())
+    {
+      debug_interface.UnsetPatch(guard, watch.address);
+    }
+    debug_interface.ClearWatches();
+    debug_interface.LoadWatchesFromStrings(watches);
   }
 
   Update();
@@ -234,32 +318,50 @@ void WatchWidget::OnLoad()
 
 void WatchWidget::OnSave()
 {
-  IniFile ini;
+  Common::IniFile ini;
   ini.Load(File::GetUserPath(D_GAMESETTINGS_IDX) + SConfig::GetInstance().GetGameID() + ".ini",
            false);
-  ini.SetLines("Watches", PowerPC::debug_interface.SaveWatchesToStrings());
+  ini.SetLines("Watches", m_system.GetPowerPC().GetDebugInterface().SaveWatchesToStrings());
   ini.Save(File::GetUserPath(D_GAMESETTINGS_IDX) + SConfig::GetInstance().GetGameID() + ".ini");
 }
 
 void WatchWidget::ShowContextMenu()
 {
   QMenu* menu = new QMenu(this);
+  menu->setAttribute(Qt::WA_DeleteOnClose, true);
 
   if (!m_table->selectedItems().empty())
   {
-    auto row_variant = m_table->selectedItems()[0]->data(Qt::UserRole);
-
-    if (!row_variant.isNull())
+    const std::size_t count = m_table->selectionModel()->selectedRows().count();
+    if (count > 1)
     {
-      int row = row_variant.toInt();
+      // i18n: This kind of "watch" is used for watching emulated memory.
+      // It's not related to timekeeping devices.
+      menu->addAction(tr("&Delete Watches"), this, [this] { DeleteSelectedWatches(); });
+      // i18n: This kind of "watch" is used for watching emulated memory.
+      // It's not related to timekeeping devices.
+      menu->addAction(tr("&Lock Watches"), this, [this] { LockSelectedWatches(); });
+      // i18n: This kind of "watch" is used for watching emulated memory.
+      // It's not related to timekeeping devices.
+      menu->addAction(tr("&Unlock Watches"), this, [this] { UnlockSelectedWatches(); });
+    }
+    else if (count == 1)
+    {
+      auto row_variant = m_table->selectedItems()[0]->data(Qt::UserRole);
 
-      if (row >= 0)
+      if (!row_variant.isNull())
       {
-        // i18n: This kind of "watch" is used for watching emulated memory.
-        // It's not related to timekeeping devices.
-        menu->addAction(tr("&Delete Watch"), this, [this, row] { DeleteWatch(row); });
-        menu->addAction(tr("&Add Memory Breakpoint"), this,
-                        [this, row] { AddWatchBreakpoint(row); });
+        int row = row_variant.toInt();
+
+        if (row >= 0)
+        {
+          menu->addAction(tr("Show in Memory"), this, [this, row] { ShowInMemory(row); });
+          // i18n: This kind of "watch" is used for watching emulated memory.
+          // It's not related to timekeeping devices.
+          menu->addAction(tr("&Delete Watch"), this, [this, row] { DeleteWatchAndUpdate(row); });
+          menu->addAction(tr("&Add Memory Breakpoint"), this,
+                          [this, row] { AddWatchBreakpoint(row); });
+        }
       }
     }
   }
@@ -293,34 +395,55 @@ void WatchWidget::OnItemChanged(QTableWidgetItem* item)
   {
     switch (column)
     {
-    // Label
-    case 0:
+    case COLUMN_INDEX_LABEL:
       if (item->text().isEmpty())
-        DeleteWatch(row);
+        DeleteWatchAndUpdate(row);
       else
-        PowerPC::debug_interface.UpdateWatchName(row, item->text().toStdString());
+        m_system.GetPowerPC().GetDebugInterface().UpdateWatchName(row, item->text().toStdString());
       break;
-    // Address
-    // Hexadecimal
-    // Decimal
-    case 1:
-    case 2:
-    case 3:
+    case COLUMN_INDEX_ADDRESS:
+    case COLUMN_INDEX_HEX:
+    case COLUMN_INDEX_DECIMAL:
     {
       bool good;
-      quint32 value = item->text().toUInt(&good, column < 3 ? 16 : 10);
+      const bool column_uses_hex_formatting =
+          column == COLUMN_INDEX_ADDRESS || column == COLUMN_INDEX_HEX;
+      quint32 value = item->text().toUInt(&good, column_uses_hex_formatting ? 16 : 10);
 
       if (good)
       {
-        if (column == 1)
-          PowerPC::debug_interface.UpdateWatchAddress(row, value);
+        Core::CPUThreadGuard guard(m_system);
+
+        auto& debug_interface = m_system.GetPowerPC().GetDebugInterface();
+        if (column == COLUMN_INDEX_ADDRESS)
+        {
+          const auto& watch = debug_interface.GetWatch(row);
+          debug_interface.UnsetPatch(guard, watch.address);
+          debug_interface.UpdateWatchAddress(row, value);
+          if (watch.locked)
+            LockWatchAddress(guard, value);
+        }
         else
-          PowerPC::HostWrite_U32(value, PowerPC::debug_interface.GetWatch(row).address);
+        {
+          PowerPC::MMU::HostWrite<u32>(guard, value, debug_interface.GetWatch(row).address);
+        }
       }
       else
       {
         ModalMessageBox::critical(this, tr("Error"), tr("Invalid input provided"));
       }
+      break;
+    }
+    case COLUMN_INDEX_LOCK:
+    {
+      auto& debug_interface = m_system.GetPowerPC().GetDebugInterface();
+      debug_interface.UpdateWatchLockedState(row, item->checkState() == Qt::Checked);
+      const auto& watch = debug_interface.GetWatch(row);
+      Core::CPUThreadGuard guard(m_system);
+      if (watch.locked)
+        LockWatchAddress(guard, watch.address);
+      else
+        debug_interface.UnsetPatch(guard, watch.address);
       break;
     }
     }
@@ -329,18 +452,120 @@ void WatchWidget::OnItemChanged(QTableWidgetItem* item)
   }
 }
 
-void WatchWidget::DeleteWatch(int row)
+void WatchWidget::LockWatchAddress(const Core::CPUThreadGuard& guard, u32 address)
 {
-  PowerPC::debug_interface.RemoveWatch(row);
+  const std::string memory_data_as_string = PowerPC::MMU::HostGetString(guard, address, 4);
+
+  std::vector<u8> bytes;
+  for (const char c : memory_data_as_string)
+  {
+    bytes.push_back(static_cast<u8>(c));
+  }
+
+  m_system.GetPowerPC().GetDebugInterface().SetFramePatch(guard, address, bytes);
+}
+
+void WatchWidget::DeleteSelectedWatches()
+{
+  {
+    Core::CPUThreadGuard guard(m_system);
+    std::vector<int> row_indices;
+    for (const auto& index : m_table->selectionModel()->selectedRows())
+    {
+      const auto* item = m_table->item(index.row(), index.column());
+      const auto row_variant = item->data(Qt::UserRole);
+      if (row_variant.isNull())
+        continue;
+
+      row_indices.push_back(row_variant.toInt());
+    }
+
+    // Sort greatest to smallest, so we don't stomp on existing indices
+    std::ranges::sort(row_indices, std::ranges::greater{});
+    for (const int row : row_indices)
+    {
+      DeleteWatch(guard, row);
+    }
+  }
+
+  Update();
+}
+
+void WatchWidget::DeleteWatch(const Core::CPUThreadGuard& guard, int row)
+{
+  auto& debug_interface = m_system.GetPowerPC().GetDebugInterface();
+  debug_interface.UnsetPatch(guard, debug_interface.GetWatch(row).address);
+  debug_interface.RemoveWatch(row);
+}
+
+void WatchWidget::DeleteWatchAndUpdate(int row)
+{
+  {
+    Core::CPUThreadGuard guard(m_system);
+    DeleteWatch(guard, row);
+  }
+
   Update();
 }
 
 void WatchWidget::AddWatchBreakpoint(int row)
 {
-  emit RequestMemoryBreakpoint(PowerPC::debug_interface.GetWatch(row).address);
+  emit RequestMemoryBreakpoint(m_system.GetPowerPC().GetDebugInterface().GetWatch(row).address);
 }
 
-void WatchWidget::AddWatch(QString name, u32 addr)
+void WatchWidget::ShowInMemory(int row)
 {
-  PowerPC::debug_interface.SetWatch(addr, name.toStdString());
+  emit ShowMemory(m_system.GetPowerPC().GetDebugInterface().GetWatch(row).address);
+}
+
+void WatchWidget::AddWatch(const QString& name, u32 addr)
+{
+  m_system.GetPowerPC().GetDebugInterface().SetWatch(addr, name.toStdString());
+  Update();
+}
+
+void WatchWidget::LockSelectedWatches()
+{
+  {
+    Core::CPUThreadGuard guard(m_system);
+    auto& debug_interface = m_system.GetPowerPC().GetDebugInterface();
+    for (const auto& index : m_table->selectionModel()->selectedRows())
+    {
+      const auto* item = m_table->item(index.row(), index.column());
+      const auto row_variant = item->data(Qt::UserRole);
+      if (row_variant.isNull())
+        continue;
+      const int row = row_variant.toInt();
+      const auto& watch = debug_interface.GetWatch(row);
+      if (watch.locked)
+        continue;
+      debug_interface.UpdateWatchLockedState(row, true);
+      LockWatchAddress(guard, watch.address);
+    }
+  }
+
+  Update();
+}
+
+void WatchWidget::UnlockSelectedWatches()
+{
+  {
+    auto& debug_interface = m_system.GetPowerPC().GetDebugInterface();
+    Core::CPUThreadGuard guard(m_system);
+    for (const auto& index : m_table->selectionModel()->selectedRows())
+    {
+      const auto* item = m_table->item(index.row(), index.column());
+      const auto row_variant = item->data(Qt::UserRole);
+      if (row_variant.isNull())
+        continue;
+      const int row = row_variant.toInt();
+      const auto& watch = debug_interface.GetWatch(row);
+      if (!watch.locked)
+        continue;
+      debug_interface.UpdateWatchLockedState(row, false);
+      debug_interface.UnsetPatch(guard, watch.address);
+    }
+  }
+
+  Update();
 }

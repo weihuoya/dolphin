@@ -1,8 +1,9 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
+
+#include <vector>
 
 #include "Common/CommonTypes.h"
 #include "Common/MathUtil.h"
@@ -19,12 +20,14 @@ class AbstractFramebuffer
 {
 public:
   AbstractFramebuffer(AbstractTexture* color_attachment, AbstractTexture* depth_attachment,
+                      std::vector<AbstractTexture*> additional_color_attachments,
                       AbstractTextureFormat color_format, AbstractTextureFormat depth_format,
                       u32 width, u32 height, u32 layers, u32 samples);
   virtual ~AbstractFramebuffer();
 
   static bool ValidateConfig(const AbstractTexture* color_attachment,
-                             const AbstractTexture* depth_attachment);
+                             const AbstractTexture* depth_attachment,
+                             const std::vector<AbstractTexture*>& additional_color_attachments);
 
   AbstractTexture* GetColorAttachment() const { return m_color_attachment; }
   AbstractTexture* GetDepthAttachment() const { return m_depth_attachment; }
@@ -41,6 +44,7 @@ public:
 protected:
   AbstractTexture* m_color_attachment;
   AbstractTexture* m_depth_attachment;
+  std::vector<AbstractTexture*> m_additional_color_attachments;
   AbstractTextureFormat m_color_format;
   AbstractTextureFormat m_depth_format;
   u32 m_width;

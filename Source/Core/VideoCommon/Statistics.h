@@ -1,70 +1,95 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <array>
+#include <vector>
+
+#include "VideoCommon/BPFunctions.h"
 
 struct Statistics
 {
-  int num_pixel_shaders_created;
-  int num_pixel_shaders_alive;
-  int num_vertex_shaders_created;
-  int num_vertex_shaders_alive;
+  unsigned int num_pixel_shaders_created = 0;
+  unsigned int num_pixel_shaders_alive = 0;
+  unsigned int num_vertex_shaders_created = 0;
+  unsigned int num_vertex_shaders_alive = 0;
 
-  int num_textures_created;
-  int num_textures_uploaded;
-  int num_textures_alive;
+  unsigned int num_textures_created = 0;
+  unsigned int num_textures_uploaded = 0;
+  unsigned int num_textures_alive = 0;
 
-  int num_vertex_loaders;
+  unsigned int num_vertex_loaders = 0;
 
-  std::array<float, 6> proj;
-  std::array<float, 16> gproj;
-  std::array<float, 16> g2proj;
+  std::array<float, 6> proj{};
+  std::array<float, 16> gproj{};
+  std::array<float, 16> g2proj{};
+
+  // For widescreen heuristic.
+  float avg_persp_proj_viewport_ratio = 0;
+  float avg_ortho_proj_viewport_ratio = 0;
+
+  std::vector<BPFunctions::ScissorResult> scissors{};
+  size_t current_scissor = 0;  // 0 => all, otherwise index + 1
+  int scissor_scale = 10;
+  int scissor_expected_count = 0;
+  bool allow_duplicate_scissors = false;
+  bool show_scissors = true;
+  bool show_raw_scissors = true;
+  bool show_viewports = false;
+  bool show_text = true;
 
   struct ThisFrame
   {
-    int num_bp_loads;
-    int num_cp_loads;
-    int num_xf_loads;
+    unsigned int num_bp_loads = 0;
+    unsigned int num_cp_loads = 0;
+    unsigned int num_xf_loads = 0;
 
-    int num_bp_loads_in_dl;
-    int num_cp_loads_in_dl;
-    int num_xf_loads_in_dl;
+    unsigned int num_bp_loads_in_dl = 0;
+    unsigned int num_cp_loads_in_dl = 0;
+    unsigned int num_xf_loads_in_dl = 0;
 
-    int num_prims;
-    int num_dl_prims;
-    int num_shader_changes;
+    unsigned int num_prims = 0;
+    unsigned int num_dl_prims = 0;
+    unsigned int num_shader_changes = 0;
 
-    int num_primitive_joins;
-    int num_draw_calls;
+    unsigned int num_primitive_joins = 0;
+    unsigned int num_draw_calls = 0;
 
-    int num_dlists_called;
+    unsigned int num_dlists_called = 0;
 
-    int bytes_vertex_streamed;
-    int bytes_index_streamed;
-    int bytes_uniform_streamed;
+    unsigned int bytes_vertex_streamed = 0;
+    unsigned int bytes_index_streamed = 0;
+    unsigned int bytes_uniform_streamed = 0;
 
-    int num_triangles_clipped;
-    int num_triangles_in;
-    int num_triangles_rejected;
-    int num_triangles_culled;
-    int num_drawn_objects;
-    int rasterized_pixels;
-    int num_triangles_drawn;
-    int num_vertices_loaded;
-    int tev_pixels_in;
-    int tev_pixels_out;
+    unsigned int num_triangles_clipped = 0;
+    unsigned int num_triangles_in = 0;
+    unsigned int num_triangles_rejected = 0;
+    unsigned int num_triangles_culled = 0;
+    unsigned int num_drawn_objects = 0;
+    unsigned int rasterized_pixels = 0;
+    unsigned int num_triangles_drawn = 0;
+    unsigned int num_vertices_loaded = 0;
+    unsigned int tev_pixels_in = 0;
+    unsigned int tev_pixels_out = 0;
 
-    int num_efb_peeks;
-    int num_efb_pokes;
+    unsigned int num_efb_peeks = 0;
+    unsigned int num_efb_pokes = 0;
+
+    unsigned int num_draw_done = 0;
+    unsigned int num_token = 0;
+    unsigned int num_token_int = 0;
   };
   ThisFrame this_frame;
   void ResetFrame();
   void SwapDL();
+  void AddScissorRect();
   void Display() const;
   void DisplayProj() const;
+  void DisplayScissor();
+
+  static void Init();
+  static void Shutdown();
 };
 
 extern Statistics g_stats;
@@ -72,11 +97,32 @@ extern Statistics g_stats;
 #define STATISTICS
 
 #ifdef STATISTICS
-#define INCSTAT(a) (a)++;
-#define ADDSTAT(a, b) (a) += (b);
-#define SETSTAT(a, x) (a) = (int)(x);
+#define INCSTAT(a)                                                                                 \
+  do                                                                                               \
+  {                                                                                                \
+    (a)++;                                                                                         \
+  } while (false)
+#define ADDSTAT(a, b)                                                                              \
+  do                                                                                               \
+  {                                                                                                \
+    (a) += (b);                                                                                    \
+  } while (false)
+#define SETSTAT(a, x)                                                                              \
+  do                                                                                               \
+  {                                                                                                \
+    (a) = static_cast<int>(x);                                                                     \
+  } while (false)
 #else
-#define INCSTAT(a) ;
-#define ADDSTAT(a, b) ;
-#define SETSTAT(a, x) ;
+#define INCSTAT(a)                                                                                 \
+  do                                                                                               \
+  {                                                                                                \
+  } while (false)
+#define ADDSTAT(a, b)                                                                              \
+  do                                                                                               \
+  {                                                                                                \
+  } while (false)
+#define SETSTAT(a, x)                                                                              \
+  do                                                                                               \
+  {                                                                                                \
+  } while (false)
 #endif

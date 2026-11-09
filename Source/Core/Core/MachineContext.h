@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -33,6 +32,11 @@ typedef CONTEXT SContext;
 #define CTX_R14 R14
 #define CTX_R15 R15
 #define CTX_RIP Rip
+#elif _M_ARM64
+#define CTX_REG(x) X[x]
+#define CTX_LR X[30]
+#define CTX_SP Sp
+#define CTX_PC Pc
 #else
 #error No context definition for architecture
 #endif
@@ -62,12 +66,19 @@ typedef x86_thread_state64_t SContext;
 #define CTX_R14 __r14
 #define CTX_R15 __r15
 #define CTX_RIP __rip
+#elif _M_ARM_64
+typedef arm_thread_state64_t SContext;
+#define CTX_REG(x) __x[x]
+#define CTX_LR __lr
+#define CTX_SP __sp
+#define CTX_PC __pc
 #else
 #error No context definition for architecture
 #endif
 #elif defined(__APPLE__)
 #include <signal.h>
 typedef _STRUCT_MCONTEXT64 SContext;
+#if _M_X86_64
 #define CTX_RAX __ss.__rax
 #define CTX_RBX __ss.__rbx
 #define CTX_RCX __ss.__rcx
@@ -85,6 +96,14 @@ typedef _STRUCT_MCONTEXT64 SContext;
 #define CTX_R14 __ss.__r14
 #define CTX_R15 __ss.__r15
 #define CTX_RIP __ss.__rip
+#elif _M_ARM_64
+#define CTX_REG(x) __ss.__x[x]
+#define CTX_LR __ss.__lr
+#define CTX_SP __ss.__sp
+#define CTX_PC __ss.__pc
+#else
+#error No context definition for architecture
+#endif
 #elif defined(__linux__)
 #include <signal.h>
 
@@ -111,6 +130,7 @@ typedef mcontext_t SContext;
 #define CTX_RIP gregs[REG_RIP]
 #elif _M_ARM_64
 #define CTX_REG(x) regs[x]
+#define CTX_LR regs[30]
 #define CTX_SP sp
 #define CTX_PC pc
 #else
@@ -137,6 +157,11 @@ typedef ucontext_t SContext;
 #define CTX_R14 sc_r14
 #define CTX_R15 sc_r15
 #define CTX_RIP sc_rip
+#elif _M_ARM_64
+#define CTX_REG(x) sc_x[x]
+#define CTX_LR sc_lr
+#define CTX_SP sc_sp
+#define CTX_PC sc_elr
 #else
 #error No context definition for architecture
 #endif
@@ -185,6 +210,11 @@ typedef mcontext_t SContext;
 #define CTX_R14 mc_r14
 #define CTX_R15 mc_r15
 #define CTX_RIP mc_rip
+#elif _M_ARM_64
+#define CTX_REG(x) mc_gpregs.gp_x[x]
+#define CTX_LR mc_gpregs.gp_lr
+#define CTX_SP mc_gpregs.gp_sp
+#define CTX_PC mc_gpregs.gp_elr
 #else
 #error No context definition for architecture
 #endif

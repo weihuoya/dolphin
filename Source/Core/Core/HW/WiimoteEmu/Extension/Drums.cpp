@@ -1,18 +1,16 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WiimoteEmu/Extension/Drums.h"
 
-#include <cassert>
-#include <type_traits>
-
+#include "Common/Assert.h"
 #include "Common/BitUtils.h"
 #include "Common/Common.h"
 #include "Common/CommonTypes.h"
+
+#include "Core/HW/WiimoteEmu/Extension/DesiredExtensionState.h"
 #include "Core/HW/WiimoteEmu/WiimoteEmu.h"
 
-#include "InputCommon/ControllerEmu/Control/Input.h"
 #include "InputCommon/ControllerEmu/ControlGroup/AnalogStick.h"
 #include "InputCommon/ControllerEmu/ControlGroup/Buttons.h"
 
@@ -54,12 +52,13 @@ constexpr std::array<u8, 2> drum_button_bitmasks{{
 
 Drums::Drums() : Extension1stParty("Drums", _trans("Drum Kit"))
 {
+  using Translatability = ControllerEmu::Translatability;
+
   // Pads.
   groups.emplace_back(m_pads = new ControllerEmu::Buttons(_trans("Pads")));
   for (auto& drum_pad_name : drum_pad_names)
   {
-    m_pads->controls.emplace_back(
-        new ControllerEmu::Input(ControllerEmu::Translate, drum_pad_name));
+    m_pads->AddInput(Translatability::Translate, drum_pad_name);
   }
 
   m_pads->AddSetting(&m_hit_strength_setting,
@@ -69,47 +68,77 @@ Drums::Drums() : Extension1stParty("Drums", _trans("Drum Kit"))
                       _trans("%")},
                      50);
 
+  // Buttons.
+  groups.emplace_back(m_buttons = new ControllerEmu::Buttons(_trans("Buttons")));
+  m_buttons->AddInput(Translatability::DoNotTranslate, "-");
+  m_buttons->AddInput(Translatability::DoNotTranslate, "+");
+
   // Stick.
   groups.emplace_back(m_stick =
                           new ControllerEmu::OctagonAnalogStick(_trans("Stick"), GATE_RADIUS));
-
-  // Buttons.
-  groups.emplace_back(m_buttons = new ControllerEmu::Buttons(_trans("Buttons")));
-  m_buttons->controls.emplace_back(new ControllerEmu::Input(ControllerEmu::DoNotTranslate, "-"));
-  m_buttons->controls.emplace_back(new ControllerEmu::Input(ControllerEmu::DoNotTranslate, "+"));
 }
 
-void Drums::Update()
+void Drums::BuildDesiredExtensionState(DesiredExtensionState* target_state)
 {
+  using ControllerEmu::MapFloat;
+
+  DesiredState& state = target_state->data.emplace<DesiredState>();
+
+  {
+    const ControllerEmu::AnalogStick::StateData stick_state =
+        m_stick->GetState(m_input_override_function);
+
+    state.stick_x = MapFloat<u8>(stick_state.x, STICK_CENTER, STICK_MIN, STICK_MAX);
+    state.stick_y = MapFloat<u8>(stick_state.y, STICK_CENTER, STICK_MIN, STICK_MAX);
+    state.stick_x = MapFloat(stick_state.x, STICK_CENTER, STICK_MIN, STICK_MAX);
+    state.stick_y = MapFloat(stick_state.y, STICK_CENTER, STICK_MIN, STICK_MAX);
+  }
+
+  state.buttons = 0;
+  m_buttons->GetState(&state.buttons, drum_button_bitmasks.data(), m_input_override_function);
+
+  state.drum_pads = 0;
+  m_pads->GetState(&state.drum_pads, drum_pad_bitmasks.data(), m_input_override_function);
+
+  state.softness = u8(0x7F - std::lround(m_hit_strength_setting.GetValue() * 0x7F / 100));
+}
+
+void Drums::Update(const DesiredExtensionState& target_state)
+{
+  DesiredState desired_state;
+  if (std::holds_alternative<DesiredState>(target_state.data))
+  {
+    desired_state = std::get<DesiredState>(target_state.data);
+  }
+  else
+  {
+    // Set a sane default
+    desired_state.stick_x = STICK_CENTER;
+    desired_state.stick_y = STICK_CENTER;
+    desired_state.buttons = 0;
+    desired_state.drum_pads = 0;
+    desired_state.softness = 0x7F;
+  }
+
   DataFormat drum_data = {};
+  u8 velocity = 0x7F;
 
   // The meaning of these bits are unknown but they are usually set.
   drum_data.unk1 = 0b11;
   drum_data.unk2 = 0b11;
-  drum_data.unk3 = 0b1;
-  drum_data.unk4 = 0b1;
   drum_data.unk5 = 0b11;
 
   // Send no velocity data by default.
   drum_data.velocity_id = u8(VelocityID::None);
   drum_data.no_velocity_data_1 = 1;
   drum_data.no_velocity_data_2 = 1;
-  drum_data.softness = 7;
 
-  // Stick.
-  {
-    const ControllerEmu::AnalogStick::StateData stick_state = m_stick->GetState();
-
-    drum_data.stick_x = MapFloat(stick_state.x, STICK_CENTER, STICK_MIN, STICK_MAX);
-    drum_data.stick_y = MapFloat(stick_state.y, STICK_CENTER, STICK_MIN, STICK_MAX);
-  }
-
-  // Buttons.
-  m_buttons->GetState(&drum_data.buttons, drum_button_bitmasks.data());
+  drum_data.stick_x = desired_state.stick_x;
+  drum_data.stick_y = desired_state.stick_y;
+  drum_data.buttons = desired_state.buttons;
 
   // Drum pads.
-  u8 current_pad_input = 0;
-  m_pads->GetState(&current_pad_input, drum_pad_bitmasks.data());
+  u8 current_pad_input = desired_state.drum_pads;
   m_new_pad_hits |= ~m_prev_pad_input & current_pad_input;
   m_prev_pad_input = current_pad_input;
 
@@ -132,10 +161,9 @@ void Drums::Update()
       drum_data.no_velocity_data_1 = 0;
       drum_data.no_velocity_data_2 = 0;
 
-      // Set softness from user-configured hit strength setting.
-      drum_data.softness = u8(7 - std::lround(m_hit_strength_setting.GetValue() * 7 / 100));
+      velocity = desired_state.softness;
 
-      // A drum-pad hit causes the relevent bit to be triggered for the next 10 frames.
+      // A drum-pad hit causes the relevant bit to be triggered for the next 10 frames.
       constexpr u8 HIT_FRAME_COUNT = 10;
 
       m_pad_remaining_frames[i] = HIT_FRAME_COUNT;
@@ -143,9 +171,14 @@ void Drums::Update()
       break;
     }
   }
+  drum_data.velocity0 = velocity;
+  drum_data.velocity1 = velocity >> 1;
+  drum_data.velocity2 = velocity >> 2;
+  drum_data.velocity3 = velocity >> 3;
+  drum_data.velocity4 = velocity >> 4;
 
   // Figure out which drum-pad bits to send.
-  // Note: Relevent bits are not set until after velocity data has been sent.
+  // Note: Relevant bits are not set until after velocity data has been sent.
   // My drums never exposed simultaneous hits. One pad bit was always sent before the other.
   for (std::size_t i = 0; i != drum_pad_bitmasks.size(); ++i)
   {
@@ -159,22 +192,11 @@ void Drums::Update()
   }
 
   // Flip button and drum-pad bits. (0 == pressed)
-  drum_data.buttons ^= 0xff;
+  drum_data.buttons ^= 0x7e;
   drum_data.drum_pads ^= 0xff;
 
   // Copy data to proper region in the "register".
   Common::BitCastPtr<DataFormat>(&m_reg.controller_data) = drum_data;
-}
-
-bool Drums::IsButtonPressed() const
-{
-  u8 buttons = 0;
-  m_buttons->GetState(&buttons, drum_button_bitmasks.data());
-
-  u8 pads = 0;
-  m_pads->GetState(&pads, drum_pad_bitmasks.data());
-
-  return buttons != 0 || pads != 0;
 }
 
 void Drums::Reset()
@@ -211,7 +233,7 @@ ControllerEmu::ControlGroup* Drums::GetGroup(DrumsGroup group)
   case DrumsGroup::Stick:
     return m_stick;
   default:
-    assert(false);
+    ASSERT(false);
     return nullptr;
   }
 }

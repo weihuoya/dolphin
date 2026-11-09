@@ -1,0 +1,773 @@
+// Copyright 2021 Dolphin Emulator Project
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#ifdef HAS_LIBMGBA
+
+#include "Core/HW/GBACore.h"
+
+#include <mgba-util/vfs.h>
+#include <mgba/core/log.h>
+#include <mgba/core/timing.h>
+#include <mgba/internal/gb/gb.h>
+#include <mgba/internal/gba/gba.h>
+
+#include <mz.h>
+#include <mz_strm.h>
+#include <mz_zip.h>
+#include <mz_zip_rw.h>
+
+#include "AudioCommon/AudioCommon.h"
+
+#include "Common/ChunkFile.h"
+#include "Common/CommonTypes.h"
+#include "Common/Config/Config.h"
+#include "Common/Crypto/SHA1.h"
+#include "Common/FileUtil.h"
+#include "Common/IOFile.h"
+#include "Common/Logging/Log.h"
+#include "Common/MinizipUtil.h"
+#include "Common/ScopeGuard.h"
+
+#include "Core/Config/MainSettings.h"
+#include "Core/ConfigManager.h"
+#include "Core/Core.h"
+#include "Core/HW/SystemTimers.h"
+#include "Core/Host.h"
+#include "Core/NetPlayProto.h"
+#include "Core/System.h"
+
+#ifdef ANDROID
+#include "jni/AndroidCommon/AndroidCommon.h"
+#endif
+
+namespace HW::GBA
+{
+namespace
+{
+mLogger s_stub_logger = {
+    [](mLogger*, int category, mLogLevel level, const char* format, va_list args) {}, nullptr};
+}  // namespace
+
+constexpr size_t AUDIO_BUFFER_SIZE = 512;
+
+// libmGBA does not return the correct frequency for some GB models
+static u32 GetCoreFrequency(mCore* core)
+{
+  return (core->platform(core) == mPLATFORM_GBA) ? GBA_ARM7TDMI_FREQUENCY : CGB_SM83_FREQUENCY;
+}
+
+static VFile* OpenROM_Archive(const char* path)
+{
+  VFile* vf{};
+  VDir* archive = VDirOpenArchive(path);
+  if (!archive)
+    return nullptr;
+  VFile* vf_archive =
+      VDirFindFirst(archive, [](VFile* vf_) { return mCoreIsCompatible(vf_) != mPLATFORM_NONE; });
+  if (vf_archive)
+  {
+    size_t size = static_cast<size_t>(vf_archive->size(vf_archive));
+
+    std::vector<u8> buffer(size);
+    vf_archive->seek(vf_archive, 0, SEEK_SET);
+    vf_archive->read(vf_archive, buffer.data(), size);
+    vf_archive->close(vf_archive);
+
+    vf = VFileMemChunk(buffer.data(), size);
+  }
+  archive->close(archive);
+  return vf;
+}
+
+static VFile* OpenROM_Zip(const char* path)
+{
+  VFile* vf{};
+  void* zip_reader = mz_zip_reader_create();
+  if (!zip_reader)
+    return {};
+
+  Common::ScopeGuard file_guard{[&] { mz_zip_reader_delete(&zip_reader); }};
+
+  if (mz_zip_reader_open_file(zip_reader, path) != MZ_OK)
+    return nullptr;
+
+  do
+  {
+    mz_zip_file* info;
+    if (mz_zip_reader_entry_get_info(zip_reader, &info) != MZ_OK || !info->uncompressed_size)
+      continue;
+
+    std::vector<u8> buffer(info->uncompressed_size);
+    if (!Common::ReadFileFromZip(zip_reader, &buffer))
+      continue;
+
+    vf = VFileMemChunk(buffer.data(), info->uncompressed_size);
+    if (mCoreIsCompatible(vf) != mPLATFORM_NONE)
+    {
+      vf->seek(vf, 0, SEEK_SET);
+      break;
+    }
+
+    vf->close(vf);
+    vf = nullptr;
+  } while (mz_zip_reader_goto_next_entry(zip_reader) != MZ_END_OF_LIST);
+  return vf;
+}
+
+static VFile* OpenReadOnlyFile(const char* path)
+{
+#ifdef ANDROID
+  if (IsPathAndroidContent(path))
+    return VFileFromFD(OpenAndroidContent(path, "r"));
+#endif
+  return VFileOpen(path, O_RDONLY);
+}
+
+static VFile* OpenROM(const char* rom_path)
+{
+  VFile* vf{};
+
+  vf = OpenROM_Archive(rom_path);
+  if (!vf)
+    vf = OpenROM_Zip(rom_path);
+  if (!vf)
+    vf = OpenReadOnlyFile(rom_path);
+  if (!vf)
+    return nullptr;
+
+  if (mCoreIsCompatible(vf) == mPLATFORM_NONE)
+  {
+    vf->close(vf);
+    return nullptr;
+  }
+  vf->seek(vf, 0, SEEK_SET);
+
+  return vf;
+}
+
+static std::array<u8, 20> GetROMHash(VFile* rom)
+{
+  size_t size = rom->size(rom);
+  u8* buffer = static_cast<u8*>(rom->map(rom, size, MAP_READ));
+
+  const auto digest = Common::SHA1::CalculateDigest(buffer, size);
+  rom->unmap(rom, buffer, size);
+
+  return digest;
+}
+
+Core::Core(::Core::System& system, int device_number)
+    : m_device_number(device_number), m_system(system)
+{
+  mLogSetDefaultLogger(&s_stub_logger);
+
+  MutexInit(&m_core_sync.videoFrameMutex);
+  ConditionInit(&m_core_sync.videoFrameAvailableCond);
+  ConditionInit(&m_core_sync.videoFrameRequiredCond);
+  ConditionInit(&m_core_sync.audioRequiredCond);
+  MutexInit(&m_core_sync.audioBufferMutex);
+}
+
+Core::~Core()
+{
+  Stop();
+
+  MutexDeinit(&m_core_sync.videoFrameMutex);
+  ConditionDeinit(&m_core_sync.videoFrameAvailableCond);
+  ConditionDeinit(&m_core_sync.videoFrameRequiredCond);
+  ConditionDeinit(&m_core_sync.audioRequiredCond);
+  MutexDeinit(&m_core_sync.audioBufferMutex);
+}
+
+bool Core::Start(u64 gc_ticks)
+{
+  if (IsStarted())
+    return false;
+
+  Common::ScopeGuard start_guard{[&] { Stop(); }};
+
+  VFile* rom{};
+  Common::ScopeGuard rom_guard{[&] {
+    if (rom)
+      rom->close(rom);
+  }};
+
+  m_rom_path = Config::Get(Config::MAIN_GBA_ROM_PATHS[m_device_number]);
+  if (!m_rom_path.empty())
+  {
+    rom = OpenROM(m_rom_path.c_str());
+    if (!rom)
+    {
+      PanicAlertFmtT("Error: GBA{0} failed to open the ROM in {1}", m_device_number + 1,
+                     m_rom_path);
+      return false;
+    }
+    m_rom_hash = GetROMHash(rom);
+  }
+
+  m_core = rom ? mCoreFindVF(rom) : mCoreCreate(mPLATFORM_GBA);
+  if (!m_core)
+  {
+    PanicAlertFmtT("Error: GBA{0} failed to create core", m_device_number + 1);
+    return false;
+  }
+  m_core->init(m_core);
+
+  mCoreInitConfig(m_core, "dolphin");
+  mCoreConfigSetValue(&m_core->config, "idleOptimization", "detect");
+  mCoreConfigSetIntValue(&m_core->config, "useBios", 0);
+  mCoreConfigSetIntValue(&m_core->config, "skipBios", 0);
+
+  // If we eventually load GBC BIOS, then these should potentially all be "CGB".
+  mCoreConfigSetValue(&m_core->config, "gb.model", "DMG");
+  mCoreConfigSetValue(&m_core->config, "sgb.model", "DMG");
+  mCoreConfigSetValue(&m_core->config, "cgb.model", "CGB");
+  mCoreConfigSetValue(&m_core->config, "cgb.hybridModel", "CGB");
+  mCoreConfigSetValue(&m_core->config, "cgb.sgbModel", "CGB");
+
+  mCoreConfigSetIntValue(&m_core->config, "gb.colors", GB_COLORS_CGB);
+
+  if (m_core->platform(m_core) == mPLATFORM_GBA)
+  {
+    LoadBIOS(File::GetUserPath(F_GBABIOS_IDX).c_str());
+  }
+
+  if (rom)
+  {
+    if (!m_core->loadROM(m_core, rom))
+    {
+      PanicAlertFmtT("Error: GBA{0} failed to load the ROM in {1}", m_device_number + 1,
+                     m_rom_path);
+      return false;
+    }
+    rom_guard.Dismiss();
+
+    mGameInfo info;
+    m_core->getGameInfo(m_core, &info);
+    m_game_title = info.title;
+
+    m_save_path = NetPlay::IsNetPlayRunning() ? NetPlay::GetGBASavePath(m_device_number) :
+                                                GetSavePath(m_rom_path, m_device_number);
+    if (!m_save_path.empty() && !LoadSave(m_save_path.c_str()))
+      return false;
+  }
+
+  m_last_gc_ticks = gc_ticks;
+  m_gc_ticks_remainder = 0;
+  m_keys = 0;
+
+  if (m_device_number != Config::GBPLAYER_GBA_INDEX)
+  {
+    SetSIODriver();
+    SetAVStream();
+  }
+
+  SetVideoBuffer();
+  SetAudioBufferSize();
+  AddCallbacks();
+  SetupEvent();
+
+  m_core->setSync(m_core, &m_core_sync);
+
+  m_core->reset(m_core);
+  m_started = true;
+  start_guard.Dismiss();
+  // Notify the host and handle a dimension change if that happened after reset()
+  SetVideoBuffer();
+
+  m_event_thread.Reset(fmt::format("GBA{}", m_device_number + 1),
+                       std::bind_front(&Core::HandleEvent, this));
+  return true;
+}
+
+void Core::Stop()
+{
+  m_event_thread.Shutdown();
+
+  if (m_core)
+  {
+    mCoreConfigDeinit(&m_core->config);
+    m_core->deinit(m_core);
+    m_core = nullptr;
+  }
+  m_started = false;
+  m_rom_path = {};
+  m_save_path = {};
+  m_rom_hash = {};
+  m_game_title = {};
+}
+
+void Core::Reset()
+{
+  Flush();
+  if (!IsStarted())
+    return;
+
+  m_core->reset(m_core);
+}
+
+bool Core::IsStarted() const
+{
+  return m_started;
+}
+
+CoreInfo Core::GetCoreInfo() const
+{
+  CoreInfo info{};
+  info.device_number = m_device_number;
+  info.width = GBA_VIDEO_HORIZONTAL_PIXELS;
+  info.height = GBA_VIDEO_VERTICAL_PIXELS;
+
+  if (!IsStarted())
+    return info;
+
+  info.is_gba = m_core->platform(m_core) == mPlatform::mPLATFORM_GBA;
+  info.has_rom = !m_rom_path.empty();
+  info.has_ereader =
+      info.is_gba && static_cast<::GBA*>(m_core->board)->memory.hw.devices & HW_EREADER;
+  m_core->currentVideoSize(m_core, &info.width, &info.height);
+  info.game_title = m_game_title;
+  return info;
+}
+
+void Core::SetHost(std::weak_ptr<GBAHostInterface> host)
+{
+  m_host = std::move(host);
+}
+
+void Core::SetForceDisconnect(bool force_disconnect)
+{
+  m_force_disconnect = force_disconnect;
+}
+
+void Core::EReaderQueueCard(std::string_view card_path)
+{
+  Flush();
+  if (!GetCoreInfo().has_ereader)
+    return;
+
+  File::IOFile file(std::string(card_path), "rb");
+  std::vector<u8> core_state(file.GetSize());
+  file.ReadBytes(core_state.data(), core_state.size());
+  GBACartEReaderQueueCard(static_cast<::GBA*>(m_core->board), core_state.data(), core_state.size());
+}
+
+bool Core::LoadBIOS(const char* bios_path)
+{
+  VFile* vf = OpenReadOnlyFile(bios_path);
+  if (!vf)
+  {
+    ERROR_LOG_FMT(CORE, "GBA{0} failed to open the BIOS in {1}", m_device_number + 1, bios_path);
+    return false;
+  }
+
+  if (!m_core->loadBIOS(m_core, vf, 0))
+  {
+    ERROR_LOG_FMT(CORE, "GBA{0} failed to load the BIOS in {1}", m_device_number + 1, bios_path);
+    vf->close(vf);
+    return false;
+  }
+
+  return true;
+}
+
+bool Core::LoadSave(const char* save_path)
+{
+  VFile* vf = VFileOpen(save_path, O_CREAT | O_RDWR);
+  if (!vf)
+  {
+    PanicAlertFmtT("Error: GBA{0} failed to open the save in {1}", m_device_number + 1, save_path);
+    return false;
+  }
+
+  if (!m_core->loadSave(m_core, vf))
+  {
+    PanicAlertFmtT("Error: GBA{0} failed to load the save in {1}", m_device_number + 1, save_path);
+    vf->close(vf);
+    return false;
+  }
+
+  return true;
+}
+
+void Core::SetSIODriver()
+{
+  if (m_core->platform(m_core) != mPLATFORM_GBA)
+    return;
+
+  m_sio_driver.core = this;
+  m_sio_driver.init = [](GBASIODriver*) { return true; };
+  m_sio_driver.deinit = [](GBASIODriver* driver) {
+    static_cast<SIODriver*>(driver)->core->m_link_enabled = false;
+  };
+  m_sio_driver.reset = [](GBASIODriver* driver) {
+    static_cast<SIODriver*>(driver)->core->m_link_enabled = false;
+  };
+  m_sio_driver.setMode = [](GBASIODriver* driver, GBASIOMode mode) {
+    static_cast<SIODriver*>(driver)->core->m_link_enabled = mode == GBA_SIO_JOYBUS;
+  };
+  m_sio_driver.handlesMode = [](GBASIODriver*, GBASIOMode mode) { return mode == GBA_SIO_JOYBUS; };
+  m_sio_driver.connectedDevices = [](GBASIODriver*) { return 1; };
+
+  GBASIOSetDriver(&static_cast<::GBA*>(m_core->board)->sio, &m_sio_driver);
+}
+
+void Core::SetVideoBuffer()
+{
+  if (m_device_number == Config::GBPLAYER_GBA_INDEX)
+  {
+    // GBPlayer expects a GBA-sized video buffer even in GB mode.
+    // Clear it first to avoid stuck colors from the previous game on switch from GBA->GB.
+    m_video_buffer.clear();
+    m_video_buffer.resize(std::size_t{GBA_VIDEO_HORIZONTAL_PIXELS} * GBA_VIDEO_VERTICAL_PIXELS);
+
+    constexpr size_t GB_VIDEO_OFFSET = 1960;
+
+    m_core->setVideoBuffer(
+        m_core, m_video_buffer.data() + ((GetPlatform() == mPLATFORM_GBA) ? 0 : GB_VIDEO_OFFSET),
+        GBA_VIDEO_HORIZONTAL_PIXELS);
+  }
+  else
+  {
+    u32 width;
+    u32 height;
+    m_core->currentVideoSize(m_core, &width, &height);
+    m_video_buffer.resize(std::size_t{width} * height);
+    m_core->setVideoBuffer(m_core, m_video_buffer.data(), width);
+  }
+
+  if (auto host = m_host.lock())
+    host->GameChanged();
+}
+
+void Core::SetAudioBufferSize()
+{
+  m_core->setAudioBufferSize(m_core, AUDIO_BUFFER_SIZE);
+}
+
+void Core::AddCallbacks()
+{
+  mCoreCallbacks callbacks{};
+  callbacks.context = this;
+  callbacks.keysRead = [](void* context) {
+    auto core = static_cast<Core*>(context);
+    core->m_core->setKeys(core->m_core, core->m_keys);
+  };
+  callbacks.videoFrameEnded = [](void* context) {
+    auto core = static_cast<Core*>(context);
+    if (auto host = core->m_host.lock())
+      host->FrameEnded(core->m_video_buffer);
+  };
+  m_core->addCoreCallbacks(m_core, &callbacks);
+}
+
+static void ReadAudioBufferIntoMixer(mAudioBuffer* audio_buffer, Mixer* mixer,
+                                     std::size_t device_number)
+{
+  std::array<s16, AUDIO_BUFFER_SIZE> sample_buffer;
+  const auto read_size = sample_buffer.size() / audio_buffer->channels;
+  while (true)
+  {
+    const auto sample_count = mAudioBufferRead(audio_buffer, sample_buffer.data(), read_size);
+    if (sample_count == 0)
+      break;
+    mixer->PushGBASamples(device_number, sample_buffer.data(), sample_count);
+  }
+}
+
+void Core::SetAVStream()
+{
+  m_stream = {
+      .core = this,
+      .mixer = m_system.GetSoundStream()->GetMixer(),
+  };
+
+  m_stream.videoDimensionsChanged = [](mAVStream* stream, unsigned /*width*/, unsigned /*height*/) {
+    auto* core = static_cast<AVStream*>(stream)->core;
+    core->SetVideoBuffer();
+  };
+  m_stream.audioRateChanged = [](mAVStream* stream, unsigned rate) {
+    auto* const av_stream = static_cast<AVStream*>(stream);
+    auto* const core = av_stream->core;
+    auto* const audio_buffer = core->GetAudioBuffer();
+    ReadAudioBufferIntoMixer(audio_buffer, av_stream->mixer, av_stream->core->m_device_number);
+    av_stream->mixer->SetGBAInputSampleRate(core->m_device_number, rate);
+  };
+  m_stream.postAudioBuffer = [](mAVStream* stream, mAudioBuffer* audio_buffer) {
+    auto* const av_stream = static_cast<AVStream*>(stream);
+    ReadAudioBufferIntoMixer(audio_buffer, av_stream->mixer, av_stream->core->m_device_number);
+  };
+
+  m_core->setAVStream(m_core, &m_stream);
+}
+
+void Core::SetupEvent()
+{
+  m_event.context = this;
+  m_event.name = "Dolphin Sync";
+  m_event.callback = [](mTiming* /*timing*/, void* context, u32 /*cycles_late*/) {
+    auto* const core = static_cast<Core*>(context);
+    core->m_waiting_for_event = false;
+  };
+  m_event.priority = 0x80;
+}
+
+void Core::SyncJoybus(u64 gc_ticks, u16 keys)
+{
+  PushEvent({
+      .event_type = SyncEventType::TimeSync,
+      .keys = keys,
+      .run_until_ticks = gc_ticks,
+  });
+}
+
+void Core::SendJoybusCommand(u64 gc_ticks, int transfer_time, u8* buffer, u16 keys)
+{
+  if (!IsStarted())
+    return;
+
+  m_joybus_command_transfer_time = transfer_time;
+  m_joybus_command = GBASIOJOYCommand(buffer[0]);
+  std::copy_n(buffer + 1, m_joybus_buffer.size(), m_joybus_buffer.data());
+
+  m_command_pending.store(true, std::memory_order_relaxed);
+
+  PushEvent({
+      .event_type = SyncEventType::RunCommand,
+      .keys = keys,
+      .run_until_ticks = gc_ticks,
+  });
+}
+
+int Core::GetJoybusResponse(u8* data_out)
+{
+  m_command_pending.wait(true, std::memory_order_acquire);
+
+  std::copy_n(m_joybus_buffer.data(), m_response_size, data_out);
+  return m_response_size;
+}
+
+void Core::Flush()
+{
+  m_event_thread.WaitForCompletion();
+}
+
+void Core::PushEvent(SyncEvent event)
+{
+  m_event_thread.Push(event);
+}
+
+void Core::HandleEvent(SyncEvent event)
+{
+  m_keys = event.keys;
+
+  RunUntil(event.run_until_ticks);
+
+  if (event.event_type != SyncEventType::RunCommand)
+    return;
+
+  if (m_link_enabled && !m_force_disconnect)
+  {
+    m_response_size =
+        u8(GBASIOJOYSendCommand(&m_sio_driver, m_joybus_command, m_joybus_buffer.data()));
+  }
+  else
+  {
+    m_response_size = 0;
+  }
+
+  m_command_pending.store(false, std::memory_order_release);
+  m_command_pending.notify_one();
+
+  RunFor(m_joybus_command_transfer_time);
+}
+
+void Core::RunUntil(u64 gc_ticks)
+{
+  if (static_cast<s64>(gc_ticks - m_last_gc_ticks) <= 0)
+    return;
+
+  const u64 gc_frequency = m_system.GetSystemTimers().GetTicksPerSecond();
+  const u32 core_frequency = GetCoreFrequency(m_core);
+
+  mTimingSchedule(m_core->timing, &m_event,
+                  static_cast<s32>((gc_ticks - m_last_gc_ticks) * core_frequency / gc_frequency));
+  m_waiting_for_event = true;
+
+  s32 begin_time = mTimingCurrentTime(m_core->timing);
+  while (m_waiting_for_event)
+    m_core->runLoop(m_core);
+  s32 end_time = mTimingCurrentTime(m_core->timing);
+
+  u64 d = (static_cast<u64>(end_time - begin_time) * gc_frequency) + m_gc_ticks_remainder;
+  m_last_gc_ticks += d / core_frequency;
+  m_gc_ticks_remainder = d % core_frequency;
+}
+
+void Core::RunFor(u64 gc_ticks)
+{
+  RunUntil(m_last_gc_ticks + gc_ticks);
+}
+
+void Core::ImportState(std::string_view state_path)
+{
+  Flush();
+  if (!IsStarted())
+    return;
+
+  std::vector<u8> core_state(m_core->stateSize(m_core));
+  File::IOFile file(std::string(state_path), "rb");
+  if (core_state.size() != file.GetSize())
+    return;
+
+  file.ReadBytes(core_state.data(), core_state.size());
+  m_core->loadState(m_core, core_state.data());
+}
+
+void Core::ExportState(std::string_view state_path)
+{
+  Flush();
+  if (!IsStarted())
+    return;
+
+  std::vector<u8> core_state(m_core->stateSize(m_core));
+  m_core->saveState(m_core, core_state.data());
+
+  File::IOFile file(std::string(state_path), "wb");
+  file.WriteBytes(core_state.data(), core_state.size());
+}
+
+void Core::ImportSave(std::string_view save_path)
+{
+  Flush();
+  if (!IsStarted())
+    return;
+
+  File::IOFile file(std::string(save_path), "rb");
+  std::vector<u8> save_file(file.GetSize());
+  if (!file.ReadBytes(save_file.data(), save_file.size()))
+    return;
+
+  m_core->savedataRestore(m_core, save_file.data(), save_file.size(), true);
+  m_core->reset(m_core);
+}
+
+void Core::ExportSave(std::string_view save_path)
+{
+  Flush();
+  if (!IsStarted())
+    return;
+
+  File::IOFile file(std::string(save_path), "wb");
+
+  void* sram = nullptr;
+  size_t size = m_core->savedataClone(m_core, &sram);
+  if (!sram)
+    return;
+
+  file.WriteBytes(sram, size);
+  free(sram);
+}
+
+void Core::DoState(PointerWrap& p)
+{
+  Flush();
+
+  bool is_started = IsStarted();
+  p.Do(is_started);
+
+  if (!is_started)
+  {
+    Stop();
+    return;
+  }
+
+  bool has_rom = !m_rom_path.empty();
+  p.Do(has_rom);
+  auto old_hash = m_rom_hash;
+  p.Do(m_rom_hash);
+  auto old_title = m_game_title;
+  p.Do(m_game_title);
+
+  if (p.IsReadMode() && (has_rom != !m_rom_path.empty() ||
+                         (has_rom && (old_hash != m_rom_hash || old_title != m_game_title))))
+  {
+    ::Core::DisplayMessage(
+        fmt::format("Incompatible ROM state in GBA{}. Aborting load state.", m_device_number + 1),
+        3000);
+    p.SetVerifyMode();
+    return;
+  }
+
+  Start(0);
+
+  p.Do(m_video_buffer);
+  p.Do(m_last_gc_ticks);
+  p.Do(m_gc_ticks_remainder);
+  p.Do(m_keys);
+  p.Do(m_link_enabled);
+  p.Do(m_response_size);
+  p.Do(m_joybus_buffer);
+
+  std::vector<u8> core_state;
+  core_state.resize(m_core->stateSize(m_core));
+
+  if (p.IsWriteMode() || p.IsVerifyMode())
+  {
+    m_core->saveState(m_core, core_state.data());
+  }
+
+  p.Do(core_state);
+
+  if (p.IsReadMode() && m_core->stateSize(m_core) == core_state.size())
+  {
+    m_core->loadState(m_core, core_state.data());
+    if (auto host = m_host.lock())
+      host->FrameEnded(m_video_buffer);
+  }
+}
+
+bool Core::GetRomInfo(const char* rom_path, std::array<u8, 20>& hash, std::string& title)
+{
+  VFile* rom = OpenROM(rom_path);
+  if (!rom)
+    return false;
+
+  hash = GetROMHash(rom);
+
+  mCore* core = mCoreFindVF(rom);
+  if (!core)
+  {
+    rom->close(rom);
+    return false;
+  }
+  core->init(core);
+  if (!core->loadROM(core, rom))
+  {
+    rom->close(rom);
+    return false;
+  }
+
+  mGameInfo info;
+  core->getGameInfo(core, &info);
+  title = info.title;
+
+  core->deinit(core);
+  return true;
+}
+
+std::string Core::GetSavePath(std::string_view rom_path, int device_number)
+{
+  std::string save_path =
+      fmt::format("{}-{}.sav", rom_path.substr(0, rom_path.find_last_of('.')), device_number + 1);
+
+  if (!Config::Get(Config::MAIN_GBA_SAVES_IN_ROM_PATH))
+  {
+    save_path =
+        File::GetUserPath(D_GBASAVES_IDX) + save_path.substr(save_path.find_last_of("\\/") + 1);
+  }
+
+  return save_path;
+}
+}  // namespace HW::GBA
+#endif  // HAS_LIBMGBA

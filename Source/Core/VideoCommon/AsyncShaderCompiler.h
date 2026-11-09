@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -50,11 +49,12 @@ public:
   bool HasPendingWork();
   bool HasCompletedWork();
 
-  // Simpler version without progress updates.
-  void WaitUntilCompletion();
+  // Clears both pending and completed work
+  void ClearAllWork();
 
   // Calls progress_callback periodically, with completed_items, and total_items.
-  void WaitUntilCompletion(const std::function<void(size_t, size_t)>& progress_callback);
+  // Returns false if interrupted.
+  bool WaitUntilCompletion(const std::function<void(size_t, size_t)>& progress_callback);
 
   // Needed because of calling virtual methods in shutdown procedure.
   bool StartWorkerThreads(u32 num_worker_threads);

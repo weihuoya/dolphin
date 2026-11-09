@@ -1,11 +1,10 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <functional>
-#include <map>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -16,6 +15,13 @@
 
 namespace Config
 {
+struct ConfigChangedCallbackID
+{
+  size_t id = std::numeric_limits<size_t>::max();
+
+  bool operator==(const ConfigChangedCallbackID&) const = default;
+};
+
 using ConfigChangedCallback = std::function<void()>;
 
 // Layer management
@@ -23,8 +29,14 @@ void AddLayer(std::unique_ptr<ConfigLayerLoader> loader);
 std::shared_ptr<Layer> GetLayer(LayerType layer);
 void RemoveLayer(LayerType layer);
 
-void AddConfigChangedCallback(ConfigChangedCallback func);
-void InvokeConfigChangedCallbacks();
+// Returns an ID that should be passed to RemoveConfigChangedCallback() when the callback is no
+// longer needed. The callback may be called from any thread.
+[[nodiscard]] ConfigChangedCallbackID AddConfigChangedCallback(ConfigChangedCallback func);
+void RemoveConfigChangedCallback(ConfigChangedCallbackID callback_id);
+void OnConfigChanged();
+
+// Returns the number of times the config has changed in the current execution of the program
+u64 GetConfigVersion();
 
 // Explicit load and save of layers
 void Load();
@@ -37,10 +49,12 @@ void ClearCurrentRunLayer();
 const std::string& GetSystemName(System system);
 std::optional<System> GetSystemFromName(const std::string& system);
 const std::string& GetLayerName(LayerType layer);
-LayerType GetActiveLayerForConfig(const ConfigLocation&);
+LayerType GetActiveLayerForConfig(const Location&);
+
+std::optional<std::string> GetAsString(const Location&);
 
 template <typename T>
-T Get(LayerType layer, const ConfigInfo<T>& info)
+T Get(LayerType layer, const Info<T>& info)
 {
   if (layer == LayerType::Meta)
     return Get(info);
@@ -48,52 +62,94 @@ T Get(LayerType layer, const ConfigInfo<T>& info)
 }
 
 template <typename T>
-T Get(const ConfigInfo<T>& info)
+T Get(const Layer* game_layer, const Info<T>& setting)
 {
-  return GetLayer(GetActiveLayerForConfig(info.location))->Get(info);
+  if (game_layer != nullptr)
+    return game_layer->Get(setting);
+  return Get(setting);
 }
 
 template <typename T>
-T GetBase(const ConfigInfo<T>& info)
+T Get(const Info<T>& info)
+{
+  CachedValue<T> cached = info.GetCachedValue();
+  const u64 config_version = GetConfigVersion();
+
+  if (cached.config_version < config_version)
+  {
+    cached.value = GetUncached(info);
+    cached.config_version = config_version;
+
+    info.TryToSetCachedValue(cached);
+  }
+
+  return std::move(cached.value);
+}
+
+template <typename T>
+T GetUncached(const Info<T>& info)
+{
+  const std::optional<std::string> str = GetAsString(info.GetLocation());
+  if (!str)
+    return info.GetDefaultValue();
+
+  return detail::TryParse<T>(*str).value_or(info.GetDefaultValue());
+}
+
+template <typename T>
+T GetBase(const Info<T>& info)
 {
   return Get(LayerType::Base, info);
 }
 
 template <typename T>
-LayerType GetActiveLayerForConfig(const ConfigInfo<T>& info)
+LayerType GetActiveLayerForConfig(const Info<T>& info)
 {
-  return GetActiveLayerForConfig(info.location);
+  return GetActiveLayerForConfig(info.GetLocation());
 }
 
-template <typename T>
-void Set(LayerType layer, const ConfigInfo<T>& info, const std::common_type_t<T>& value)
+template <typename InfoT, typename ValueT>
+void Set(LayerType layer, const InfoT& info, const ValueT& value)
 {
-  GetLayer(layer)->Set(info, value);
-  InvokeConfigChangedCallbacks();
+  if (GetLayer(layer)->Set(info, value))
+    OnConfigChanged();
 }
 
-template <typename T>
-void SetBase(const ConfigInfo<T>& info, const std::common_type_t<T>& value)
+template <typename InfoT, typename ValueT>
+void SetBase(const Info<InfoT>& info, const ValueT& value)
 {
-  Set<T>(LayerType::Base, info, value);
+  Set(LayerType::Base, info, value);
 }
 
-template <typename T>
-void SetCurrent(const ConfigInfo<T>& info, const std::common_type_t<T>& value)
+template <typename InfoT, typename ValueT>
+void SetCurrent(const Info<InfoT>& info, const ValueT& value)
 {
-  Set<T>(LayerType::CurrentRun, info, value);
+  Set(LayerType::CurrentRun, info, value);
 }
 
-template <typename T>
-void SetBaseOrCurrent(const ConfigInfo<T>& info, const std::common_type_t<T>& value)
+template <typename InfoT, typename ValueT>
+void SetBaseOrCurrent(const Info<InfoT>& info, const ValueT& value)
 {
   if (GetActiveLayerForConfig(info) == LayerType::Base)
-    Set<T>(LayerType::Base, info, value);
+    Set(LayerType::Base, info, value);
   else
-    Set<T>(LayerType::CurrentRun, info, value);
+    Set(LayerType::CurrentRun, info, value);
 }
 
-// Used to defer InvokeConfigChangedCallbacks until after the completion of many config changes.
+template <typename T>
+void DeleteKey(LayerType layer, const Info<T>& info)
+{
+  if (GetLayer(layer)->DeleteKey(info.GetLocation()))
+    OnConfigChanged();
+}
+
+template <typename T>
+bool IsDefaultValue(const Info<T>& info)
+{
+  return Get(info) == info.GetDefaultValue();
+}
+
+// Used to defer OnConfigChanged until after the completion of many config changes.
 class ConfigChangeCallbackGuard
 {
 public:

@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -12,52 +11,50 @@ namespace DSP::HLE
 struct AXPBWii;
 class DSPHLE;
 
-class AXWiiUCode : public AXUCode
+class AXWiiUCode final : public AXUCode
 {
 public:
   AXWiiUCode(DSPHLE* dsphle, u32 crc);
-  ~AXWiiUCode() override;
 
+  void Initialize() override;
   void DoState(PointerWrap& p) override;
 
 protected:
   // Additional AUX buffers
-  int m_samples_auxC_left[32 * 3];
-  int m_samples_auxC_right[32 * 3];
-  int m_samples_auxC_surround[32 * 3];
+  int m_samples_auxC_left[32 * 3]{};
+  int m_samples_auxC_right[32 * 3]{};
+  int m_samples_auxC_surround[32 * 3]{};
 
   // Wiimote buffers
-  int m_samples_wm0[6 * 3];
-  int m_samples_aux0[6 * 3];
-  int m_samples_wm1[6 * 3];
-  int m_samples_aux1[6 * 3];
-  int m_samples_wm2[6 * 3];
-  int m_samples_aux2[6 * 3];
-  int m_samples_wm3[6 * 3];
-  int m_samples_aux3[6 * 3];
+  int m_samples_wm0[6 * 3]{};
+  int m_samples_aux0[6 * 3]{};
+  int m_samples_wm1[6 * 3]{};
+  int m_samples_aux1[6 * 3]{};
+  int m_samples_wm2[6 * 3]{};
+  int m_samples_aux2[6 * 3]{};
+  int m_samples_wm3[6 * 3]{};
+  int m_samples_aux3[6 * 3]{};
 
   // Are we implementing an old version of AXWii which still has updates?
-  bool m_old_axwii;
+  bool m_old_axwii = false;
+
+  // Late AXWii versions support Wiimote filtering and a biquad filter.
+  bool m_new_filter = false;
 
   // Last volume values for MAIN and AUX. Used to generate volume ramps to
   // interpolate nicely between old and new volume values.
-  u16 m_last_main_volume;
-  u16 m_last_aux_volumes[3];
-
-  // If needed, extract the updates related fields from a PB. We need to
-  // reinject them afterwards so that the correct PB typs is written to RAM.
-  bool ExtractUpdatesFields(AXPBWii& pb, u16* num_updates, u16* updates, u32* updates_addr);
-  void ReinjectUpdatesFields(AXPBWii& pb, u16* num_updates, u32 updates_addr);
+  u16 m_last_main_volume = 0;
+  u16 m_last_aux_volumes[3]{};
 
   // Convert a mixer_control bitfield to our internal representation for that
   // value. Required because that bitfield has a different meaning in some
   // versions of AX.
-  AXMixControl ConvertMixerControl(u32 mixer_control);
+  static AXMixControl ConvertMixerControl(u32 mixer_control);
 
   // Generate a volume ramp from vol1 to vol2, interpolating n volume values.
   // Uses floating point arithmetic, which isn't exactly what the UCode does,
   // but this gives better precision and nicer code.
-  void GenerateVolumeRamp(u16* output, u16 vol1, u16 vol2, size_t nvals);
+  static void GenerateVolumeRamp(u16* output, u16 vol1, u16 vol2, size_t nvals);
 
   void HandleCommandList() override;
 
@@ -71,6 +68,9 @@ protected:
   void OutputWMSamples(u32* addresses);  // 4 addresses
 
 private:
+  void ReadPB(Memory::MemoryManager& memory, u32 addr, AXPBWii& pb);
+  void WritePB(Memory::MemoryManager& memory, u32 addr, const AXPBWii& pb);
+
   enum CmdType
   {
     CMD_SETUP = 0x00,
@@ -83,7 +83,7 @@ private:
     CMD_MIX_AUXC = 0x07,
     CMD_UPL_AUXA_MIX_LRSC = 0x08,
     CMD_UPL_AUXB_MIX_LRSC = 0x09,
-    CMD_UNK_0A = 0x0A,
+    CMD_COMPRESSOR = 0x0A,
     CMD_OUTPUT = 0x0B,
     CMD_OUTPUT_DPL2 = 0x0C,
     CMD_WM_OUTPUT = 0x0D,
@@ -106,7 +106,7 @@ private:
     CMD_MIX_AUXC_OLD = 0x08,
     CMD_UPL_AUXA_MIX_LRSC_OLD = 0x09,
     CMD_UPL_AUXB_MIX_LRSC_OLD = 0x0a,
-    CMD_UNK_0B_OLD = 0x0B,
+    CMD_COMPRESSOR_OLD = 0x0B,
     CMD_OUTPUT_OLD = 0x0C,  // no volume!
     CMD_OUTPUT_DPL2_OLD = 0x0D,
     CMD_WM_OUTPUT_OLD = 0x0E,

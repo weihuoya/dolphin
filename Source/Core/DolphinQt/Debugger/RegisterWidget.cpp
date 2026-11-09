@@ -1,23 +1,30 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Debugger/RegisterWidget.h"
 
 #include <utility>
 
+#include <QActionGroup>
 #include <QHeaderView>
 #include <QMenu>
+#include <QMessageBox>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
+#include <fmt/format.h>
+
 #include "Core/Core.h"
+#include "Core/Debugger/CodeTrace.h"
 #include "Core/HW/ProcessorInterface.h"
+#include "Core/PowerPC/MMU.h"
 #include "Core/PowerPC/PowerPC.h"
+#include "Core/System.h"
 #include "DolphinQt/Host.h"
 #include "DolphinQt/Settings.h"
 
-RegisterWidget::RegisterWidget(QWidget* parent) : QDockWidget(parent)
+RegisterWidget::RegisterWidget(QWidget* parent)
+    : QDockWidget(parent), m_system(Core::System::GetInstance())
 {
   setWindowTitle(tr("Registers"));
   setObjectName(QStringLiteral("registers"));
@@ -27,6 +34,8 @@ RegisterWidget::RegisterWidget(QWidget* parent) : QDockWidget(parent)
 
   setAllowedAreas(Qt::AllDockWidgetAreas);
 
+  CreateWidgets();
+
   auto& settings = Settings::GetQSettings();
 
   restoreGeometry(settings.value(QStringLiteral("registerwidget/geometry")).toByteArray());
@@ -34,16 +43,15 @@ RegisterWidget::RegisterWidget(QWidget* parent) : QDockWidget(parent)
   // according to Settings
   setFloating(settings.value(QStringLiteral("registerwidget/floating")).toBool());
 
-  CreateWidgets();
   PopulateTable();
   ConnectWidgets();
 
   connect(Host::GetInstance(), &Host::UpdateDisasmDialog, this, &RegisterWidget::Update);
 
-  connect(&Settings::Instance(), &Settings::RegistersVisibilityChanged,
+  connect(&Settings::Instance(), &Settings::RegistersVisibilityChanged, this,
           [this](bool visible) { setHidden(!visible); });
 
-  connect(&Settings::Instance(), &Settings::DebugModeToggled, [this](bool enabled) {
+  connect(&Settings::Instance(), &Settings::DebugModeToggled, this, [this](bool enabled) {
     setHidden(!enabled || !Settings::Instance().IsRegistersVisible());
   });
 }
@@ -69,14 +77,15 @@ void RegisterWidget::showEvent(QShowEvent* event)
 void RegisterWidget::CreateWidgets()
 {
   m_table = new QTableWidget;
+  m_table->setTabKeyNavigation(false);
 
   m_table->setColumnCount(9);
 
   m_table->verticalHeader()->setVisible(false);
-  m_table->verticalHeader()->setDefaultSectionSize(24);
   m_table->setContextMenuPolicy(Qt::CustomContextMenu);
   m_table->setSelectionMode(QAbstractItemView::NoSelection);
-  m_table->setFont(Settings::Instance().GetDebugFont());
+
+  OnDebugFontChanged(Settings::Instance().GetDebugFont());
 
   QStringList empty_list;
 
@@ -99,6 +108,8 @@ void RegisterWidget::ConnectWidgets()
   connect(m_table, &QTableWidget::customContextMenuRequested, this,
           &RegisterWidget::ShowContextMenu);
   connect(m_table, &QTableWidget::itemChanged, this, &RegisterWidget::OnItemChanged);
+  connect(&Settings::Instance(), &Settings::DebugFontChanged, this,
+          &RegisterWidget::OnDebugFontChanged);
 }
 
 void RegisterWidget::OnItemChanged(QTableWidgetItem* item)
@@ -107,21 +118,41 @@ void RegisterWidget::OnItemChanged(QTableWidgetItem* item)
     static_cast<RegisterColumn*>(item)->SetValue();
 }
 
+void RegisterWidget::OnDebugFontChanged(const QFont& font)
+{
+  if (m_table)
+  {
+    m_table->setFont(font);
+    const auto fontHeight = m_table->fontMetrics().height();
+    m_table->verticalHeader()->setDefaultSectionSize(fontHeight);
+
+    // Header height doesn't have to be great. As there are no labels, its only purpose is to make
+    // columns resizable.
+    m_table->horizontalHeader()->setFixedHeight(fontHeight * 5 / 4);
+  }
+}
+
 void RegisterWidget::ShowContextMenu()
 {
   QMenu* menu = new QMenu(this);
+  menu->setAttribute(Qt::WA_DeleteOnClose, true);
 
-  auto variant = m_table->currentItem()->data(DATA_TYPE);
+  auto* raw_item = m_table->currentItem();
 
-  if (!variant.isNull())
+  if (raw_item != nullptr && !raw_item->data(DATA_TYPE).isNull())
   {
-    auto* item = static_cast<RegisterColumn*>(m_table->currentItem());
+    auto* item = static_cast<RegisterColumn*>(raw_item);
     auto type = static_cast<RegisterType>(item->data(DATA_TYPE).toInt());
     auto display = item->GetDisplay();
 
     // i18n: This kind of "watch" is used for watching emulated memory.
     // It's not related to timekeeping devices.
-    menu->addAction(tr("Add to &watch"), this,
+    menu->addAction(tr("Add to &watch"), this, [this, item] {
+      const u32 address = item->GetValue();
+      const QString name = QStringLiteral("reg_%1").arg(address, 8, 16, QLatin1Char('0'));
+      emit RequestWatch(name, address);
+    });
+    menu->addAction(tr("Add memory &breakpoint"), this,
                     [this, item] { emit RequestMemoryBreakpoint(item->GetValue()); });
     menu->addAction(tr("View &memory"), this,
                     [this, item] { emit RequestViewInMemory(item->GetValue()); });
@@ -141,11 +172,42 @@ void RegisterWidget::ShowContextMenu()
     // i18n: A double precision floating point number
     auto* view_double = menu->addAction(tr("Double"));
 
+    menu->addSeparator();
+
+    auto* view_hex_column = menu->addAction(tr("All Hexadecimal"));
+    view_hex_column->setData(static_cast<int>(RegisterDisplay::Hex));
+    auto* view_int_column = menu->addAction(tr("All Signed Integer"));
+    view_int_column->setData(static_cast<int>(RegisterDisplay::SInt32));
+    auto* view_uint_column = menu->addAction(tr("All Unsigned Integer"));
+    view_uint_column->setData(static_cast<int>(RegisterDisplay::UInt32));
+    // i18n: A floating point number
+    auto* view_float_column = menu->addAction(tr("All Float"));
+    view_float_column->setData(static_cast<int>(RegisterDisplay::Float));
+    // i18n: A double precision floating point number
+    auto* view_double_column = menu->addAction(tr("All Double"));
+    view_double_column->setData(static_cast<int>(RegisterDisplay::Double));
+
+    if (type == RegisterType::gpr || type == RegisterType::fpr)
+    {
+      menu->addSeparator();
+
+      const std::string type_string =
+          fmt::format("{}{}", type == RegisterType::gpr ? "r" : "f", m_table->currentItem()->row());
+      menu->addAction(tr("Run until hit (ignoring breakpoints)"),
+                      [this, type_string] { AutoStep(type_string); });
+    }
+
     for (auto* action : {view_hex, view_int, view_uint, view_float, view_double})
     {
       action->setCheckable(true);
       action->setVisible(false);
       action->setActionGroup(group);
+    }
+
+    for (auto* action : {view_hex_column, view_int_column, view_uint_column, view_float_column,
+                         view_double_column})
+    {
+      action->setVisible(false);
     }
 
     switch (display)
@@ -174,10 +236,16 @@ void RegisterWidget::ShowContextMenu()
       view_int->setVisible(true);
       view_uint->setVisible(true);
       view_float->setVisible(true);
+      view_hex_column->setVisible(true);
+      view_int_column->setVisible(true);
+      view_uint_column->setVisible(true);
+      view_float_column->setVisible(true);
       break;
     case RegisterType::fpr:
       view_hex->setVisible(true);
       view_double->setVisible(true);
+      view_hex_column->setVisible(true);
+      view_double_column->setVisible(true);
       break;
     default:
       break;
@@ -213,6 +281,21 @@ void RegisterWidget::ShowContextMenu()
       m_updating = false;
     });
 
+    for (auto* action : {view_hex_column, view_int_column, view_uint_column, view_float_column,
+                         view_double_column})
+    {
+      connect(action, &QAction::triggered, [this, action] {
+        m_updating = true;
+        auto col = m_table->currentItem()->column();
+        for (int i = 0; i < 32; i++)
+        {
+          auto* update_item = static_cast<RegisterColumn*>(m_table->item(i, col));
+          update_item->SetDisplay(static_cast<RegisterDisplay>(action->data().toInt()));
+        }
+        m_updating = false;
+      });
+    }
+
     menu->addSeparator();
   }
 
@@ -221,131 +304,226 @@ void RegisterWidget::ShowContextMenu()
   menu->exec(QCursor::pos());
 }
 
+void RegisterWidget::AutoStep(const std::string& reg) const
+{
+  CodeTrace trace;
+  trace.SetRegTracked(reg);
+
+  QMessageBox msgbox(
+      QMessageBox::NoIcon, tr("Timed Out"),
+      tr("<font color='#ff0000'>AutoStepping timed out. Current instruction is irrelevant."),
+      QMessageBox::Cancel);
+  QPushButton* run_button = msgbox.addButton(tr("Keep Running"), QMessageBox::AcceptRole);
+
+  while (true)
+  {
+    const AutoStepResults results = [this, &trace] {
+      Core::CPUThreadGuard guard(m_system);
+      return trace.AutoStepping(guard, true);
+    }();
+
+    emit Host::GetInstance()->UpdateDisasmDialog();
+
+    if (!results.timed_out)
+      break;
+
+    // Can keep running and try again after a time out.
+    msgbox.exec();
+    if (msgbox.clickedButton() != (QAbstractButton*)run_button)
+      break;
+  }
+}
+
 void RegisterWidget::PopulateTable()
 {
   for (int i = 0; i < 32; i++)
   {
     // General purpose registers (int)
-    AddRegister(i, 0, RegisterType::gpr, "r" + std::to_string(i), [i] { return GPR(i); },
-                [i](u64 value) { GPR(i) = value; });
+    AddRegister(
+        i, 0, RegisterType::gpr, fmt::format("r{}", i),
+        [this, i] { return m_system.GetPPCState().gpr[i]; },
+        [this, i](u64 value) { m_system.GetPPCState().gpr[i] = value; });
 
     // Floating point registers (double)
-    AddRegister(i, 2, RegisterType::fpr, "f" + std::to_string(i), [i] { return rPS(i).PS0AsU64(); },
-                [i](u64 value) { rPS(i).SetPS0(value); });
+    AddRegister(
+        i, 2, RegisterType::fpr, fmt::format("f{}", i),
+        [this, i] { return m_system.GetPPCState().ps[i].PS0AsU64(); },
+        [this, i](u64 value) { m_system.GetPPCState().ps[i].SetPS0(value); });
 
-    AddRegister(i, 4, RegisterType::fpr, "", [i] { return rPS(i).PS1AsU64(); },
-                [i](u64 value) { rPS(i).SetPS1(value); });
+    AddRegister(
+        i, 4, RegisterType::fpr, "", [this, i] { return m_system.GetPPCState().ps[i].PS1AsU64(); },
+        [this, i](u64 value) { m_system.GetPPCState().ps[i].SetPS1(value); });
+  }
+
+  // The IBAT and DBAT registers have a large gap between
+  // registers 3 and 4 so we can't just use SPR_IBAT0U or
+  // SPR_DBAT0U as low-index the entire way
+  for (int i = 0; i < 4; i++)
+  {
+    // IBAT registers
+    AddRegister(
+        i, 5, RegisterType::ibat, fmt::format("IBAT{}", i),
+        [this, i] {
+          const auto& ppc_state = m_system.GetPPCState();
+          return (static_cast<u64>(ppc_state.spr[SPR_IBAT0U + i * 2]) << 32) +
+                 ppc_state.spr[SPR_IBAT0L + i * 2];
+        },
+        nullptr);
+    AddRegister(
+        i + 4, 5, RegisterType::ibat, fmt::format("IBAT{}", 4 + i),
+        [this, i] {
+          const auto& ppc_state = m_system.GetPPCState();
+          return (static_cast<u64>(ppc_state.spr[SPR_IBAT4U + i * 2]) << 32) +
+                 ppc_state.spr[SPR_IBAT4L + i * 2];
+        },
+        nullptr);
+
+    // DBAT registers
+    AddRegister(
+        i + 8, 5, RegisterType::dbat, fmt::format("DBAT{}", i),
+        [this, i] {
+          const auto& ppc_state = m_system.GetPPCState();
+          return (static_cast<u64>(ppc_state.spr[SPR_DBAT0U + i * 2]) << 32) +
+                 ppc_state.spr[SPR_DBAT0L + i * 2];
+        },
+        nullptr);
+    AddRegister(
+        i + 12, 5, RegisterType::dbat, fmt::format("DBAT{}", 4 + i),
+        [this, i] {
+          const auto& ppc_state = m_system.GetPPCState();
+          return (static_cast<u64>(ppc_state.spr[SPR_DBAT4U + i * 2]) << 32) +
+                 ppc_state.spr[SPR_DBAT4L + i * 2];
+        },
+        nullptr);
   }
 
   for (int i = 0; i < 8; i++)
   {
-    // IBAT registers
-    AddRegister(i, 5, RegisterType::ibat, "IBAT" + std::to_string(i),
-                [i] {
-                  return (static_cast<u64>(PowerPC::ppcState.spr[SPR_IBAT0U + i * 2]) << 32) +
-                         PowerPC::ppcState.spr[SPR_IBAT0L + i * 2];
-                },
-                nullptr);
-    // DBAT registers
-    AddRegister(i + 8, 5, RegisterType::dbat, "DBAT" + std::to_string(i),
-                [i] {
-                  return (static_cast<u64>(PowerPC::ppcState.spr[SPR_DBAT0U + i * 2]) << 32) +
-                         PowerPC::ppcState.spr[SPR_DBAT0L + i * 2];
-                },
-                nullptr);
     // Graphics quantization registers
-    AddRegister(i + 16, 7, RegisterType::gqr, "GQR" + std::to_string(i),
-                [i] { return PowerPC::ppcState.spr[SPR_GQR0 + i]; }, nullptr);
+    AddRegister(
+        i + 16, 7, RegisterType::gqr, fmt::format("GQR{}", i),
+        [this, i] { return m_system.GetPPCState().spr[SPR_GQR0 + i]; }, nullptr);
   }
 
   // HID registers
-  AddRegister(24, 7, RegisterType::hid, "HID0", [] { return PowerPC::ppcState.spr[SPR_HID0]; },
-              [](u64 value) { PowerPC::ppcState.spr[SPR_HID0] = static_cast<u32>(value); });
-  AddRegister(25, 7, RegisterType::hid, "HID1", [] { return PowerPC::ppcState.spr[SPR_HID1]; },
-              [](u64 value) { PowerPC::ppcState.spr[SPR_HID1] = static_cast<u32>(value); });
-  AddRegister(26, 7, RegisterType::hid, "HID2", [] { return PowerPC::ppcState.spr[SPR_HID2]; },
-              [](u64 value) { PowerPC::ppcState.spr[SPR_HID2] = static_cast<u32>(value); });
-  AddRegister(27, 7, RegisterType::hid, "HID4", [] { return PowerPC::ppcState.spr[SPR_HID4]; },
-              [](u64 value) { PowerPC::ppcState.spr[SPR_HID4] = static_cast<u32>(value); });
+  AddRegister(
+      24, 7, RegisterType::hid, "HID0", [this] { return m_system.GetPPCState().spr[SPR_HID0]; },
+      [this](u64 value) { m_system.GetPPCState().spr[SPR_HID0] = static_cast<u32>(value); });
+  AddRegister(
+      25, 7, RegisterType::hid, "HID1", [this] { return m_system.GetPPCState().spr[SPR_HID1]; },
+      [this](u64 value) { m_system.GetPPCState().spr[SPR_HID1] = static_cast<u32>(value); });
+  AddRegister(
+      26, 7, RegisterType::hid, "HID2", [this] { return m_system.GetPPCState().spr[SPR_HID2]; },
+      [this](u64 value) { m_system.GetPPCState().spr[SPR_HID2] = static_cast<u32>(value); });
+  AddRegister(
+      27, 7, RegisterType::hid, "HID4", [this] { return m_system.GetPPCState().spr[SPR_HID4]; },
+      [this](u64 value) { m_system.GetPPCState().spr[SPR_HID4] = static_cast<u32>(value); });
 
   for (int i = 0; i < 16; i++)
   {
     // SR registers
-    AddRegister(i, 7, RegisterType::sr, "SR" + std::to_string(i),
-                [i] { return PowerPC::ppcState.sr[i]; },
-                [i](u64 value) { PowerPC::ppcState.sr[i] = value; });
+    AddRegister(
+        i, 7, RegisterType::sr, fmt::format("SR{}", i),
+        [this, i] { return m_system.GetPPCState().sr[i]; },
+        [this, i](u64 value) {
+          m_system.GetPPCState().sr[i] = value;
+          m_system.GetMMU().SRUpdated();
+        });
   }
 
   // Special registers
   // TB
-  AddRegister(16, 5, RegisterType::tb, "TB", PowerPC::ReadFullTimeBaseValue, nullptr);
+  AddRegister(
+      16, 5, RegisterType::tb, "TB",
+      [this] { return m_system.GetPowerPC().ReadFullTimeBaseValue(); }, nullptr);
 
   // PC
-  AddRegister(17, 5, RegisterType::pc, "PC", [] { return PowerPC::ppcState.pc; },
-              [](u64 value) { PowerPC::ppcState.pc = value; });
+  AddRegister(
+      17, 5, RegisterType::pc, "PC", [this] { return m_system.GetPPCState().pc; },
+      [this](u64 value) { m_system.GetPPCState().pc = value; });
 
   // LR
-  AddRegister(18, 5, RegisterType::lr, "LR", [] { return PowerPC::ppcState.spr[SPR_LR]; },
-              [](u64 value) { PowerPC::ppcState.spr[SPR_LR] = value; });
+  AddRegister(
+      18, 5, RegisterType::lr, "LR", [this] { return m_system.GetPPCState().spr[SPR_LR]; },
+      [this](u64 value) { m_system.GetPPCState().spr[SPR_LR] = value; });
 
   // CTR
-  AddRegister(19, 5, RegisterType::ctr, "CTR", [] { return PowerPC::ppcState.spr[SPR_CTR]; },
-              [](u64 value) { PowerPC::ppcState.spr[SPR_CTR] = value; });
+  AddRegister(
+      19, 5, RegisterType::ctr, "CTR", [this] { return m_system.GetPPCState().spr[SPR_CTR]; },
+      [this](u64 value) { m_system.GetPPCState().spr[SPR_CTR] = value; });
 
   // CR
-  AddRegister(20, 5, RegisterType::cr, "CR", [] { return PowerPC::ppcState.cr.Get(); },
-              [](u64 value) { PowerPC::ppcState.cr.Set(value); });
+  AddRegister(
+      20, 5, RegisterType::cr, "CR", [this] { return m_system.GetPPCState().cr.Get(); },
+      [this](u64 value) { m_system.GetPPCState().cr.Set(value); });
 
   // XER
-  AddRegister(21, 5, RegisterType::xer, "XER", [] { return PowerPC::GetXER().Hex; },
-              [](u64 value) { PowerPC::SetXER(UReg_XER(value)); });
+  AddRegister(
+      21, 5, RegisterType::xer, "XER", [this] { return m_system.GetPPCState().GetXER().Hex; },
+      [this](u64 value) { m_system.GetPPCState().SetXER(UReg_XER(value)); });
 
   // FPSCR
-  AddRegister(22, 5, RegisterType::fpscr, "FPSCR", [] { return PowerPC::ppcState.fpscr.Hex; },
-              [](u64 value) { PowerPC::ppcState.fpscr = static_cast<u32>(value); });
+  AddRegister(
+      22, 5, RegisterType::fpscr, "FPSCR", [this] { return m_system.GetPPCState().fpscr.Hex; },
+      [this](u64 value) { m_system.GetPPCState().fpscr = static_cast<u32>(value); });
 
   // MSR
-  AddRegister(23, 5, RegisterType::msr, "MSR", [] { return PowerPC::ppcState.msr.Hex; },
-              [](u64 value) { PowerPC::ppcState.msr.Hex = value; });
+  AddRegister(
+      23, 5, RegisterType::msr, "MSR", [this] { return m_system.GetPPCState().msr.Hex; },
+      [this](u64 value) {
+        m_system.GetPPCState().msr.Hex = value;
+        m_system.GetPowerPC().MSRUpdated();
+      });
 
   // SRR 0-1
-  AddRegister(24, 5, RegisterType::srr, "SRR0", [] { return PowerPC::ppcState.spr[SPR_SRR0]; },
-              [](u64 value) { PowerPC::ppcState.spr[SPR_SRR0] = value; });
-  AddRegister(25, 5, RegisterType::srr, "SRR1", [] { return PowerPC::ppcState.spr[SPR_SRR1]; },
-              [](u64 value) { PowerPC::ppcState.spr[SPR_SRR1] = value; });
+  AddRegister(
+      24, 5, RegisterType::srr, "SRR0", [this] { return m_system.GetPPCState().spr[SPR_SRR0]; },
+      [this](u64 value) { m_system.GetPPCState().spr[SPR_SRR0] = value; });
+  AddRegister(
+      25, 5, RegisterType::srr, "SRR1", [this] { return m_system.GetPPCState().spr[SPR_SRR1]; },
+      [this](u64 value) { m_system.GetPPCState().spr[SPR_SRR1] = value; });
 
   // Exceptions
-  AddRegister(26, 5, RegisterType::exceptions, "Exceptions",
-              [] { return PowerPC::ppcState.Exceptions; },
-              [](u64 value) { PowerPC::ppcState.Exceptions = value; });
+  AddRegister(
+      26, 5, RegisterType::exceptions, "Exceptions",
+      [this] { return m_system.GetPPCState().Exceptions; },
+      [this](u64 value) { m_system.GetPPCState().Exceptions = value; });
 
   // Int Mask
-  AddRegister(27, 5, RegisterType::int_mask, "Int Mask",
-              [] { return ProcessorInterface::GetMask(); }, nullptr);
+  AddRegister(
+      27, 5, RegisterType::int_mask, "Int Mask",
+      [this] { return m_system.GetProcessorInterface().GetMask(); }, nullptr);
 
   // Int Cause
-  AddRegister(28, 5, RegisterType::int_cause, "Int Cause",
-              [] { return ProcessorInterface::GetCause(); }, nullptr);
+  AddRegister(
+      28, 5, RegisterType::int_cause, "Int Cause",
+      [this] { return m_system.GetProcessorInterface().GetCause(); }, nullptr);
 
   // DSISR
-  AddRegister(29, 5, RegisterType::dsisr, "DSISR", [] { return PowerPC::ppcState.spr[SPR_DSISR]; },
-              [](u64 value) { PowerPC::ppcState.spr[SPR_DSISR] = value; });
+  AddRegister(
+      29, 5, RegisterType::dsisr, "DSISR", [this] { return m_system.GetPPCState().spr[SPR_DSISR]; },
+      [this](u64 value) { m_system.GetPPCState().spr[SPR_DSISR] = value; });
   // DAR
-  AddRegister(30, 5, RegisterType::dar, "DAR", [] { return PowerPC::ppcState.spr[SPR_DAR]; },
-              [](u64 value) { PowerPC::ppcState.spr[SPR_DAR] = value; });
+  AddRegister(
+      30, 5, RegisterType::dar, "DAR", [this] { return m_system.GetPPCState().spr[SPR_DAR]; },
+      [this](u64 value) { m_system.GetPPCState().spr[SPR_DAR] = value; });
 
   // Hash Mask
   AddRegister(
       31, 5, RegisterType::pt_hashmask, "Hash Mask",
-      [] { return (PowerPC::ppcState.pagetable_hashmask << 6) | PowerPC::ppcState.pagetable_base; },
+      [this] {
+        const auto& ppc_state = m_system.GetPPCState();
+        return ppc_state.pagetable_mask | ppc_state.pagetable_base;
+      },
       nullptr);
 
   emit RequestTableUpdate();
   m_table->resizeColumnsToContents();
 }
 
-void RegisterWidget::AddRegister(int row, int column, RegisterType type, std::string register_name,
-                                 std::function<u64()> get_reg, std::function<void(u64)> set_reg)
+void RegisterWidget::AddRegister(int row, int column, RegisterType type,
+                                 const std::string& register_name, std::function<u64()> get_reg,
+                                 std::function<void(u64)> set_reg)
 {
   auto* value = new RegisterColumn(type, std::move(get_reg), std::move(set_reg));
 
@@ -378,7 +556,7 @@ void RegisterWidget::AddRegister(int row, int column, RegisterType type, std::st
 
 void RegisterWidget::Update()
 {
-  if (isVisible() && Core::GetState() == Core::State::Paused)
+  if (isVisible() && Core::GetState(m_system) == Core::State::Paused)
   {
     m_updating = true;
     emit UpdateTable();

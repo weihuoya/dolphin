@@ -1,10 +1,10 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <QMap>
+#include <QPushButton>
 #include <QString>
 #include <QStringList>
 #include <QWidget>
@@ -25,7 +25,6 @@ protected:
 private:
   void CreateWidgets();
   void ConnectWidgets();
-  void AddMenubarOptions();
 
   void LoadFile();
   void SaveFile();
@@ -34,19 +33,14 @@ private:
   void OnAutoComplete(const QString& completion);
   void OpenExternalEditor();
 
-  void SetReadOnly(bool read_only);
-
   QString GetTextUnderCursor();
-
-  void AddBoolOption(QMenu* menu, const QString& name, const QString& section, const QString& key);
-
-  void SetOption(const QString& section, const QString& key, const QString& value);
 
   void AddDescription(const QString& keyword, const QString& description);
 
   QCompleter* m_completer;
   QStringList m_completions;
-  QMenu* m_menu;
+  QPushButton* m_refresh_button;
+  QPushButton* m_external_editor_button;
   QTextEdit* m_edit;
 
   const QString m_path;

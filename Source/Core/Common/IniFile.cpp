@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/IniFile.h"
 
@@ -16,6 +15,8 @@
 #include "Common/FileUtil.h"
 #include "Common/StringUtil.h"
 
+namespace Common
+{
 void IniFile::ParseLine(std::string_view line, std::string* keyOut, std::string* valueOut)
 {
   if (line.empty() || line.front() == '#')
@@ -26,11 +27,11 @@ void IniFile::ParseLine(std::string_view line, std::string* keyOut, std::string*
   if (firstEquals != std::string::npos)
   {
     // Yes, a valid line!
-    *keyOut = StripSpaces(line.substr(0, firstEquals));
+    *keyOut = StripWhitespace(line.substr(0, firstEquals));
 
     if (valueOut)
     {
-      *valueOut = StripQuotes(StripSpaces(line.substr(firstEquals + 1, std::string::npos)));
+      *valueOut = StripQuotes(StripWhitespace(line.substr(firstEquals + 1, std::string::npos)));
     }
   }
 }
@@ -74,7 +75,7 @@ bool IniFile::Section::Get(std::string_view key, std::string* value,
 
 bool IniFile::Section::Exists(std::string_view key) const
 {
-  return values.find(key) != values.end();
+  return values.contains(key);
 }
 
 bool IniFile::Section::Delete(std::string_view key)
@@ -84,7 +85,8 @@ bool IniFile::Section::Delete(std::string_view key)
     return false;
 
   values.erase(it);
-  keys_order.erase(std::find(keys_order.begin(), keys_order.end(), key));
+  keys_order.erase(std::ranges::find_if(
+      keys_order, [&](std::string_view v) { return CaseInsensitiveEquals(key, v); }));
   return true;
 }
 
@@ -97,7 +99,7 @@ bool IniFile::Section::GetLines(std::vector<std::string>* lines, const bool remo
 {
   for (const std::string& line : m_lines)
   {
-    std::string_view stripped_line = StripSpaces(line);
+    std::string_view stripped_line = StripWhitespace(line);
 
     if (remove_comments)
     {
@@ -109,7 +111,7 @@ bool IniFile::Section::GetLines(std::vector<std::string>* lines, const bool remo
 
       if (commentPos != std::string::npos)
       {
-        stripped_line = StripSpaces(stripped_line.substr(0, commentPos));
+        stripped_line = StripWhitespace(stripped_line.substr(0, commentPos));
       }
     }
 
@@ -129,7 +131,7 @@ const IniFile::Section* IniFile::GetSection(std::string_view section_name) const
 {
   for (const Section& sect : sections)
   {
-    if (CaseInsensitiveStringCompare::IsEqual(sect.name, section_name))
+    if (CaseInsensitiveEquals(sect.name, section_name))
       return &sect;
   }
 
@@ -140,7 +142,7 @@ IniFile::Section* IniFile::GetSection(std::string_view section_name)
 {
   for (Section& sect : sections)
   {
-    if (CaseInsensitiveStringCompare::IsEqual(sect.name, section_name))
+    if (CaseInsensitiveEquals(sect.name, section_name))
       return &sect;
   }
 
@@ -176,6 +178,11 @@ bool IniFile::DeleteSection(std::string_view section_name)
   return false;
 }
 
+bool IniFile::Exists(std::string_view section_name) const
+{
+  return GetSection(section_name) != nullptr;
+}
+
 bool IniFile::Exists(std::string_view section_name, std::string_view key) const
 {
   const Section* section = GetSection(section_name);
@@ -185,13 +192,7 @@ bool IniFile::Exists(std::string_view section_name, std::string_view key) const
   return section->Exists(key);
 }
 
-void IniFile::SetLines(std::string_view section_name, const std::vector<std::string>& lines)
-{
-  Section* section = GetOrCreateSection(section_name);
-  section->SetLines(lines);
-}
-
-void IniFile::SetLines(std::string_view section_name, std::vector<std::string>&& lines)
+void IniFile::SetLines(std::string_view section_name, std::vector<std::string> lines)
 {
   Section* section = GetOrCreateSection(section_name);
   section->SetLines(std::move(lines));
@@ -371,3 +372,4 @@ bool IniFile::Save(const std::string& filename)
     return 0;
    }
  */
+}  // namespace Common

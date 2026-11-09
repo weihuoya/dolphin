@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -13,6 +12,13 @@ class IRWidget : public QWidget
   Q_OBJECT
 public:
   explicit IRWidget(QWidget* parent);
+
+  QSize sizeHint() const override;
+
+  static constexpr u16 IR_MIN_X = 0;
+  static constexpr u16 IR_MIN_Y = 0;
+  static constexpr u16 IR_MAX_X = 1023;
+  static constexpr u16 IR_MAX_Y = 767;
 
 signals:
   void ChangedX(u16 x);
@@ -33,7 +39,3 @@ private:
   u16 m_y = 0;
   bool m_ignore_movement = false;
 };
-
-// Should be part of class but fails to compile on mac os
-static const u16 ir_max_x = 1023;
-static const u16 ir_max_y = 767;

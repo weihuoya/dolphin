@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -16,24 +15,24 @@
 
 class PointerWrap;
 
-namespace IOS::HLE::Device
+namespace IOS::HLE
 {
 class USB_HIDv4 final : public USBHost
 {
 public:
-  USB_HIDv4(Kernel& ios, const std::string& device_name);
+  USB_HIDv4(EmulationKernel& ios, const std::string& device_name);
   ~USB_HIDv4() override;
 
-  IPCCommandResult IOCtl(const IOCtlRequest& request) override;
+  std::optional<IPCReply> IOCtl(const IOCtlRequest& request) override;
 
   void DoState(PointerWrap& p) override;
 
 private:
   std::shared_ptr<USB::Device> GetDeviceByIOSID(s32 ios_id) const;
 
-  IPCCommandResult CancelInterrupt(const IOCtlRequest& request);
-  IPCCommandResult GetDeviceChange(const IOCtlRequest& request);
-  IPCCommandResult Shutdown(const IOCtlRequest& request);
+  IPCReply CancelInterrupt(const IOCtlRequest& request);
+  std::optional<IPCReply> GetDeviceChange(const IOCtlRequest& request);
+  IPCReply Shutdown(const IOCtlRequest& request);
   s32 SubmitTransfer(USB::Device& device, const IOCtlRequest& request);
 
   void TriggerDeviceChangeReply();
@@ -44,7 +43,8 @@ private:
   static constexpr u32 VERSION = 0x40001;
   static constexpr u8 HID_CLASS = 0x03;
 
-  bool m_devicechange_first_call = true;
+  bool m_has_pending_changes = true;
+  bool m_is_shut_down = false;
   std::mutex m_devicechange_hook_address_mutex;
   std::unique_ptr<IOCtlRequest> m_devicechange_hook_request;
 
@@ -53,4 +53,4 @@ private:
   std::map<s32, u64> m_ios_ids;
   std::map<u64, s32> m_device_ids;
 };
-}  // namespace IOS::HLE::Device
+}  // namespace IOS::HLE

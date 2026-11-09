@@ -1,23 +1,30 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "UpdaterCommon/UpdaterCommon.h"
 
+#include <algorithm>
 #include <array>
+#include <memory>
 #include <optional>
 
 #include <OptionParser.h>
-#include <ed25519/ed25519.h>
+#include <ed25519.h>
+#include <fmt/format.h>
 #include <mbedtls/base64.h>
 #include <mbedtls/sha256.h>
 #include <zlib.h>
 
+#ifdef _WIN32
+#include "Common/CommonFuncs.h"
+#endif
 #include "Common/CommonPaths.h"
 #include "Common/FileUtil.h"
 #include "Common/HttpRequest.h"
+#include "Common/IOFile.h"
 #include "Common/ScopeGuard.h"
 #include "Common/StringUtil.h"
+#include "UpdaterCommon/Platform.h"
 #include "UpdaterCommon/UI.h"
 
 #ifndef _WIN32
@@ -25,54 +32,37 @@
 #include <sys/types.h>
 #endif
 
-namespace
-{
-// Where to log updater output.
-FILE* log_fp = stderr;
+#ifdef _WIN32
+#include <windows.h>
+#include <filesystem>
+#endif
+
+// Refer to docs/autoupdate_overview.md for a detailed overview of the autoupdate process
 
 // Public key used to verify update manifests.
 const std::array<u8, 32> UPDATE_PUB_KEY = {
     0x2a, 0xb3, 0xd1, 0xdc, 0x6e, 0xf5, 0x07, 0xf6, 0xa0, 0x6c, 0x7c, 0x54, 0xdf, 0x54, 0xf4, 0x42,
     0x80, 0xa6, 0x28, 0x8b, 0x6d, 0x70, 0x14, 0xb5, 0x4c, 0x34, 0x95, 0x20, 0x4d, 0xd4, 0xd3, 0x5d};
+// The private key for UPDATE_PUB_KEY_TEST is in Tools/test-updater.py
+const std::array<u8, 32> UPDATE_PUB_KEY_TEST = {
+    0x0c, 0x5f, 0xdc, 0xd1, 0x15, 0x71, 0xfb, 0x86, 0x4f, 0x9e, 0x6d, 0xe6, 0x65, 0x39, 0x43, 0xe1,
+    0x9e, 0xe0, 0x9b, 0x28, 0xc9, 0x1a, 0x60, 0xb7, 0x67, 0x1c, 0xf3, 0xf6, 0xca, 0x1b, 0xdd, 0x1a};
 
-const char UPDATE_TEMP_DIR[] = "TempUpdate";
+// Where to log updater output.
+static File::IOFile log_file;
 
-struct Manifest
+void LogToFile(const char* fmt, ...)
 {
-  using Filename = std::string;
-  using Hash = std::array<u8, 16>;
-  std::map<Filename, Hash> entries;
-};
+  va_list args;
+  va_start(args, fmt);
 
-// Represent the operations to be performed by the updater.
-struct TodoList
-{
-  struct DownloadOp
-  {
-    Manifest::Filename filename;
-    Manifest::Hash hash;
-  };
-  std::vector<DownloadOp> to_download;
+  log_file.WriteString(StringFromFormatV(fmt, args));
+  log_file.Flush();
 
-  struct UpdateOp
-  {
-    Manifest::Filename filename;
-    std::optional<Manifest::Hash> old_hash;
-    Manifest::Hash new_hash;
-  };
-  std::vector<UpdateOp> to_update;
+  va_end(args);
+}
 
-  struct DeleteOp
-  {
-    Manifest::Filename filename;
-    Manifest::Hash old_hash;
-  };
-  std::vector<DeleteOp> to_delete;
-
-  void Log() const;
-};
-
-bool ProgressCallback(double total, double now, double, double)
+static bool ProgressCallback(s64 total, s64 now, s64, s64)
 {
   UI::SetCurrentProgress(static_cast<int>(now), static_cast<int>(total));
   return true;
@@ -91,7 +81,7 @@ std::string HexEncode(const u8* buffer, size_t size)
   return out;
 }
 
-bool HexDecode(const std::string& hex, u8* buffer, size_t size)
+static bool HexDecode(const std::string& hex, u8* buffer, size_t size)
 {
   if (hex.size() != size * 2)
     return false;
@@ -120,7 +110,7 @@ bool HexDecode(const std::string& hex, u8* buffer, size_t size)
   return true;
 }
 
-std::optional<std::string> GzipInflate(const std::string& data)
+static std::optional<std::string> GzipInflate(const std::string& data)
 {
   z_stream zstrm;
   zstrm.zalloc = nullptr;
@@ -133,23 +123,24 @@ std::optional<std::string> GzipInflate(const std::string& data)
   inflateInit2(&zstrm, 16 + MAX_WBITS);
 
   std::string out;
-  char buffer[4096];
+  const size_t buf_len = 20 * 1024 * 1024;
+  auto buffer = std::make_unique<char[]>(buf_len);
   int ret;
 
   do
   {
-    zstrm.avail_out = sizeof(buffer);
-    zstrm.next_out = reinterpret_cast<u8*>(buffer);
+    zstrm.avail_out = buf_len;
+    zstrm.next_out = reinterpret_cast<u8*>(buffer.get());
 
     ret = inflate(&zstrm, 0);
-    out.append(buffer, sizeof(buffer) - zstrm.avail_out);
+    out.append(buffer.get(), buf_len - zstrm.avail_out);
   } while (ret == Z_OK);
 
   inflateEnd(&zstrm);
 
   if (ret != Z_STREAM_END)
   {
-    fprintf(log_fp, "Could not read the data as gzip: error %d.\n", ret);
+    LogToFile("Could not read the data as gzip: error %d.\n", ret);
     return {};
   }
 
@@ -163,11 +154,11 @@ Manifest::Hash ComputeHash(const std::string& contents)
                      false);
 
   Manifest::Hash out;
-  std::copy(full.begin(), full.begin() + 16, out.begin());
+  std::copy_n(full.begin(), 16, out.begin());
   return out;
 }
 
-bool VerifySignature(const std::string& data, const std::string& b64_signature)
+static bool VerifySignature(const std::string& data, const std::string& b64_signature)
 {
   u8 signature[64];  // ed25519 sig size.
   size_t sig_size;
@@ -177,46 +168,47 @@ bool VerifySignature(const std::string& data, const std::string& b64_signature)
                             b64_signature.size()) ||
       sig_size != sizeof(signature))
   {
-    fprintf(log_fp, "Invalid base64: %s\n", b64_signature.c_str());
+    LogToFile("Invalid base64: %s\n", b64_signature.c_str());
     return false;
   }
 
+  const auto& pub_key = UI::IsTestMode() ? UPDATE_PUB_KEY_TEST : UPDATE_PUB_KEY;
   return ed25519_verify(signature, reinterpret_cast<const u8*>(data.data()), data.size(),
-                        UPDATE_PUB_KEY.data());
+                        pub_key.data());
 }
 
-void FlushLog()
+static void FlushLog()
 {
-  fflush(log_fp);
-  fclose(log_fp);
+  log_file.Flush();
+  log_file.Close();
 }
 
 void TodoList::Log() const
 {
   if (to_update.size())
   {
-    fprintf(log_fp, "Updating:\n");
+    LogToFile("Updating:\n");
     for (const auto& op : to_update)
     {
       std::string old_desc =
           op.old_hash ? HexEncode(op.old_hash->data(), op.old_hash->size()) : "(new)";
-      fprintf(log_fp, "  - %s: %s -> %s\n", op.filename.c_str(), old_desc.c_str(),
-              HexEncode(op.new_hash.data(), op.new_hash.size()).c_str());
+      LogToFile("  - %s: %s -> %s\n", op.filename.c_str(), old_desc.c_str(),
+                HexEncode(op.new_hash.data(), op.new_hash.size()).c_str());
     }
   }
   if (to_delete.size())
   {
-    fprintf(log_fp, "Deleting:\n");
+    LogToFile("Deleting:\n");
     for (const auto& op : to_delete)
     {
-      fprintf(log_fp, "  - %s (%s)\n", op.filename.c_str(),
-              HexEncode(op.old_hash.data(), op.old_hash.size()).c_str());
+      LogToFile("  - %s (%s)\n", op.filename.c_str(),
+                HexEncode(op.old_hash.data(), op.old_hash.size()).c_str());
     }
   }
 }
 
-bool DownloadContent(const std::vector<TodoList::DownloadOp>& to_download,
-                     const std::string& content_base_url, const std::string& temp_path)
+static bool DownloadContent(std::span<const TodoList::DownloadOp> to_download,
+                            const std::string& content_base_url, const std::string& temp_path)
 {
   Common::HttpRequest req(std::chrono::seconds(30), ProgressCallback);
 
@@ -234,8 +226,8 @@ bool DownloadContent(const std::vector<TodoList::DownloadOp>& to_download,
     if (File::Exists(temp_path + DIR_SEP + hash_filename))
       continue;
 
-    UI::SetDescription("Downloading " + download.filename + "... (File " + std::to_string(i + 1) +
-                       " of " + std::to_string(to_download.size()) + ")");
+    UI::SetDescription(fmt::format("Downloading {}... (File {} of {})", download.filename, i + 1,
+                                   to_download.size()));
     UI::SetCurrentMarquee(false);
 
     // Add slashes where needed.
@@ -244,7 +236,7 @@ bool DownloadContent(const std::vector<TodoList::DownloadOp>& to_download,
     content_store_path.insert(2, "/");
 
     std::string url = content_base_url + content_store_path;
-    fprintf(log_fp, "Downloading %s ...\n", url.c_str());
+    LogToFile("Downloading %s ...\n", url.c_str());
 
     auto resp = req.Get(url);
     if (!resp)
@@ -263,28 +255,35 @@ bool DownloadContent(const std::vector<TodoList::DownloadOp>& to_download,
     Manifest::Hash contents_hash = ComputeHash(decompressed);
     if (contents_hash != download.hash)
     {
-      fprintf(log_fp, "Wrong hash on downloaded content %s.\n", url.c_str());
+      LogToFile("Wrong hash on downloaded content %s.\n", url.c_str());
       return false;
     }
 
     const std::string out = temp_path + DIR_SEP + hash_filename;
     if (!File::WriteStringToFile(out, decompressed))
     {
-      fprintf(log_fp, "Could not write cache file %s.\n", out.c_str());
+      LogToFile("Could not write cache file %s.\n", out.c_str());
       return false;
     }
   }
   return true;
 }
 
-TodoList ComputeActionsToDo(Manifest this_manifest, Manifest next_manifest)
+static bool PlatformVersionCheck(const std::vector<TodoList::UpdateOp>& to_update,
+                                 const std::string& install_base_path, const std::string& temp_dir)
+{
+  UI::SetDescription("Checking platform...");
+  return Platform::VersionCheck(to_update, install_base_path, temp_dir);
+}
+
+static TodoList ComputeActionsToDo(Manifest this_manifest, Manifest next_manifest)
 {
   TodoList todo;
 
   // Delete if present in this manifest but not in next manifest.
   for (const auto& entry : this_manifest.entries)
   {
-    if (next_manifest.entries.find(entry.first) == next_manifest.entries.end())
+    if (!next_manifest.entries.contains(entry.first))
     {
       TodoList::DeleteOp del;
       del.filename = entry.first;
@@ -321,34 +320,7 @@ TodoList ComputeActionsToDo(Manifest this_manifest, Manifest next_manifest)
   return todo;
 }
 
-std::optional<std::string> FindOrCreateTempDir(const std::string& base_path)
-{
-  std::string temp_path = base_path + DIR_SEP + UPDATE_TEMP_DIR;
-  int counter = 0;
-
-  File::DeleteDirRecursively(temp_path);
-
-  do
-  {
-    if (File::CreateDir(temp_path))
-    {
-      return temp_path;
-    }
-    else
-    {
-      fprintf(log_fp, "Couldn't create temp directory.\n");
-
-      // Try again with a counter appended to the path.
-      std::string suffix = UPDATE_TEMP_DIR + std::to_string(counter);
-      temp_path = base_path + DIR_SEP + suffix;
-    }
-  } while (counter++ < 10);
-
-  fprintf(log_fp, "Could not find an appropriate temp directory name. Giving up.\n");
-  return {};
-}
-
-void CleanUpTempDir(const std::string& temp_dir, const TodoList& todo)
+static void CleanUpTempDir(const std::string& temp_dir, const TodoList& todo)
 {
   // This is best-effort cleanup, we ignore most errors.
   for (const auto& download : todo.to_download)
@@ -356,20 +328,20 @@ void CleanUpTempDir(const std::string& temp_dir, const TodoList& todo)
   File::DeleteDir(temp_dir);
 }
 
-bool BackupFile(const std::string& path)
+static bool BackupFile(const std::string& path)
 {
   std::string backup_path = path + ".bak";
-  fprintf(log_fp, "Backing up unknown pre-existing %s to .bak.\n", path.c_str());
+  LogToFile("Backing up existing %s to .bak.\n", path.c_str());
   if (!File::Rename(path, backup_path))
   {
-    fprintf(log_fp, "Cound not rename %s to %s for backup.\n", path.c_str(), backup_path.c_str());
+    LogToFile("Could not rename %s to %s for backup.\n", path.c_str(), backup_path.c_str());
     return false;
   }
   return true;
 }
 
-bool DeleteObsoleteFiles(const std::vector<TodoList::DeleteOp>& to_delete,
-                         const std::string& install_base_path)
+static bool DeleteObsoleteFiles(std::span<const TodoList::DeleteOp> to_delete,
+                                const std::string& install_base_path)
 {
   for (const auto& op : to_delete)
   {
@@ -377,7 +349,7 @@ bool DeleteObsoleteFiles(const std::vector<TodoList::DeleteOp>& to_delete,
 
     if (!File::Exists(path))
     {
-      fprintf(log_fp, "File %s is already missing.\n", op.filename.c_str());
+      LogToFile("File %s is already missing.\n", op.filename.c_str());
       continue;
     }
     else
@@ -385,7 +357,7 @@ bool DeleteObsoleteFiles(const std::vector<TodoList::DeleteOp>& to_delete,
       std::string contents;
       if (!File::ReadFileToString(path, contents))
       {
-        fprintf(log_fp, "Could not read file planned for deletion: %s.\n", op.filename.c_str());
+        LogToFile("Could not read file planned for deletion: %s.\n", op.filename.c_str());
         return false;
       }
       Manifest::Hash contents_hash = ComputeHash(contents);
@@ -401,15 +373,20 @@ bool DeleteObsoleteFiles(const std::vector<TodoList::DeleteOp>& to_delete,
   return true;
 }
 
-bool UpdateFiles(const std::vector<TodoList::UpdateOp>& to_update,
-                 const std::string& install_base_path, const std::string& temp_path)
+static bool UpdateFiles(std::span<const TodoList::UpdateOp> to_update,
+                        const std::string& install_base_path, const std::string& temp_path)
 {
+#ifdef _WIN32
+  const auto self_path = std::filesystem::path(Common::GetModuleName(nullptr).value());
+  const auto self_filename = self_path.filename();
+#endif
+
   for (const auto& op : to_update)
   {
     std::string path = install_base_path + DIR_SEP + op.filename;
     if (!File::CreateFullPath(path))
     {
-      fprintf(log_fp, "Could not create directory structure for %s.\n", op.filename.c_str());
+      LogToFile("Could not create directory structure for %s.\n", op.filename.c_str());
       return false;
     }
 
@@ -429,25 +406,39 @@ bool UpdateFiles(const std::vector<TodoList::UpdateOp>& to_update,
 
       if (S_ISLNK(file_stats.st_mode))
       {
-        fprintf(log_fp, "%s is symlink, skipping\n", path.c_str());
+        LogToFile("%s is symlink, skipping\n", path.c_str());
         continue;
       }
 
       permission = file_stats.st_mode;
 #endif
+
+#ifdef _WIN32
+      // If incoming file would overwrite the currently executing file, rename ourself to allow the
+      // overwrite to complete. Renaming ourself while executing is fine, but deleting ourself is
+      // rather tricky. The best way to handle that would be to execute the newly-placed Updater.exe
+      // after entire update has completed, and have it delete our relocated executable. For now we
+      // just let the relocated file hang around.
+      // It is enough to match based on filename, don't need File/VolumeId etc.
+      const bool is_self = op.filename == self_filename;
+#else
+      // On other platforms, the renaming is handled by Dolphin before running the Updater.
+      const bool is_self = false;
+#endif
+
       std::string contents;
       if (!File::ReadFileToString(path, contents))
       {
-        fprintf(log_fp, "Could not read existing file %s.\n", op.filename.c_str());
+        LogToFile("Could not read existing file %s.\n", op.filename.c_str());
         return false;
       }
       Manifest::Hash contents_hash = ComputeHash(contents);
       if (contents_hash == op.new_hash)
       {
-        fprintf(log_fp, "File %s was already up to date. Partial update?\n", op.filename.c_str());
+        LogToFile("File %s was already up to date. Partial update?\n", op.filename.c_str());
         continue;
       }
-      else if (!op.old_hash || contents_hash != *op.old_hash)
+      else if (!op.old_hash || contents_hash != *op.old_hash || is_self)
       {
         if (!BackupFile(path))
           return false;
@@ -456,11 +447,30 @@ bool UpdateFiles(const std::vector<TodoList::UpdateOp>& to_update,
 
     // Now we can safely move the new contents to the location.
     std::string content_filename = HexEncode(op.new_hash.data(), op.new_hash.size());
-    fprintf(log_fp, "Updating file %s from content %s...\n", op.filename.c_str(),
-            content_filename.c_str());
-    if (!File::Copy(temp_path + DIR_SEP + content_filename, path))
+    LogToFile("Updating file %s from content %s...\n", op.filename.c_str(),
+              content_filename.c_str());
+#ifdef __APPLE__
+    // macOS caches the code signature of Mach-O executables when they're first loaded.
+    // Unfortunately, there is a quirk in the kernel with how it handles the cache: if the file is
+    // simply overwritten, the cache isn't invalidated and the old code signature is used to verify
+    // the new file. This causes macOS to kill the process with a code signing error. To workaround
+    // this, we use File::Rename() instead of File::CopyRegularFile(). However, this also means that
+    // if two files have the same hash, the first file will succeed, but the second file will fail
+    // because the source file no longer exists. To deal with this, we copy the content file to a
+    // temporary file and then rename the temporary file to the destination path.
+    const std::string temporary_file = temp_path + DIR_SEP + "temporary_file";
+    if (!File::CopyRegularFile(temp_path + DIR_SEP + content_filename, temporary_file))
     {
-      fprintf(log_fp, "Could not update file %s.\n", op.filename.c_str());
+      LogToFile("Could not copy %s to %s.\n", content_filename.c_str(), temporary_file.c_str());
+      return false;
+    }
+
+    if (!File::Rename(temporary_file, path))
+#else
+    if (!File::CopyRegularFile(temp_path + DIR_SEP + content_filename, path))
+#endif
+    {
+      LogToFile("Could not update file %s.\n", op.filename.c_str());
       return false;
     }
 
@@ -472,36 +482,41 @@ bool UpdateFiles(const std::vector<TodoList::UpdateOp>& to_update,
   return true;
 }
 
-bool PerformUpdate(const TodoList& todo, const std::string& install_base_path,
-                   const std::string& content_base_url, const std::string& temp_path)
+static bool PerformUpdate(const TodoList& todo, const std::string& install_base_path,
+                          const std::string& content_base_url, const std::string& temp_path)
 {
-  fprintf(log_fp, "Starting download step...\n");
+  LogToFile("Starting download step...\n");
   if (!DownloadContent(todo.to_download, content_base_url, temp_path))
     return false;
-  fprintf(log_fp, "Download step completed.\n");
+  LogToFile("Download step completed.\n");
 
-  fprintf(log_fp, "Starting update step...\n");
+  LogToFile("Starting platform version check step...\n");
+  if (!PlatformVersionCheck(todo.to_update, install_base_path, temp_path))
+    return false;
+  LogToFile("Platform version check step completed.\n");
+
+  LogToFile("Starting update step...\n");
   if (!UpdateFiles(todo.to_update, install_base_path, temp_path))
     return false;
-  fprintf(log_fp, "Update step completed.\n");
+  LogToFile("Update step completed.\n");
 
-  fprintf(log_fp, "Starting deletion step...\n");
+  LogToFile("Starting deletion step...\n");
   if (!DeleteObsoleteFiles(todo.to_delete, install_base_path))
     return false;
-  fprintf(log_fp, "Deletion step completed.\n");
+  LogToFile("Deletion step completed.\n");
 
   return true;
 }
 
-void FatalError(const std::string& message)
+static void FatalError(const std::string& message)
 {
-  fprintf(log_fp, "%s\n", message.c_str());
+  LogToFile("%s\n", message.c_str());
 
   UI::SetVisible(true);
   UI::Error(message);
 }
 
-std::optional<Manifest> ParseManifest(const std::string& manifest)
+static std::optional<Manifest> ParseManifest(const std::string& manifest)
 {
   Manifest parsed;
   size_t pos = 0;
@@ -511,13 +526,13 @@ std::optional<Manifest> ParseManifest(const std::string& manifest)
     size_t filename_end_pos = manifest.find('\t', pos);
     if (filename_end_pos == std::string::npos)
     {
-      fprintf(log_fp, "Manifest entry %zu: could not find filename end.\n", parsed.entries.size());
+      LogToFile("Manifest entry %zu: could not find filename end.\n", parsed.entries.size());
       return {};
     }
     size_t hash_end_pos = manifest.find('\n', filename_end_pos);
     if (hash_end_pos == std::string::npos)
     {
-      fprintf(log_fp, "Manifest entry %zu: could not find hash end.\n", parsed.entries.size());
+      LogToFile("Manifest entry %zu: could not find hash end.\n", parsed.entries.size());
       return {};
     }
 
@@ -525,16 +540,14 @@ std::optional<Manifest> ParseManifest(const std::string& manifest)
     std::string hash = manifest.substr(filename_end_pos + 1, hash_end_pos - filename_end_pos - 1);
     if (hash.size() != 32)
     {
-      fprintf(log_fp, "Manifest entry %zu: invalid hash: \"%s\".\n", parsed.entries.size(),
-              hash.c_str());
+      LogToFile("Manifest entry %zu: invalid hash: \"%s\".\n", parsed.entries.size(), hash.c_str());
       return {};
     }
 
     Manifest::Hash decoded_hash;
     if (!HexDecode(hash, decoded_hash.data(), decoded_hash.size()))
     {
-      fprintf(log_fp, "Manifest entry %zu: invalid hash: \"%s\".\n", parsed.entries.size(),
-              hash.c_str());
+      LogToFile("Manifest entry %zu: invalid hash: \"%s\".\n", parsed.entries.size(), hash.c_str());
       return {};
     }
 
@@ -546,14 +559,14 @@ std::optional<Manifest> ParseManifest(const std::string& manifest)
 }
 
 // Not showing a progress bar here because this part is just too quick
-std::optional<Manifest> FetchAndParseManifest(const std::string& url)
+static std::optional<Manifest> FetchAndParseManifest(const std::string& url)
 {
   Common::HttpRequest http;
 
   Common::HttpRequest::Response resp = http.Get(url);
   if (!resp)
   {
-    fprintf(log_fp, "Manifest download failed.\n");
+    LogToFile("Manifest download failed.\n");
     return {};
   }
 
@@ -567,7 +580,7 @@ std::optional<Manifest> FetchAndParseManifest(const std::string& url)
   size_t boundary = decompressed.rfind("\n\n");
   if (boundary == std::string::npos)
   {
-    fprintf(log_fp, "No signature was found in manifest.\n");
+    LogToFile("No signature was found in manifest.\n");
     return {};
   }
 
@@ -586,7 +599,7 @@ std::optional<Manifest> FetchAndParseManifest(const std::string& url)
   }
   if (!found_valid_signature)
   {
-    fprintf(log_fp, "Could not verify signature of the manifest.\n");
+    LogToFile("Could not verify signature of the manifest.\n");
     return {};
   }
 
@@ -604,7 +617,7 @@ struct Options
   std::optional<std::string> log_file;
 };
 
-std::optional<Options> ParseCommandLine(std::vector<std::string>& args)
+static std::optional<Options> ParseCommandLine(std::vector<std::string>& args)
 {
   using optparse::OptionParser;
 
@@ -672,7 +685,6 @@ std::optional<Options> ParseCommandLine(std::vector<std::string>& args)
 
   return opts;
 }
-};  // namespace
 
 bool RunUpdater(std::vector<std::string> args)
 {
@@ -691,16 +703,15 @@ bool RunUpdater(std::vector<std::string> args)
 
   if (opts.log_file)
   {
-    log_fp = fopen(opts.log_file.value().c_str(), "w");
-    if (!log_fp)
-      log_fp = stderr;
+    if (!log_file.Open(opts.log_file.value(), "w"))
+      log_file.SetHandle(stderr);
     else
       atexit(FlushLog);
   }
 
-  fprintf(log_fp, "Updating from: %s\n", opts.this_manifest_url.c_str());
-  fprintf(log_fp, "Updating to:   %s\n", opts.next_manifest_url.c_str());
-  fprintf(log_fp, "Install path:  %s\n", opts.install_base_path.c_str());
+  LogToFile("Updating from: %s\n", opts.this_manifest_url.c_str());
+  LogToFile("Updating to:   %s\n", opts.next_manifest_url.c_str());
+  LogToFile("Install path:  %s\n", opts.install_base_path.c_str());
 
   if (!File::IsDirectory(opts.install_base_path))
   {
@@ -710,13 +721,13 @@ bool RunUpdater(std::vector<std::string> args)
 
   if (opts.parent_pid)
   {
-    fprintf(log_fp, "Waiting for parent PID %d to complete...\n", *opts.parent_pid);
+    LogToFile("Waiting for parent PID %d to complete...\n", *opts.parent_pid);
 
     auto pid = opts.parent_pid.value();
 
     UI::WaitForPID(static_cast<u32>(pid));
 
-    fprintf(log_fp, "Completed! Proceeding with update.\n");
+    LogToFile("Completed! Proceeding with update.\n");
   }
 
   UI::SetVisible(true);
@@ -747,18 +758,20 @@ bool RunUpdater(std::vector<std::string> args)
   TodoList todo = ComputeActionsToDo(this_manifest, next_manifest);
   todo.Log();
 
-  std::optional<std::string> maybe_temp_dir = FindOrCreateTempDir(opts.install_base_path);
-  if (!maybe_temp_dir)
+  std::string temp_dir = File::CreateTempDir();
+  if (temp_dir.empty())
+  {
+    FatalError("Could not create temporary directory. Aborting.");
     return false;
-  std::string temp_dir = std::move(*maybe_temp_dir);
+  }
 
   UI::SetDescription("Performing Update...");
 
   bool ok = PerformUpdate(todo, opts.install_base_path, opts.content_store_url, temp_dir);
+  CleanUpTempDir(temp_dir, todo);
   if (!ok)
   {
     FatalError("Failed to apply the update.");
-    CleanUpTempDir(temp_dir, todo);
     return false;
   }
 

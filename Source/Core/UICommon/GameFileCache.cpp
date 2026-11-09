@@ -1,15 +1,11 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "UICommon/GameFileCache.h"
 
 #include <algorithm>
 #include <cstddef>
-#include <functional>
-#include <list>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -17,9 +13,9 @@
 
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
-#include "Common/File.h"
 #include "Common/FileSearch.h"
 #include "Common/FileUtil.h"
+#include "Common/IOFile.h"
 
 #include "DiscIO/DirectoryBlob.h"
 
@@ -27,13 +23,14 @@
 
 namespace UICommon
 {
-static constexpr u32 CACHE_REVISION = 15;  // Last changed in PR 7816
+static constexpr u32 CACHE_REVISION = 27;  // Last changed in PR 13844
 
-std::vector<std::string> FindAllGamePaths(const std::vector<std::string>& directories_to_scan,
+std::vector<std::string> FindAllGamePaths(std::span<const std::string_view> directories_to_scan,
                                           bool recursive_scan)
 {
-  static const std::vector<std::string> search_extensions = {
-      ".gcm", ".tgc", ".iso", ".ciso", ".gcz", ".wbfs", ".wad", ".dol", ".elf"};
+  constexpr auto search_extensions =
+      std::to_array<std::string_view>({".gcm", ".tgc", ".bin", ".iso", ".ciso", ".gcz", ".wbfs",
+                                       ".wia", ".rvz", ".nfs", ".wad", ".dol", ".elf", ".json"});
 
   // TODO: We could process paths iteratively as they are found
   return Common::DoFileSearch(directories_to_scan, search_extensions, recursive_scan);
@@ -43,13 +40,9 @@ GameFileCache::GameFileCache() : m_path(File::GetUserPath(D_CACHE_IDX) + "gameli
 {
 }
 
-GameFileCache::GameFileCache(std::string path) : m_path(std::move(path))
+void GameFileCache::ForEach(const ForEachFn& f) const
 {
-}
-
-void GameFileCache::ForEach(std::function<void(const std::shared_ptr<const GameFile>&)> f) const
-{
-  for (const std::shared_ptr<const GameFile>& item : m_cached_files)
+  for (const std::shared_ptr<GameFile>& item : m_cached_files)
     f(item);
 }
 
@@ -69,9 +62,7 @@ void GameFileCache::Clear(DeleteOnDisk delete_on_disk)
 std::shared_ptr<const GameFile> GameFileCache::AddOrGet(const std::string& path,
                                                         bool* cache_changed)
 {
-  auto it = std::find_if(
-      m_cached_files.begin(), m_cached_files.end(),
-      [&path](const std::shared_ptr<GameFile>& file) { return file->GetFilePath() == path; });
+  auto it = std::ranges::find(m_cached_files, path, &GameFile::GetFilePath);
   const bool found = it != m_cached_files.cend();
   if (!found)
   {
@@ -87,10 +78,10 @@ std::shared_ptr<const GameFile> GameFileCache::AddOrGet(const std::string& path,
   return result;
 }
 
-bool GameFileCache::Update(
-    const std::vector<std::string>& all_game_paths,
-    std::function<void(const std::shared_ptr<const GameFile>&)> game_added_to_cache,
-    std::function<void(const std::string&)> game_removed_from_cache)
+bool GameFileCache::Update(std::span<const std::string> all_game_paths,
+                           const GameAddedToCacheFn& game_added_to_cache,
+                           const GameRemovedFromCacheFn& game_removed_from_cache,
+                           const std::atomic_bool& processing_halted)
 {
   // Copy game paths into a set, except ones that match DiscIO::ShouldHideFromGameList.
   // TODO: Prevent DoFileSearch from looking inside /files/ directories of DirectoryBlobs at all?
@@ -113,6 +104,9 @@ bool GameFileCache::Update(
     auto end = m_cached_files.end();
     while (it != end)
     {
+      if (processing_halted)
+        break;
+
       if (game_paths.erase((*it)->GetFilePath()))
       {
         ++it;
@@ -134,6 +128,9 @@ bool GameFileCache::Update(
   // aren't in m_cached_files, so we simply add all of them to m_cached_files.
   for (const std::string& path : game_paths)
   {
+    if (processing_halted)
+      break;
+
     auto file = std::make_shared<GameFile>(path);
     if (file->IsValid())
     {
@@ -148,13 +145,16 @@ bool GameFileCache::Update(
   return cache_changed;
 }
 
-bool GameFileCache::UpdateAdditionalMetadata(
-    std::function<void(const std::shared_ptr<const GameFile>&)> game_updated)
+bool GameFileCache::UpdateAdditionalMetadata(const GameUpdatedFn& game_updated,
+                                             const std::atomic_bool& processing_halted)
 {
   bool cache_changed = false;
 
   for (std::shared_ptr<GameFile>& file : m_cached_files)
   {
+    if (processing_halted)
+      break;
+
     const bool updated = UpdateAdditionalMetadata(&file);
     cache_changed |= updated;
     if (game_updated && updated)
@@ -166,6 +166,7 @@ bool GameFileCache::UpdateAdditionalMetadata(
 
 bool GameFileCache::UpdateAdditionalMetadata(std::shared_ptr<GameFile>* game_file)
 {
+  const bool xml_metadata_changed = (*game_file)->XMLMetadataChanged();
   const bool wii_banner_changed = (*game_file)->WiiBannerChanged();
   const bool custom_banner_changed = (*game_file)->CustomBannerChanged();
 
@@ -174,14 +175,18 @@ bool GameFileCache::UpdateAdditionalMetadata(std::shared_ptr<GameFile>* game_fil
   const bool default_cover_changed = (*game_file)->DefaultCoverChanged();
   const bool custom_cover_changed = (*game_file)->CustomCoverChanged();
 
-  if (!wii_banner_changed && !custom_banner_changed && !default_cover_changed &&
-      !custom_cover_changed)
+  if (!xml_metadata_changed && !wii_banner_changed && !custom_banner_changed &&
+      !default_cover_changed && !custom_cover_changed)
+  {
     return false;
+  }
 
   // If a cached file needs an update, apply the updates to a copy and delete the original.
   // This makes the usage of cached files in other threads safe.
 
   std::shared_ptr<GameFile> copy = std::make_shared<GameFile>(**game_file);
+  if (xml_metadata_changed)
+    copy->XMLMetadataCommit();
   if (wii_banner_changed)
     copy->WiiBannerCommit();
   if (custom_banner_changed)
@@ -217,14 +222,14 @@ bool GameFileCache::SyncCacheFile(bool save)
   {
     // Measure the size of the buffer.
     u8* ptr = nullptr;
-    PointerWrap p(&ptr, PointerWrap::MODE_MEASURE);
-    DoState(&p);
+    PointerWrap p_measure(&ptr, 0, PointerWrap::Mode::Measure);
+    DoState(&p_measure);
     const size_t buffer_size = reinterpret_cast<size_t>(ptr);
 
     // Then actually do the write.
     std::vector<u8> buffer(buffer_size);
-    ptr = &buffer[0];
-    p.SetMode(PointerWrap::MODE_WRITE);
+    ptr = buffer.data();
+    PointerWrap p(&ptr, buffer_size, PointerWrap::Mode::Write);
     DoState(&p, buffer_size);
     if (f.WriteBytes(buffer.data(), buffer.size()))
       success = true;
@@ -235,9 +240,9 @@ bool GameFileCache::SyncCacheFile(bool save)
     if (!buffer.empty() && f.ReadBytes(buffer.data(), buffer.size()))
     {
       u8* ptr = buffer.data();
-      PointerWrap p(&ptr, PointerWrap::MODE_READ);
+      PointerWrap p(&ptr, buffer.size(), PointerWrap::Mode::Read);
       DoState(&p, buffer.size());
-      if (p.GetMode() == PointerWrap::MODE_READ)
+      if (p.IsReadMode())
         success = true;
     }
   }
@@ -258,16 +263,16 @@ void GameFileCache::DoState(PointerWrap* p, u64 size)
     u64 expected_size;
   } header = {CACHE_REVISION, size};
   p->Do(header);
-  if (p->GetMode() == PointerWrap::MODE_READ)
+  if (p->IsReadMode())
   {
     if (header.revision != CACHE_REVISION || header.expected_size != size)
     {
-      p->SetMode(PointerWrap::MODE_MEASURE);
+      p->SetMeasureMode();
       return;
     }
   }
   p->DoEachElement(m_cached_files, [](PointerWrap& state, std::shared_ptr<GameFile>& elem) {
-    if (state.GetMode() == PointerWrap::MODE_READ)
+    if (state.IsReadMode())
       elem = std::make_shared<GameFile>();
     elem->DoState(state);
   });

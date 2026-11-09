@@ -1,28 +1,55 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <concepts>
 #include <cstddef>
+#include <memory>
+#include <span>
 #include <string>
 
 #include "Common/Debug/MemoryPatches.h"
 #include "Common/Debug/Watches.h"
-#include "Common/DebugInterface.h"
+#include "Common/Swap.h"
+#include "Core/Debugger/DebugInterface.h"
+#include "Core/NetworkCaptureLogger.h"
 
-class PPCPatches : public Common::Debug::MemoryPatches
+namespace Core
 {
+class CPUThreadGuard;
+class System;
+}  // namespace Core
+class PPCSymbolDB;
+
+void ApplyMemoryPatch(const Core::CPUThreadGuard& guard, std::span<u8> value, const u32 address,
+                      bool store_existing_value = true);
+
+template <std::unsigned_integral T>
+void ApplyMemoryPatch(const Core::CPUThreadGuard& guard, T value, const u32 address)
+{
+  Common::BigEndianValue<T> big_endian{value};
+  auto data =
+      std::span<u8, sizeof(T)>{reinterpret_cast<u8*>(std::addressof(big_endian)), sizeof(T)};
+  ApplyMemoryPatch(guard, data, address);
+}
+
+class PPCPatches final : public Common::Debug::MemoryPatches
+{
+public:
+  void ApplyExistingPatch(const Core::CPUThreadGuard& guard, std::size_t index) override;
+
 private:
-  void Patch(std::size_t index) override;
+  void Patch(const Core::CPUThreadGuard& guard, std::size_t index) override;
+  void UnPatch(std::size_t index) override;
 };
 
 // wrapper between disasm control and Dolphin debugger
 
-class PPCDebugInterface final : public Common::DebugInterface
+class PPCDebugInterface final : public Core::DebugInterface
 {
 public:
-  PPCDebugInterface();
+  explicit PPCDebugInterface(Core::System& system, PPCSymbolDB& ppc_symbol_db);
   ~PPCDebugInterface() override;
 
   // Watches
@@ -33,55 +60,70 @@ public:
   void UpdateWatch(std::size_t index, u32 address, std::string name) override;
   void UpdateWatchAddress(std::size_t index, u32 address) override;
   void UpdateWatchName(std::size_t index, std::string name) override;
+  void UpdateWatchLockedState(std::size_t index, bool locked) override;
   void EnableWatch(std::size_t index) override;
   void DisableWatch(std::size_t index) override;
   bool HasEnabledWatch(u32 address) const override;
   void RemoveWatch(std::size_t index) override;
-  void LoadWatchesFromStrings(const std::vector<std::string>& watches) override;
+  void LoadWatchesFromStrings(std::span<const std::string> watches) override;
   std::vector<std::string> SaveWatchesToStrings() const override;
   void ClearWatches() override;
 
   // Memory Patches
-  void SetPatch(u32 address, u32 value) override;
-  void SetPatch(u32 address, std::vector<u8> value) override;
+  void SetPatch(const Core::CPUThreadGuard& guard, u32 address, u32 value) override;
+  void SetPatch(const Core::CPUThreadGuard& guard, u32 address, std::vector<u8> value) override;
+  void SetFramePatch(const Core::CPUThreadGuard& guard, u32 address, u32 value) override;
+  void SetFramePatch(const Core::CPUThreadGuard& guard, u32 address,
+                     std::vector<u8> value) override;
   const std::vector<Common::Debug::MemoryPatch>& GetPatches() const override;
-  void UnsetPatch(u32 address) override;
-  void EnablePatch(std::size_t index) override;
-  void DisablePatch(std::size_t index) override;
+  void UnsetPatch(const Core::CPUThreadGuard& guard, u32 address) override;
+  void EnablePatch(const Core::CPUThreadGuard& guard, std::size_t index) override;
+  void DisablePatch(const Core::CPUThreadGuard& guard, std::size_t index) override;
   bool HasEnabledPatch(u32 address) const override;
-  void RemovePatch(std::size_t index) override;
-  void ClearPatches() override;
+  void RemovePatch(const Core::CPUThreadGuard& guard, std::size_t index) override;
+  void ClearPatches(const Core::CPUThreadGuard& guard) override;
+  void ApplyExistingPatch(const Core::CPUThreadGuard& guard, std::size_t index) override;
 
-  std::string Disassemble(u32 address) const override;
-  std::string GetRawMemoryString(int memory, u32 address) const override;
+  // Threads
+  Common::Debug::Threads GetThreads(const Core::CPUThreadGuard& guard) const override;
+
+  std::string Disassemble(const Core::CPUThreadGuard* guard, u32 address) const override;
+  std::string GetRawMemoryString(const Core::CPUThreadGuard& guard, int memory,
+                                 u32 address) const override;
   bool IsAlive() const override;
   bool IsBreakpoint(u32 address) const override;
-  void SetBreakpoint(u32 address) override;
-  void ClearBreakpoint(u32 address) override;
+  void AddBreakpoint(u32 address) override;
+  void RemoveBreakpoint(u32 address) override;
   void ClearAllBreakpoints() override;
   void ToggleBreakpoint(u32 address) override;
   void ClearAllMemChecks() override;
   bool IsMemCheck(u32 address, size_t size = 1) const override;
   void ToggleMemCheck(u32 address, bool read = true, bool write = true, bool log = true) override;
-  u32 ReadMemory(u32 address) const override;
+  u32 ReadMemory(const Core::CPUThreadGuard& guard, u32 address) const override;
 
   enum
   {
     EXTRAMEM_ARAM = 1,
   };
 
-  u32 ReadExtraMemory(int memory, u32 address) const override;
-  u32 ReadInstruction(u32 address) const override;
+  u32 ReadExtraMemory(const Core::CPUThreadGuard& guard, int memory, u32 address) const override;
+  u32 ReadInstruction(const Core::CPUThreadGuard& guard, u32 address) const override;
+  std::optional<u32> GetMemoryAddressFromInstruction(const std::string& instruction) const override;
   u32 GetPC() const override;
   void SetPC(u32 address) override;
   void Step() override {}
-  void RunToBreakpoint() override;
-  u32 GetColor(u32 address) const override;
+  void RunTo(u32 address) override;
+  u32 GetColor(const Core::CPUThreadGuard* guard, u32 address) const override;
   std::string GetDescription(u32 address) const override;
 
-  void Clear() override;
+  std::shared_ptr<Core::NetworkCaptureLogger> NetworkLogger();
+
+  void Clear(const Core::CPUThreadGuard& guard) override;
 
 private:
   Common::Debug::Watches m_watches;
   PPCPatches m_patches;
+  std::shared_ptr<Core::NetworkCaptureLogger> m_network_logger;
+  Core::System& m_system;
+  PPCSymbolDB& m_ppc_symbol_db;
 };

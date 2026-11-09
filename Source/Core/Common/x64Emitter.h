@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // WARNING - THIS LIBRARY IS NOT THREAD SAFE!!!
 
@@ -114,8 +113,8 @@ struct OpArg
   // dummy op arg, used for storage
   constexpr OpArg() = default;
   constexpr OpArg(u64 offset_, int scale_, X64Reg rm_reg = RAX, X64Reg scaled_reg = RAX)
-      : scale{static_cast<u8>(scale_)}, offsetOrBaseReg{static_cast<u16>(rm_reg)},
-        indexReg{static_cast<u16>(scaled_reg)}, offset{offset_}
+      : offset{offset_}, offsetOrBaseReg{static_cast<u16>(rm_reg)},
+        indexReg{static_cast<u16>(scaled_reg)}, scale{static_cast<u8>(scale_)}
   {
   }
   constexpr bool operator==(const OpArg& b) const
@@ -123,7 +122,6 @@ struct OpArg
     return std::tie(scale, offsetOrBaseReg, indexReg, offset, operandReg) ==
            std::tie(b.scale, b.offsetOrBaseReg, b.indexReg, b.offset, b.operandReg);
   }
-  constexpr bool operator!=(const OpArg& b) const { return !operator==(b); }
   u64 Imm64() const
   {
     DEBUG_ASSERT(scale == SCALE_IMM64);
@@ -236,11 +234,11 @@ private:
   void WriteSingleByteOp(XEmitter* emit, u8 op, X64Reg operandReg, int bits);
   void WriteNormalOp(XEmitter* emit, bool toRM, NormalOp op, const OpArg& operand, int bits) const;
 
-  u8 scale = 0;
+  u64 offset = 0;  // Also used to store immediates.
   u16 offsetOrBaseReg = 0;
   u16 indexReg = 0;
-  u64 offset = 0;  // Also used to store immediates.
   u16 operandReg = 0;
+  u8 scale = 0;
 };
 
 template <typename T>
@@ -313,11 +311,6 @@ inline u32 PtrOffset(const void* ptr, const void* base = nullptr)
   return (u32)distance;
 }
 
-// usage: int a[]; ARRAY_OFFSET(a,10)
-#define ARRAY_OFFSET(array, index) ((u32)((u64) & (array)[index] - (u64) & (array)[0]))
-// usage: struct {int e;} s; STRUCT_OFFSET(s,e)
-#define STRUCT_OFFSET(str, elem) ((u32)((u64) & (str).elem - (u64) & (str)))
-
 struct FixupBranch
 {
   enum class Type
@@ -334,8 +327,18 @@ class XEmitter
 {
   friend struct OpArg;  // for Write8 etc
 private:
+  // Pointer to memory where code will be emitted to.
   u8* code = nullptr;
+
+  // Pointer past the end of the memory region we're allowed to emit to.
+  // Writes that would reach this memory are refused and will set the m_write_failed flag instead.
+  u8* m_code_end = nullptr;
+
   bool flags_locked = false;
+
+  // Set to true when a write request happens that would write past m_code_end.
+  // Must be cleared with SetCodePtr() afterwards.
+  bool m_write_failed = false;
 
   void CheckFlags();
 
@@ -369,7 +372,6 @@ private:
   void WriteBMI2Op(int size, u8 opPrefix, u16 op, X64Reg regOp1, X64Reg regOp2, const OpArg& arg,
                    int extrabytes = 0);
   void WriteMOVBE(int bits, u8 op, X64Reg regOp, const OpArg& arg);
-  void WriteFloatLoadStore(int bits, FloatOp op, FloatOp op_80b, const OpArg& arg);
   void WriteNormalOp(int bits, NormalOp op, const OpArg& a1, const OpArg& a2);
 
   void ABI_CalculateFrameSize(BitSet32 mask, size_t rsp_alignment, size_t needed_frame_size,
@@ -383,19 +385,26 @@ protected:
 
 public:
   XEmitter() = default;
-  explicit XEmitter(u8* code_ptr) : code{code_ptr} {}
+  explicit XEmitter(u8* code_ptr, u8* code_end) : code(code_ptr), m_code_end(code_end) {}
   virtual ~XEmitter() = default;
-  void SetCodePtr(u8* ptr);
+  void SetCodePtr(u8* ptr, u8* end, bool write_failed = false);
   void ReserveCodeSpace(int bytes);
   u8* AlignCodeTo(size_t alignment);
   u8* AlignCode4();
   u8* AlignCode16();
   u8* AlignCodePage();
-  const u8* GetCodePtr() const;
-  u8* GetWritableCodePtr();
+  const u8* GetCodePtr() const { return code; }
+  u8* GetWritableCodePtr() { return code; }
+  const u8* GetCodeEnd() const { return m_code_end; }
+  u8* GetWritableCodeEnd() { return m_code_end; }
 
   void LockFlags() { flags_locked = true; }
   void UnlockFlags() { flags_locked = false; }
+
+  // Should be checked after a block of code has been generated to see if the code has been
+  // successfully written to memory. Do not call the generated code when this returns true!
+  bool HasWriteFailed() const { return m_write_failed; }
+
   // Looking for one of these? It's BANNED!! Some instructions are slow on modern CPU
   // INC, DEC, LOOP, LOOPNE, LOOPE, ENTER, LEAVE, XCHG, XLAT, REP MOVSB/MOVSD, REP SCASD + other
   // string instr.,
@@ -430,23 +439,31 @@ public:
   void PUSHF();
   void POPF();
 
+  enum class Jump
+  {
+    Short,
+    Near,
+  };
+  static const int SHORT_JMP_LEN = 2;
+  static const int NEAR_JMP_LEN = 5;
+
   // Flow control
   void RET();
   void RET_FAST();
   void UD2();
-  FixupBranch J(bool force5bytes = false);
+  [[nodiscard]] FixupBranch J(Jump jump = Jump::Short);
 
-  void JMP(const u8* addr, bool force5Bytes = false);
+  void JMP(const u8* addr, bool force_near_padding = false);
   void JMPptr(const OpArg& arg);
   void JMPself();  // infinite loop!
 #ifdef CALL
 #undef CALL
 #endif
   void CALL(const void* fnptr);
-  FixupBranch CALL();
+  [[nodiscard]] FixupBranch CALL();
   void CALLptr(OpArg arg);
 
-  FixupBranch J_CC(CCFlags conditionCode, bool force5bytes = false);
+  [[nodiscard]] FixupBranch J_CC(CCFlags conditionCode, Jump jump = Jump::Short);
   void J_CC(CCFlags conditionCode, const u8* addr);
 
   void SetJumpTarget(const FixupBranch& branch);
@@ -465,12 +482,12 @@ public:
   void BSR(int bits, X64Reg dest, const OpArg& src);  // Top bit to bottom bit
 
   // Cache control
-  enum PrefetchLevel
+  enum class PrefetchLevel : u8
   {
-    PF_NTA,  // Non-temporal (data used once and only once)
-    PF_T0,   // All cache levels
-    PF_T1,   // Levels 2+ (aliased to T0 on AMD)
-    PF_T2,   // Levels 3+ (aliased to T0 on AMD)
+    NTA = 0,  // Non-temporal (data used once and only once)
+    T0 = 1,   // All cache levels
+    T1 = 2,   // Levels 2+ (aliased to T0 on AMD)
+    T2 = 3,   // Levels 3+ (aliased to T0 on AMD)
   };
   void PREFETCH(PrefetchLevel level, OpArg arg);
   void MOVNTI(int bits, const OpArg& dest, X64Reg src);
@@ -568,31 +585,6 @@ public:
   void REPNE();
   void FSOverride();
   void GSOverride();
-
-  // x87
-  enum x87StatusWordBits
-  {
-    x87_InvalidOperation = 0x1,
-    x87_DenormalizedOperand = 0x2,
-    x87_DivisionByZero = 0x4,
-    x87_Overflow = 0x8,
-    x87_Underflow = 0x10,
-    x87_Precision = 0x20,
-    x87_StackFault = 0x40,
-    x87_ErrorSummary = 0x80,
-    x87_C0 = 0x100,
-    x87_C1 = 0x200,
-    x87_C2 = 0x400,
-    x87_TopOfStack = 0x2000 | 0x1000 | 0x800,
-    x87_C3 = 0x4000,
-    x87_FPUBusy = 0x8000,
-  };
-
-  void FLD(int bits, const OpArg& src);
-  void FST(int bits, const OpArg& dest);
-  void FSTP(int bits, const OpArg& dest);
-  void FNSTSW_AX();
-  void FWAIT();
 
   // SSE/SSE2: Floating point arithmetic
   void ADDSS(X64Reg regOp, const OpArg& arg);
@@ -809,19 +801,19 @@ public:
   void PSHUFLW(X64Reg dest, const OpArg& arg, u8 shuffle);
   void PSHUFHW(X64Reg dest, const OpArg& arg, u8 shuffle);
 
-  void PSRLW(X64Reg reg, int shift);
-  void PSRLD(X64Reg reg, int shift);
-  void PSRLQ(X64Reg reg, int shift);
+  void PSRLW(X64Reg reg, u8 shift);
+  void PSRLD(X64Reg reg, u8 shift);
+  void PSRLQ(X64Reg reg, u8 shift);
   void PSRLQ(X64Reg reg, const OpArg& arg);
-  void PSRLDQ(X64Reg reg, int shift);
+  void PSRLDQ(X64Reg reg, u8 shift);
 
-  void PSLLW(X64Reg reg, int shift);
-  void PSLLD(X64Reg reg, int shift);
-  void PSLLQ(X64Reg reg, int shift);
-  void PSLLDQ(X64Reg reg, int shift);
+  void PSLLW(X64Reg reg, u8 shift);
+  void PSLLD(X64Reg reg, u8 shift);
+  void PSLLQ(X64Reg reg, u8 shift);
+  void PSLLDQ(X64Reg reg, u8 shift);
 
-  void PSRAW(X64Reg reg, int shift);
-  void PSRAD(X64Reg reg, int shift);
+  void PSRAW(X64Reg reg, u8 shift);
+  void PSRAD(X64Reg reg, u8 shift);
 
   // SSE4: data type conversions
   void PMOVSXBW(X64Reg dest, const OpArg& arg);
@@ -843,6 +835,9 @@ public:
   void BLENDVPD(X64Reg dest, const OpArg& arg);
   void BLENDPS(X64Reg dest, const OpArg& arg, u8 blend);
   void BLENDPD(X64Reg dest, const OpArg& arg, u8 blend);
+
+  // SSE4: compare instructions
+  void PCMPEQQ(X64Reg dest, const OpArg& arg);
 
   // AVX
   void VADDSS(X64Reg regOp1, X64Reg regOp2, const OpArg& arg);
@@ -885,6 +880,12 @@ public:
   void VPANDN(X64Reg regOp1, X64Reg regOp2, const OpArg& arg);
   void VPOR(X64Reg regOp1, X64Reg regOp2, const OpArg& arg);
   void VPXOR(X64Reg regOp1, X64Reg regOp2, const OpArg& arg);
+
+  void VPSLLQ(X64Reg regOp1, X64Reg regOp2, u8 shift);
+
+  void VMOVAPS(const OpArg& arg, X64Reg regOp);
+
+  void VZEROUPPER();
 
   // FMA3
   void VFMADD132PS(X64Reg regOp1, X64Reg regOp2, const OpArg& arg);
@@ -1085,6 +1086,21 @@ public:
   }
 
   template <typename FunctionPointer>
+  void ABI_CallFunctionP(FunctionPointer func, const void* param1)
+  {
+    MOV(64, R(ABI_PARAM1), Imm64(reinterpret_cast<u64>(param1)));
+    ABI_CallFunction(func);
+  }
+
+  template <typename FunctionPointer>
+  void ABI_CallFunctionPP(FunctionPointer func, const void* param1, const void* param2)
+  {
+    MOV(64, R(ABI_PARAM1), Imm64(reinterpret_cast<u64>(param1)));
+    MOV(64, R(ABI_PARAM2), Imm64(reinterpret_cast<u64>(param2)));
+    ABI_CallFunction(func);
+  }
+
+  template <typename FunctionPointer>
   void ABI_CallFunctionPC(FunctionPointer func, const void* param1, u32 param2)
   {
     MOV(64, R(ABI_PARAM1), Imm64(reinterpret_cast<u64>(param1)));
@@ -1110,11 +1126,30 @@ public:
     ABI_CallFunction(func);
   }
 
+  // Pass a pointer and register as a parameter.
+  template <typename FunctionPointer>
+  void ABI_CallFunctionPR(FunctionPointer func, const void* ptr, X64Reg reg1)
+  {
+    if (reg1 != ABI_PARAM2)
+      MOV(64, R(ABI_PARAM2), R(reg1));
+    MOV(64, R(ABI_PARAM1), Imm64(reinterpret_cast<u64>(ptr)));
+    ABI_CallFunction(func);
+  }
+
   // Pass two registers as parameters.
   template <typename FunctionPointer>
   void ABI_CallFunctionRR(FunctionPointer func, X64Reg reg1, X64Reg reg2)
   {
     MOVTwo(64, ABI_PARAM1, reg1, 0, ABI_PARAM2, reg2);
+    ABI_CallFunction(func);
+  }
+
+  // Pass a pointer and two registers as parameters.
+  template <typename FunctionPointer>
+  void ABI_CallFunctionPRR(FunctionPointer func, const void* ptr, X64Reg reg1, X64Reg reg2)
+  {
+    MOVTwo(64, ABI_PARAM2, reg1, 0, ABI_PARAM3, reg2);
+    MOV(64, R(ABI_PARAM1), Imm64(reinterpret_cast<u64>(ptr)));
     ABI_CallFunction(func);
   }
 
@@ -1124,6 +1159,17 @@ public:
     if (!arg1.IsSimpleReg(ABI_PARAM1))
       MOV(bits, R(ABI_PARAM1), arg1);
     MOV(32, R(ABI_PARAM2), Imm32(param2));
+    ABI_CallFunction(func);
+  }
+
+  template <typename FunctionPointer>
+  void ABI_CallFunctionPAC(int bits, FunctionPointer func, const void* ptr1, const Gen::OpArg& arg2,
+                           u32 param3)
+  {
+    if (!arg2.IsSimpleReg(ABI_PARAM2))
+      MOV(bits, R(ABI_PARAM2), arg2);
+    MOV(32, R(ABI_PARAM3), Imm32(param3));
+    MOV(64, R(ABI_PARAM1), Imm64(reinterpret_cast<u64>(ptr1)));
     ABI_CallFunction(func);
   }
 
@@ -1158,10 +1204,10 @@ public:
   }
 
   template <typename T, typename... Args>
-  void ABI_CallLambdaC(const std::function<T(Args...)>* f, u32 p1)
+  void ABI_CallLambdaPC(const std::function<T(Args...)>* f, void* p1, u32 p2)
   {
     auto trampoline = &XEmitter::CallLambdaTrampoline<T, Args...>;
-    ABI_CallFunctionPC(trampoline, reinterpret_cast<const void*>(f), p1);
+    ABI_CallFunctionPPC(trampoline, reinterpret_cast<const void*>(f), p1, p2);
   }
 };  // class XEmitter
 

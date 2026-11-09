@@ -1,10 +1,13 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <algorithm>
-#include <cmath>
-#include <cstring>
+#include "VideoCommon/TextureDecoder.h"
+
+#include <numeric>
+
+#ifdef CHECK
+#include "Common/Assert.h"
+#endif
 
 #include "Common/CPUDetect.h"
 #include "Common/CommonTypes.h"
@@ -13,7 +16,6 @@
 #include "Common/Swap.h"
 
 #include "VideoCommon/LookUpTables.h"
-#include "VideoCommon/TextureDecoder.h"
 #include "VideoCommon/TextureDecoder_Util.h"
 
 // GameCube/Wii texture decoder
@@ -33,7 +35,7 @@ static inline u32 DecodePixel_RGB565(u16 val)
   int r, g, b, a;
   r = Convert5To8((val >> 11) & 0x1f);
   g = Convert6To8((val >> 5) & 0x3f);
-  b = Convert5To8((val)&0x1f);
+  b = Convert5To8((val) & 0x1f);
   a = 0xFF;
   return r | (g << 8) | (b << 16) | (a << 24);
 }
@@ -45,7 +47,7 @@ static inline u32 DecodePixel_RGB5A3(u16 val)
   {
     r = Convert5To8((val >> 10) & 0x1f);
     g = Convert5To8((val >> 5) & 0x1f);
-    b = Convert5To8((val)&0x1f);
+    b = Convert5To8((val) & 0x1f);
     a = 0xFF;
   }
   else
@@ -53,7 +55,7 @@ static inline u32 DecodePixel_RGB5A3(u16 val)
     a = Convert3To8((val >> 12) & 0x7);
     r = Convert4To8((val >> 8) & 0xf);
     g = Convert4To8((val >> 4) & 0xf);
-    b = Convert4To8((val)&0xf);
+    b = Convert4To8((val) & 0xf);
   }
   return r | (g << 8) | (b << 16) | (a << 24);
 }
@@ -188,8 +190,10 @@ static void DecodeDXTBlock(u32* dst, const DXTBlock* src, int pitch)
   {
     // color[3] is the same as color[2] (average of both colors), but transparent.
     // This differs from DXT1 where color[3] is transparent black.
-    colors[2] = MakeRGBA((red1 + red2) / 2, (green1 + green2) / 2, (blue1 + blue2) / 2, 255);
-    colors[3] = MakeRGBA((red1 + red2) / 2, (green1 + green2) / 2, (blue1 + blue2) / 2, 0);
+    colors[2] = MakeRGBA(std::midpoint(red1 + red2), std::midpoint(green1, green2),
+                         std::midpoint(blue1, blue2), 255);
+    colors[3] = MakeRGBA(std::midpoint(red1 + red2), std::midpoint(green1, green2),
+                         std::midpoint(blue1, blue2), 0);
   }
 
   for (int y = 0; y < 4; y++)
@@ -1002,7 +1006,7 @@ static void TexDecoder_DecodeImpl_RGBA8_SSSE3(u32* dst, const u8* src, int width
                                               TextureFormat texformat, const u8* tlut,
                                               TLUTFormat tlutfmt, int Wsteps4, int Wsteps8)
 {
-  // xsacha optimized with SSSE3 instrinsics
+  // xsacha optimized with SSSE3 intrinsics
   // Produces a ~30% speed improvement over SSE2 implementation
   for (int y = 0; y < height; y += 4)
   {
@@ -1208,7 +1212,7 @@ static void TexDecoder_DecodeImpl_CMPR(u32* dst, const u8* src, int width, int h
         int cmp1 = _mm_extract_epi16(cmprgb0rgb1, 4);
 
         // green:
-        // NOTE: We start with the larger number of bits (6) firts for G and shift the mask down
+        // NOTE: We start with the larger number of bits (6) first for G and shift the mask down
         // 1 bit to get a 5-bit mask later for R and B components.
         // low6mask == _mm_set_epi32(0x0000FC00, 0x0000FC00, 0x0000FC00, 0x0000FC00)
         const __m128i low6mask = _mm_slli_epi32(_mm_srli_epi32(allFFs128, 24 + 2), 8 + 2);
@@ -1362,8 +1366,8 @@ static void TexDecoder_DecodeImpl_CMPR(u32* dst, const u8* src, int width, int h
         dst32[(width * 0) + 6] = colors1[(dxt1sel >> ((0 * 8) + 2)) & 3];
         dst32[(width * 0) + 7] = colors1[(dxt1sel >> ((0 * 8) + 0)) & 3];
 #ifdef CHECK
-        assert(memcmp(&(tmp0[0]), &dst32[(width * 0)], 16) == 0);
-        assert(memcmp(&(tmp1[0]), &dst32[(width * 0) + 4], 16) == 0);
+        ASSERT(memcmp(&(tmp0[0]), &dst32[(width * 0)], 16) == 0);
+        ASSERT(memcmp(&(tmp1[0]), &dst32[(width * 0) + 4], 16) == 0);
 #endif
         // Row 1:
         dst32[(width * 1) + 0] = colors0[(dxt0sel >> ((1 * 8) + 6)) & 3];
@@ -1375,8 +1379,8 @@ static void TexDecoder_DecodeImpl_CMPR(u32* dst, const u8* src, int width, int h
         dst32[(width * 1) + 6] = colors1[(dxt1sel >> ((1 * 8) + 2)) & 3];
         dst32[(width * 1) + 7] = colors1[(dxt1sel >> ((1 * 8) + 0)) & 3];
 #ifdef CHECK
-        assert(memcmp(&(tmp0[1]), &dst32[(width * 1)], 16) == 0);
-        assert(memcmp(&(tmp1[1]), &dst32[(width * 1) + 4], 16) == 0);
+        ASSERT(memcmp(&(tmp0[1]), &dst32[(width * 1)], 16) == 0);
+        ASSERT(memcmp(&(tmp1[1]), &dst32[(width * 1) + 4], 16) == 0);
 #endif
         // Row 2:
         dst32[(width * 2) + 0] = colors0[(dxt0sel >> ((2 * 8) + 6)) & 3];
@@ -1388,8 +1392,8 @@ static void TexDecoder_DecodeImpl_CMPR(u32* dst, const u8* src, int width, int h
         dst32[(width * 2) + 6] = colors1[(dxt1sel >> ((2 * 8) + 2)) & 3];
         dst32[(width * 2) + 7] = colors1[(dxt1sel >> ((2 * 8) + 0)) & 3];
 #ifdef CHECK
-        assert(memcmp(&(tmp0[2]), &dst32[(width * 2)], 16) == 0);
-        assert(memcmp(&(tmp1[2]), &dst32[(width * 2) + 4], 16) == 0);
+        ASSERT(memcmp(&(tmp0[2]), &dst32[(width * 2)], 16) == 0);
+        ASSERT(memcmp(&(tmp1[2]), &dst32[(width * 2) + 4], 16) == 0);
 #endif
         // Row 3:
         dst32[(width * 3) + 0] = colors0[(dxt0sel >> ((3 * 8) + 6)) & 3];
@@ -1401,8 +1405,8 @@ static void TexDecoder_DecodeImpl_CMPR(u32* dst, const u8* src, int width, int h
         dst32[(width * 3) + 6] = colors1[(dxt1sel >> ((3 * 8) + 2)) & 3];
         dst32[(width * 3) + 7] = colors1[(dxt1sel >> ((3 * 8) + 0)) & 3];
 #ifdef CHECK
-        assert(memcmp(&(tmp0[3]), &dst32[(width * 3)], 16) == 0);
-        assert(memcmp(&(tmp1[3]), &dst32[(width * 3) + 4], 16) == 0);
+        ASSERT(memcmp(&(tmp0[3]), &dst32[(width * 3)], 16) == 0);
+        ASSERT(memcmp(&(tmp1[3]), &dst32[(width * 3) + 4], 16) == 0);
 #endif
       }
     }
@@ -1491,8 +1495,7 @@ void _TexDecoder_DecodeImpl(u32* dst, const u8* src, int width, int height, Text
     break;
 
   default:
-    PanicAlert("Invalid Texture Format (0x%X)! (_TexDecoder_DecodeImpl)",
-               static_cast<int>(texformat));
+    PanicAlertFmt("Invalid Texture Format {}! (_TexDecoder_DecodeImpl)", texformat);
     break;
   }
 }

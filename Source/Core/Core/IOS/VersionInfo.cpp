@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/IOS/VersionInfo.h"
 
@@ -381,15 +380,14 @@ bool IsEmulated(u32 major_version)
   if (major_version == static_cast<u32>(Titles::BC & 0xffffffff))
     return true;
 
-  return std::any_of(
-      ios_memory_values.begin(), ios_memory_values.end(),
-      [major_version](const MemoryValues& values) { return values.ios_number == major_version; });
+  return std::ranges::any_of(ios_memory_values, [major_version](const MemoryValues& values) {
+    return values.ios_number == major_version;
+  });
 }
 
 bool IsEmulated(u64 title_id)
 {
-  const bool ios =
-      IsTitleType(title_id, IOS::ES::TitleType::System) && title_id != Titles::SYSTEM_MENU;
+  const bool ios = IsTitleType(title_id, ES::TitleType::System) && title_id != Titles::SYSTEM_MENU;
   if (!ios)
     return true;
   const u32 version = static_cast<u32>(title_id);

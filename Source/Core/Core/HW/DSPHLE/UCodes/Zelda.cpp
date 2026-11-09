@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/DSPHLE/UCodes/Zelda.h"
 
@@ -8,6 +7,7 @@
 #include <array>
 #include <map>
 
+#include "Common/BitField.h"
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
@@ -17,6 +17,8 @@
 #include "Core/HW/DSPHLE/MailHandler.h"
 #include "Core/HW/DSPHLE/UCodes/GBA.h"
 #include "Core/HW/DSPHLE/UCodes/UCodes.h"
+#include "Core/HW/Memmap.h"
+#include "Core/System.h"
 
 namespace DSP::HLE
 {
@@ -78,6 +80,8 @@ static const std::map<u32, u32> UCODE_FLAGS = {
                      WEIRD_CMD_0C},
     // GameCube IPL/BIOS, PAL.
     {0x6BA3B3EA, LIGHT_PROTOCOL | FOUR_MIXING_DESTS | NO_CMD_0D},
+    // Pikmin 1 GC NTSC Demo.
+    {0xDF059F68, LIGHT_PROTOCOL | NO_CMD_0D | SUPPORTS_GBA_CRYPTO},
     // Pikmin 1 GC NTSC.
     // Animal Crossing.
     {0x4BE6A5CB, LIGHT_PROTOCOL | NO_CMD_0D | SUPPORTS_GBA_CRYPTO},
@@ -89,47 +93,41 @@ static const std::map<u32, u32> UCODE_FLAGS = {
     {0x56D36052, SYNC_PER_FRAME | NO_CMD_0D},
     // The Legend of Zelda: The Wind Waker.
     {0x86840740, 0},
+    // The Legend of Zelda: Collector's Edition (except Wind Waker).
     // The Legend of Zelda: Four Swords Adventures.
     // Mario Kart: Double Dash.
     // Pikmin 2 GC NTSC.
     {0x2FCDF1EC, MAKE_DOLBY_LOUDER},
     // The Legend of Zelda: Twilight Princess / GC.
-    // Donkey Kong Jungle Beat.
+    // Donkey Kong Jungle Beat GC.
     //
     // TODO: These do additional filtering at frame rendering time. We don't
     // implement this yet.
-    {0x6CA33A6D, MAKE_DOLBY_LOUDER},
+    {0x6CA33A6D, MAKE_DOLBY_LOUDER | COMBINED_CMD_0D},
     // The Legend of Zelda: Twilight Princess / Wii.
-    {0x6C3F6F94, NO_ARAM | MAKE_DOLBY_LOUDER},
+    // Link's Crossbow Training.
+    {0x6C3F6F94, NO_ARAM | MAKE_DOLBY_LOUDER | COMBINED_CMD_0D},
     // Super Mario Galaxy.
     // Super Mario Galaxy 2.
-    {0xD643001F, NO_ARAM | MAKE_DOLBY_LOUDER},
+    // Donkey Kong Jungle Beat Wii.
+    {0xD643001F, NO_ARAM | MAKE_DOLBY_LOUDER | COMBINED_CMD_0D},
     // Pikmin 1 New Play Control.
     {0xB7EB9A9C, NO_ARAM | MAKE_DOLBY_LOUDER | COMBINED_CMD_0D},
     // Pikmin 2 New Play Control.
-    {0xEAEB38CC, NO_ARAM | MAKE_DOLBY_LOUDER},
-
-    // TODO: Other games that use this UCode (exhaustive list):
-    // * Link's Crossbow Training
-    // * The Legend of Zelda: Collector's Edition
-    // * The Legend of Zelda: Twilight Princess / Wii (type ????, CRC ????)
+    {0xEAEB38CC, NO_ARAM | MAKE_DOLBY_LOUDER | COMBINED_CMD_0D},
 };
 
-ZeldaUCode::ZeldaUCode(DSPHLE* dsphle, u32 crc) : UCodeInterface(dsphle, crc)
+ZeldaUCode::ZeldaUCode(DSPHLE* dsphle, u32 crc)
+    : UCodeInterface(dsphle, crc), m_renderer(dsphle->GetSystem())
 {
   auto it = UCODE_FLAGS.find(crc);
   if (it == UCODE_FLAGS.end())
-    PanicAlert("No flags definition found for Zelda CRC %08x", crc);
+    PanicAlertFmt("No flags definition found for Zelda CRC {:08x}", crc);
 
   m_flags = it->second;
   m_renderer.SetFlags(m_flags);
 
-  INFO_LOG(DSPHLE, "Zelda UCode loaded, crc=%08x, flags=%08x", crc, m_flags);
-}
-
-ZeldaUCode::~ZeldaUCode()
-{
-  m_mail_handler.Clear();
+  INFO_LOG_FMT(DSPHLE, "Zelda UCode loaded, crc={:08x}, flags={:08x}", crc, m_flags);
 }
 
 void ZeldaUCode::Initialize()
@@ -200,36 +198,39 @@ void ZeldaUCode::HandleMailDefault(u32 mail)
   case MailState::WAITING:
     if (mail & 0x80000000)
     {
-      if ((mail >> 16) != 0xCDD1)
+      if ((mail & TASK_MAIL_MASK) != TASK_MAIL_TO_DSP)
       {
-        PanicAlert("Rendering end mail without prefix CDD1: %08x", mail);
+        WARN_LOG_FMT(DSPHLE, "Received rendering end mail without prefix CDD1: {:08x}", mail);
+        mail = TASK_MAIL_TO_DSP | (mail & ~TASK_MAIL_MASK);
+        // The actual uCode does not check for the CDD1 prefix.
       }
 
-      switch (mail & 0xFFFF)
+      switch (mail)
       {
-      case 1:
+      case MAIL_NEW_UCODE:
         m_cmd_can_execute = true;
         RunPendingCommands();
-        NOTICE_LOG(DSPHLE, "UCode being replaced.");
+        NOTICE_LOG_FMT(DSPHLE, "UCode being replaced.");
         m_upload_setup_in_progress = true;
         SetMailState(MailState::WAITING);
         break;
 
-      case 2:
-        NOTICE_LOG(DSPHLE, "UCode being rebooted to ROM.");
+      case MAIL_RESET:
+        NOTICE_LOG_FMT(DSPHLE, "UCode being rebooted to ROM.");
         SetMailState(MailState::HALTED);
         m_dsphle->SetUCode(UCODE_ROM);
         break;
 
-      case 3:
+      case MAIL_CONTINUE:
         m_cmd_can_execute = true;
         RunPendingCommands();
         break;
 
       default:
-        NOTICE_LOG(DSPHLE, "Unknown end rendering action. Halting.");
-      case 0:
-        NOTICE_LOG(DSPHLE, "UCode asked to halt. Stopping any processing.");
+        NOTICE_LOG_FMT(DSPHLE, "Unknown end rendering action. Halting.");
+        [[fallthrough]];
+      case MAIL_RESUME:
+        NOTICE_LOG_FMT(DSPHLE, "UCode asked to halt. Stopping any processing.");
         SetMailState(MailState::HALTED);
         break;
       }
@@ -242,8 +243,8 @@ void ZeldaUCode::HandleMailDefault(u32 mail)
       }
       else
       {
-        NOTICE_LOG(DSPHLE, "Sync mail (%08x) received when rendering was not active. Halting.",
-                   mail);
+        NOTICE_LOG_FMT(DSPHLE,
+                       "Sync mail ({:08x}) received when rendering was not active. Halting.", mail);
         SetMailState(MailState::HALTED);
       }
     }
@@ -290,7 +291,7 @@ void ZeldaUCode::HandleMailDefault(u32 mail)
     break;
 
   case MailState::HALTED:
-    WARN_LOG(DSPHLE, "Received mail %08x while we're halted.", mail);
+    WARN_LOG_FMT(DSPHLE, "Received mail {:08x} while we're halted.", mail);
     break;
   }
 }
@@ -302,8 +303,8 @@ void ZeldaUCode::HandleMailLight(u32 mail)
   switch (m_mail_current_state)
   {
   case MailState::WAITING:
-    if (!(mail & 0x80000000))
-      PanicAlert("Mail received in waiting state has MSB=0: %08x", mail);
+    if ((mail & 0x80000000) == 0)
+      PanicAlertFmt("Mail received in waiting state has MSB=0: {:08x}", mail);
 
     // Start of a command. We have to hardcode the number of mails required
     // for each command - the alternative is to rewrite command handling as
@@ -336,7 +337,7 @@ void ZeldaUCode::HandleMailLight(u32 mail)
       break;
 
     default:
-      PanicAlert("Received unknown command in light protocol: %08x", mail);
+      PanicAlertFmt("Received unknown command in light protocol: {:08x}", mail);
       break;
     }
     if (m_mail_expected_cmd_mails)
@@ -362,24 +363,23 @@ void ZeldaUCode::HandleMailLight(u32 mail)
 
   case MailState::RENDERING:
     if (mail != 0)
-      PanicAlert("Sync mail is not zero: %08x", mail);
+      PanicAlertFmt("Sync mail is not zero: {:08x}", mail);
 
     // No per-voice syncing in the light protocol.
     m_sync_max_voice_id = 0xFFFFFFFF;
     m_sync_voice_skip_flags.fill(0xFFFF);
     RenderAudio();
-    DSP::GenerateDSPInterruptFromDSPEmu(DSP::INT_DSP);
+    m_dsphle->GetSystem().GetDSP().GenerateDSPInterruptFromDSPEmu(INT_DSP);
     break;
 
   case MailState::HALTED:
-    WARN_LOG(DSPHLE, "Received mail %08x while we're halted.", mail);
+    WARN_LOG_FMT(DSPHLE, "Received mail {:08x} while we're halted.", mail);
     break;
   }
 }
 
 void ZeldaUCode::SetMailState(MailState new_state)
 {
-  // WARN_LOG(DSPHLE, "MailState %d -> %d", m_mail_current_state, new_state);
   m_mail_current_state = new_state;
 }
 
@@ -387,7 +387,7 @@ u32 ZeldaUCode::Read32()
 {
   if (m_read_offset == m_write_offset)
   {
-    ERROR_LOG(DSPHLE, "Reading too many command params");
+    ERROR_LOG_FMT(DSPHLE, "Reading too many command params");
     return 0;
   }
 
@@ -413,13 +413,13 @@ void ZeldaUCode::RunPendingCommands()
 
   while (m_pending_commands_count)
   {
-    u32 cmd_mail = Read32();
-    if (!(cmd_mail & 0x80000000))
+    const u32 cmd_mail = Read32();
+    if ((cmd_mail & 0x80000000) == 0)
       continue;
 
-    u32 command = (cmd_mail >> 24) & 0x7f;
-    u32 sync = cmd_mail >> 16;
-    u32 extra_data = cmd_mail & 0xFFFF;
+    const u32 command = (cmd_mail >> 24) & 0x7f;
+    const u32 sync = cmd_mail >> 16;
+    const u32 extra_data = cmd_mail & 0xFFFF;
 
     m_pending_commands_count--;
 
@@ -431,7 +431,7 @@ void ZeldaUCode::RunPendingCommands()
     case 0x0F:
       // NOP commands. Log anyway in case we encounter a new version
       // where these are not NOPs anymore.
-      NOTICE_LOG(DSPHLE, "Received a NOP command: %d", command);
+      NOTICE_LOG_FMT(DSPHLE, "Received a NOP command: {}", command);
       SendCommandAck(CommandAck::STANDARD, sync);
       break;
 
@@ -440,7 +440,7 @@ void ZeldaUCode::RunPendingCommands()
       // since it's going directly back to the dispatcher with no ack.
       if (m_flags & LIGHT_PROTOCOL)
       {
-        PanicAlert("Received a 03 command on light protocol.");
+        PanicAlertFmt("Received a 03 command on light protocol.");
         break;
       }
       SendCommandAck(CommandAck::STANDARD, sync);
@@ -457,7 +457,7 @@ void ZeldaUCode::RunPendingCommands()
       //
       // TODO: These are not crashes on light protocol, however I've never seen
       // them used so far.
-      NOTICE_LOG(DSPHLE, "Received a crashy command: %d", command);
+      NOTICE_LOG_FMT(DSPHLE, "Received a crashy command: {}", command);
       SetMailState(MailState::HALTED);
       return;
 
@@ -470,32 +470,28 @@ void ZeldaUCode::RunPendingCommands()
 
       m_renderer.SetVPBBaseAddress(Read32());
 
-      u16* data_ptr = (u16*)HLEMemory_Get_Pointer(Read32());
+      auto& memory = m_dsphle->GetSystem().GetMemory();
+      u32 address = Read32();
 
-      std::array<s16, 0x100> resampling_coeffs;
-      for (size_t i = 0; i < 0x100; ++i)
-        resampling_coeffs[i] = Common::swap16(data_ptr[i]);
+      std::array<s16, 0x100> resampling_coeffs{};
+      memory.CopyFromEmuSwapped(resampling_coeffs.data(), address, sizeof(resampling_coeffs));
       m_renderer.SetResamplingCoeffs(std::move(resampling_coeffs));
 
-      std::array<s16, 0x100> const_patterns;
-      for (size_t i = 0; i < 0x100; ++i)
-        const_patterns[i] = Common::swap16(data_ptr[0x100 + i]);
+      std::array<s16, 0x100> const_patterns{};
+      memory.CopyFromEmuSwapped(const_patterns.data(), address + 0x200, sizeof(const_patterns));
       m_renderer.SetConstPatterns(std::move(const_patterns));
 
       // The sine table is only used for Dolby mixing
       // which the light protocol doesn't support.
       if ((m_flags & LIGHT_PROTOCOL) == 0)
       {
-        std::array<s16, 0x80> sine_table;
-        for (size_t i = 0; i < 0x80; ++i)
-          sine_table[i] = Common::swap16(data_ptr[0x200 + i]);
+        std::array<s16, 0x80> sine_table{};
+        memory.CopyFromEmuSwapped(sine_table.data(), address + 0x400, sizeof(sine_table));
         m_renderer.SetSineTable(std::move(sine_table));
       }
 
-      u16* afc_coeffs_ptr = (u16*)HLEMemory_Get_Pointer(Read32());
-      std::array<s16, 0x20> afc_coeffs;
-      for (size_t i = 0; i < 0x20; ++i)
-        afc_coeffs[i] = Common::swap16(afc_coeffs_ptr[i]);
+      std::array<s16, 0x20> afc_coeffs{};
+      memory.CopyFromEmuSwapped(afc_coeffs.data(), Read32(), sizeof(afc_coeffs));
       m_renderer.SetAfcCoeffs(std::move(afc_coeffs));
 
       m_renderer.SetReverbPBBaseAddress(Read32());
@@ -517,6 +513,7 @@ void ZeldaUCode::RunPendingCommands()
       {
         // Ignore the two values which are equivalent to arguments passed to
         // command 0D.
+        // Used by Pikmin 1 Wii.
         Read32();
         Read32();
       }
@@ -542,31 +539,32 @@ void ZeldaUCode::RunPendingCommands()
     case 0x0C:
       if (m_flags & SUPPORTS_GBA_CRYPTO)
       {
-        ProcessGBACrypto(Read32());
+        ProcessGBACrypto(m_dsphle->GetSystem().GetMemory(), Read32());
       }
       else if (m_flags & WEIRD_CMD_0C)
       {
         // TODO
-        NOTICE_LOG(DSPHLE, "Received an unhandled 0C command, params: %08x %08x", Read32(),
-                   Read32());
+        NOTICE_LOG_FMT(DSPHLE, "Received an unhandled 0C command, params: {:08x} {:08x}", Read32(),
+                       Read32());
       }
       else
       {
-        WARN_LOG(DSPHLE, "Received a NOP 0C command. Flags=%08x", m_flags);
+        WARN_LOG_FMT(DSPHLE, "Received a NOP 0C command. Flags={:08x}", m_flags);
       }
       SendCommandAck(CommandAck::STANDARD, sync);
       break;
 
     // Command 0D: TODO: find a name and implement.
+    // Used by Wind Waker.
     case 0x0D:
       if (m_flags & NO_CMD_0D)
       {
-        WARN_LOG(DSPHLE, "Received a 0D command which is NOP'd on this UCode.");
+        WARN_LOG_FMT(DSPHLE, "Received a 0D command which is NOP'd on this UCode.");
         SendCommandAck(CommandAck::STANDARD, sync);
         break;
       }
 
-      WARN_LOG(DSPHLE, "CMD0D: %08x", Read32());
+      WARN_LOG_FMT(DSPHLE, "CMD0D: {:08x}", Read32());
       SendCommandAck(CommandAck::STANDARD, sync);
       break;
 
@@ -574,14 +572,14 @@ void ZeldaUCode::RunPendingCommands()
     // because the Wii does not have an ARAM, so it simulates it with MRAM
     // and DMAs.
     case 0x0E:
-      if (!(m_flags & NO_ARAM))
-        PanicAlert("Setting base ARAM addr on non Wii DAC.");
+      if ((m_flags & NO_ARAM) == 0)
+        PanicAlertFmt("Setting base ARAM addr on non Wii DAC.");
       m_renderer.SetARAMBaseAddr(Read32());
       SendCommandAck(CommandAck::STANDARD, sync);
       break;
 
     default:
-      NOTICE_LOG(DSPHLE, "Received a non-existing command (%d), halting.", command);
+      NOTICE_LOG_FMT(DSPHLE, "Received a non-existing command ({}), halting.", command);
       SetMailState(MailState::HALTED);
       return;
     }
@@ -621,7 +619,7 @@ void ZeldaUCode::RenderAudio()
 {
   if (!RenderingInProgress())
   {
-    WARN_LOG(DSPHLE, "Trying to render audio while no rendering should be happening.");
+    WARN_LOG_FMT(DSPHLE, "Trying to render audio while no rendering should be happening.");
     return;
   }
 
@@ -630,7 +628,11 @@ void ZeldaUCode::RenderAudio()
     if (m_rendering_curr_voice == 0)
       m_renderer.PrepareFrame();
 
-    while (m_rendering_curr_voice < m_rendering_voices_per_frame)
+    // TODO: Find out the actual hardware behavior for the case where
+    //       (m_rendering_voices_per_frame >> 4) >= m_sync_voice_skip_flags.size()
+    const u16 number_of_voices = std::min(m_rendering_voices_per_frame,
+                                          static_cast<u16>(m_sync_voice_skip_flags.size() << 4));
+    while (m_rendering_curr_voice < number_of_voices)
     {
       // If we are not meant to render this voice yet, go back to message
       // processing.
@@ -670,7 +672,10 @@ void ZeldaUCode::RenderAudio()
 // Utility to define 32 bit accessors/modifiers methods based on two 16 bit
 // fields named _l and _h.
 #define DEFINE_32BIT_ACCESSOR(field_name, name)                                                    \
-  u32 Get##name() const { return (field_name##_h << 16) | field_name##_l; }                        \
+  u32 Get##name() const                                                                            \
+  {                                                                                                \
+    return (field_name##_h << 16) | field_name##_l;                                                \
+  }                                                                                                \
   void Set##name(u32 v)                                                                            \
   {                                                                                                \
     field_name##_h = v >> 16;                                                                      \
@@ -802,8 +807,13 @@ struct ZeldaAudioRenderer::VPB
   // can be used for future linear interpolation.
   s16 resample_buffer[4];
 
-  // TODO: document and implement.
-  s16 prev_input_samples[0x18];
+  s16 variable_fir_history[20];
+
+  // Biquad filter history.
+  s16 biquad_xn1;
+  s16 biquad_xn2;
+  s16 biquad_yn1;
+  s16 biquad_yn2;
 
   // Values from the last decoded AFC block. The last two values are
   // especially important since AFC decoding - as a variant of ADPCM -
@@ -812,7 +822,12 @@ struct ZeldaAudioRenderer::VPB
   s16 afc_remaining_samples[0x10];
   s16* AFCYN2() { return &afc_remaining_samples[0xE]; }
   s16* AFCYN1() { return &afc_remaining_samples[0xF]; }
-  u16 unk_68_80[0x80 - 0x68];
+
+  // Low-pass filter history.
+  s16 low_pass_yn1;
+  s16 low_pass_xn1;
+
+  u16 unk_6A_80[0x80 - 0x6A];
 
   enum SamplesSourceType
   {
@@ -860,7 +875,11 @@ struct ZeldaAudioRenderer::VPB
   s16 loop_yn1;
   s16 loop_yn2;
 
-  u16 unk_84;
+  union
+  {
+    BitField<0, 5, u16> variable_fir_filter_size;
+    BitField<5, 1, u16> enable_biquad_filter;
+  };
 
   // If true, ramp down quickly to a volume of zero, and end the voice (by
   // setting VPB[1] done) when it reaches zero.
@@ -888,6 +907,20 @@ struct ZeldaAudioRenderer::VPB
   u16 base_address_h;
   u16 base_address_l;
   DEFINE_32BIT_ACCESSOR(base_address, BaseAddress)
+
+  u16 unk_8E;
+  u16 unk_8F;
+
+  u16 variable_fir_coeffs[20];
+
+  // Biquad filter coefficients.
+  s16 biquad_bn1;
+  s16 biquad_bn2;
+  s16 biquad_an1;
+  s16 biquad_an2;
+
+  // Low-pass filter coefficient.
+  u16 low_pass_coeff;
 
   u16 padding[0xC0];
 
@@ -950,6 +983,7 @@ struct ReverbPB
   // Base address of the circular buffer in MRAM.
   u16 circular_buffer_base_h;
   u16 circular_buffer_base_l;
+  DEFINE_32BIT_ACCESSOR(circular_buffer_base, CircularBufferBase)
 
   struct Destination
   {
@@ -963,6 +997,12 @@ struct ReverbPB
   s16 filter_coeffs[8];
 };
 #pragma pack(pop)
+
+ZeldaAudioRenderer::ZeldaAudioRenderer(Core::System& system) : m_system(system)
+{
+}
+
+ZeldaAudioRenderer::~ZeldaAudioRenderer() = default;
 
 void ZeldaAudioRenderer::PrepareFrame()
 {
@@ -980,7 +1020,7 @@ void ZeldaAudioRenderer::PrepareFrame()
 // uses this AFAICT. PanicAlert to help me find places that use this.
 #ifdef STRICT_ZELDA_HLE
   if (!(m_flags & LIGHT_PROTOCOL) && (m_buf_back_left[0] != 0 || m_buf_back_right[0] != 0))
-    PanicAlert("Zelda HLE using back mixing buffers");
+    PanicAlertFmt("Zelda HLE using back mixing buffers");
 #endif
 
   // Add reverb data from previous frame.
@@ -990,7 +1030,7 @@ void ZeldaAudioRenderer::PrepareFrame()
                        0xB820);
   AddBuffersWithVolume(m_buf_front_left_reverb.data(), m_buf_back_right_reverb.data() + 0x28, 0x28,
                        0xB820);
-  AddBuffersWithVolume(m_buf_front_right_reverb.data(), m_buf_back_left_reverb.data() + 0x28, 0x28,
+  AddBuffersWithVolume(m_buf_front_right_reverb.data(), m_buf_back_right_reverb.data() + 0x28, 0x28,
                        0x7FFF);
   m_buf_back_left_reverb.fill(0);
   m_buf_back_right_reverb.fill(0);
@@ -1027,7 +1067,7 @@ void ZeldaAudioRenderer::ApplyReverb(bool post_rendering)
   if (!m_reverb_pb_base_addr)
   {
 #ifdef STRICT_ZELDA_HLE
-    PanicAlert("Trying to apply reverb without available parameters.");
+    PanicAlertFmt("Trying to apply reverb without available parameters.");
 #endif
     return;
   }
@@ -1046,22 +1086,19 @@ void ZeldaAudioRenderer::ApplyReverb(bool post_rendering)
       &m_buf_front_right_reverb_last8,
   };
 
-  u16* rpb_base_ptr = (u16*)HLEMemory_Get_Pointer(m_reverb_pb_base_addr);
+  auto& memory = m_system.GetMemory();
   for (u16 rpb_idx = 0; rpb_idx < 4; ++rpb_idx)
   {
-    ReverbPB rpb;
-    u16* rpb_raw_ptr = reinterpret_cast<u16*>(&rpb);
-    for (size_t i = 0; i < sizeof(ReverbPB) / 2; ++i)
-      rpb_raw_ptr[i] = Common::swap16(rpb_base_ptr[rpb_idx * sizeof(ReverbPB) / 2 + i]);
+    ReverbPB rpb{};
+    u32 rpb_addr = m_reverb_pb_base_addr + rpb_idx * sizeof(ReverbPB);
+    memory.CopyFromEmuSwapped(reinterpret_cast<u16*>(&rpb), rpb_addr, sizeof(ReverbPB));
 
     if (!rpb.enabled)
       continue;
 
     u16 mram_buffer_idx = m_reverb_pb_frames_count[rpb_idx];
 
-    u32 mram_addr = ((rpb.circular_buffer_base_h << 16) | rpb.circular_buffer_base_l) +
-                    mram_buffer_idx * 0x50 * sizeof(s16);
-    s16* mram_ptr = (s16*)HLEMemory_Get_Pointer(mram_addr);
+    u32 mram_addr = rpb.GetCircularBufferBase() + mram_buffer_idx * 0x50 * sizeof(s16);
 
     if (!post_rendering)
     {
@@ -1071,13 +1108,12 @@ void ZeldaAudioRenderer::ApplyReverb(bool post_rendering)
       for (u16 i = 0; i < 8; ++i)
         buffer[i] = (*last8_samples_buffers[rpb_idx])[i];
 
-      for (u16 i = 0; i < 0x50; ++i)
-        buffer[8 + i] = Common::swap16(mram_ptr[i]);
+      memory.CopyFromEmuSwapped(&buffer[8], mram_addr, 0x50 * sizeof(s16));
 
       for (u16 i = 0; i < 8; ++i)
         (*last8_samples_buffers[rpb_idx])[i] = buffer[0x50 + i];
 
-      auto ApplyFilter = [&]() {
+      auto ApplyFilter = [&] {
         // Filter the buffer using provided coefficients.
         for (u16 i = 0; i < 0x50; ++i)
         {
@@ -1102,7 +1138,7 @@ void ZeldaAudioRenderer::ApplyReverb(bool post_rendering)
         if (!dest_buffer)
         {
 #ifdef STRICT_ZELDA_HLE
-          PanicAlert("RPB mixing to an unknown buffer: %04x", dest.buffer_id);
+          PanicAlertFmt("RPB mixing to an unknown buffer: {:04x}", dest.buffer_id);
 #endif
           continue;
         }
@@ -1121,8 +1157,7 @@ void ZeldaAudioRenderer::ApplyReverb(bool post_rendering)
       MixingBuffer* buffer = reverb_buffers[rpb_idx];
 
       // Upload the reverb data to RAM.
-      for (auto sample : *buffer)
-        *mram_ptr++ = Common::swap16(sample);
+      memory.CopyToEmuSwapped(mram_addr, buffer->data(), sizeof(*buffer));
 
       mram_buffer_idx = (mram_buffer_idx + 1) % rpb.circular_buffer_size;
       m_reverb_pb_frames_count[rpb_idx] = mram_buffer_idx;
@@ -1165,6 +1200,62 @@ ZeldaAudioRenderer::MixingBuffer* ZeldaAudioRenderer::BufferForID(u16 buffer_id)
   }
 }
 
+void ZeldaAudioRenderer::ApplyLowPassFilter(MixingBuffer* buf, VPB* vpb)
+{
+  s32 yn1 = vpb->reset_vpb ? 0 : vpb->low_pass_yn1;
+  s32 xn1 = vpb->reset_vpb ? 0 : vpb->low_pass_xn1;
+
+  // 9.7 format I think.
+  s32 coeff = vpb->low_pass_coeff;
+
+  for (int i = 0; i < 0x50; ++i)
+  {
+    s32 xn0 = (*buf)[i];
+    s64 tmp = xn0 - xn1;
+    tmp *= coeff;
+    tmp >>= 7;
+    tmp += yn1;
+    s16 yn0 = std::clamp<s64>(tmp, -0x8000, 0x7FFF);
+    (*buf)[i] = yn0;
+
+    yn1 = yn0;
+    xn1 = xn0;
+  }
+
+  vpb->low_pass_yn1 = yn1;
+  vpb->low_pass_xn1 = xn1;
+}
+
+void ZeldaAudioRenderer::ApplyBiquadFilter(MixingBuffer* buf, VPB* vpb)
+{
+  s32 xn1 = vpb->biquad_xn1;
+  s32 xn2 = vpb->biquad_xn2;
+  s32 yn1 = vpb->biquad_yn1;
+  s32 yn2 = vpb->biquad_yn2;
+
+  for (int i = 0; i < 0x50; ++i)
+  {
+    s32 xn0 = (*buf)[i];
+    s64 tmp = 0;
+    tmp += vpb->biquad_bn1 * xn1;
+    tmp += vpb->biquad_bn2 * xn2;
+    tmp += vpb->biquad_an1 * yn1;
+    tmp += vpb->biquad_an2 * yn2;
+    s16 yn0 = std::clamp<s64>(tmp >> 15, -0x8000, 0x7FFF);
+    (*buf)[i] = yn0;
+
+    xn2 = xn1;
+    xn1 = xn0;
+    yn2 = yn1;
+    yn1 = yn0;
+  }
+
+  vpb->biquad_xn1 = xn1;
+  vpb->biquad_xn2 = xn2;
+  vpb->biquad_yn1 = yn1;
+  vpb->biquad_yn2 = yn2;
+}
+
 void ZeldaAudioRenderer::AddVoice(u16 voice_id)
 {
   VPB vpb;
@@ -1176,9 +1267,23 @@ void ZeldaAudioRenderer::AddVoice(u16 voice_id)
   MixingBuffer input_samples;
   LoadInputSamples(&input_samples, &vpb);
 
-  // TODO: In place effects.
+  if (vpb.low_pass_coeff != 0)
+  {
+    ApplyLowPassFilter(&input_samples, &vpb);
+  }
 
-  // TODO: IIR filter.
+#ifdef STRICT_ZELDA_HLE
+  if (vpb.variable_fir_filter_size != 0)
+  {
+    ERROR_LOG_FMT(DSPHLE, "TODO: variable FIR filter of size {}", vpb.variable_fir_filter_size);
+  }
+#endif
+
+  if (vpb.enable_biquad_filter && (vpb.biquad_an2 != 0 || vpb.biquad_an1 != 0 ||
+                                   vpb.biquad_bn2 != 0 || vpb.biquad_bn1 != 0x7FFF))
+  {
+    ApplyBiquadFilter(&input_samples, &vpb);
+  }
 
   if (vpb.use_dolby_volume)
   {
@@ -1212,16 +1317,14 @@ void ZeldaAudioRenderer::AddVoice(u16 voice_id)
       volume_deltas[i] = ((u16)quadrant_volumes[i] * delta) >> shift_factor;
 
     // Apply master volume to each quadrant.
-    for (size_t i = 0; i < 4; ++i)
-      quadrant_volumes[i] = (quadrant_volumes[i] * vpb.dolby_volume_current) >> shift_factor;
+    for (s16& quadrant_volume : quadrant_volumes)
+      quadrant_volume = (quadrant_volume * vpb.dolby_volume_current) >> shift_factor;
 
     // Compute reverb volume and ramp deltas.
     s16 reverb_volumes[4], reverb_volume_deltas[4];
-    s16 reverb_volume_factor =
-        (vpb.dolby_volume_current * vpb.dolby_reverb_factor) >> (shift_factor - 1);
     for (size_t i = 0; i < 4; ++i)
     {
-      reverb_volumes[i] = (quadrant_volumes[i] * reverb_volume_factor) >> shift_factor;
+      reverb_volumes[i] = (quadrant_volumes[i] * vpb.dolby_reverb_factor) >> shift_factor;
       reverb_volume_deltas[i] = (volume_deltas[i] * vpb.dolby_reverb_factor) >> shift_factor;
     }
 
@@ -1292,7 +1395,7 @@ void ZeldaAudioRenderer::AddVoice(u16 voice_id)
       if (!dst_buffer)
       {
 #ifdef STRICT_ZELDA_HLE
-        PanicAlert("Mixing to an unmapped buffer: %04x", vpb.channels[i].id);
+        PanicAlertFmt("Mixing to an unmapped buffer: {:04x}", vpb.channels[i].id);
 #endif
         continue;
       }
@@ -1318,15 +1421,11 @@ void ZeldaAudioRenderer::FinalizeFrame()
   ApplyVolumeInPlace_4_12(&m_buf_front_left, m_output_volume);
   ApplyVolumeInPlace_4_12(&m_buf_front_right, m_output_volume);
 
-  u16* ram_left_buffer = (u16*)HLEMemory_Get_Pointer(m_output_lbuf_addr);
-  u16* ram_right_buffer = (u16*)HLEMemory_Get_Pointer(m_output_rbuf_addr);
-  for (size_t i = 0; i < m_buf_front_left.size(); ++i)
-  {
-    ram_left_buffer[i] = Common::swap16(m_buf_front_left[i]);
-    ram_right_buffer[i] = Common::swap16(m_buf_front_right[i]);
-  }
-  m_output_lbuf_addr += sizeof(u16) * (u32)m_buf_front_left.size();
-  m_output_rbuf_addr += sizeof(u16) * (u32)m_buf_front_right.size();
+  auto& memory = m_system.GetMemory();
+  memory.CopyToEmuSwapped(m_output_lbuf_addr, m_buf_front_left.data(), sizeof(m_buf_front_left));
+  memory.CopyToEmuSwapped(m_output_rbuf_addr, m_buf_front_right.data(), sizeof(m_buf_front_right));
+  m_output_lbuf_addr += sizeof(m_buf_front_left);
+  m_output_rbuf_addr += sizeof(m_buf_front_right);
 
   // TODO: Some more Dolby mixing.
 
@@ -1337,17 +1436,16 @@ void ZeldaAudioRenderer::FinalizeFrame()
 
 void ZeldaAudioRenderer::FetchVPB(u16 voice_id, VPB* vpb)
 {
+  auto& memory = m_system.GetMemory();
   u16* vpb_words = (u16*)vpb;
-  u16* ram_vpbs = (u16*)HLEMemory_Get_Pointer(m_vpb_base_addr);
 
   // A few versions of the UCode have VPB of size 0x80 (vs. the standard
   // 0xC0). The whole 0x40-0x80 part is gone. Handle that by moving things
   // around.
-  size_t vpb_size = (m_flags & TINY_VPB) ? 0x80 : 0xC0;
+  u32 vpb_size = ((m_flags & TINY_VPB) ? 0x80 : 0xC0) * sizeof(u16);
 
-  size_t base_idx = voice_id * vpb_size;
-  for (size_t i = 0; i < vpb_size; ++i)
-    vpb_words[i] = Common::swap16(ram_vpbs[base_idx + i]);
+  u32 base_idx = voice_id * vpb_size;
+  memory.CopyFromEmuSwapped(vpb_words, m_vpb_base_addr + base_idx, vpb_size);
 
   if (m_flags & TINY_VPB)
     vpb->Uncompress();
@@ -1355,18 +1453,17 @@ void ZeldaAudioRenderer::FetchVPB(u16 voice_id, VPB* vpb)
 
 void ZeldaAudioRenderer::StoreVPB(u16 voice_id, VPB* vpb)
 {
+  auto& memory = m_system.GetMemory();
   u16* vpb_words = (u16*)vpb;
-  u16* ram_vpbs = (u16*)HLEMemory_Get_Pointer(m_vpb_base_addr);
 
-  size_t vpb_size = (m_flags & TINY_VPB) ? 0x80 : 0xC0;
-  size_t base_idx = voice_id * vpb_size;
+  u32 vpb_size = ((m_flags & TINY_VPB) ? 0x80 : 0xC0) * sizeof(u16);
+  u32 base_idx = voice_id * vpb_size;
 
   if (m_flags & TINY_VPB)
     vpb->Compress();
 
   // Only the first 0x80 words are transferred back - the rest is read-only.
-  for (size_t i = 0; i < vpb_size - 0x40; ++i)
-    ram_vpbs[base_idx + i] = Common::swap16(vpb_words[i]);
+  memory.CopyToEmuSwapped(m_vpb_base_addr + base_idx, vpb_words, vpb_size - 0x80);
 }
 
 void ZeldaAudioRenderer::LoadInputSamples(MixingBuffer* buffer, VPB* vpb)
@@ -1375,9 +1472,16 @@ void ZeldaAudioRenderer::LoadInputSamples(MixingBuffer* buffer, VPB* vpb)
   // the end of processing, if needed.
   //
   // Maximum of 0x500 samples here - see NeededRawSamplesCount to understand
-  // this practical limit (resampling_ratio = 0xFFFF -> 0x500 samples). Add a
-  // margin of 4 that is needed for samples source that do resampling.
-  std::array<s16, 0x500 + 4> raw_input_samples;
+  // this practical limit (resampling_ratio = 0xFFFF -> 0x500 samples).
+  //
+  // If current_pos_frac contains an (invalid) non-fractional part, it can push
+  // this up by another 15 samples. Which DownloadAFCSamplesFromARAM then rounds
+  // up to the next multiple of 16. So add an extra 0x10 samples to be safe.
+  //
+  // Plus we need an extra four samples at the start to hold the last four
+  // samples from the previous frame.
+
+  std::array<s16, 4 + 0x500 + 0x10> raw_input_samples;
   for (size_t i = 0; i < 4; ++i)
     raw_input_samples[i] = vpb->resample_buffer[i];
 
@@ -1398,12 +1502,13 @@ void ZeldaAudioRenderer::LoadInputSamples(MixingBuffer* buffer, VPB* vpb)
     else
       shift = 2;
     u32 mask = (1 << shift) - 1;
+    u32 ratio = vpb->resampling_ratio << (shift - 1);
 
     u32 pos = vpb->current_pos_frac << shift;
-    for (size_t i = 0; i < buffer->size(); ++i)
+    for (s16& sample : *buffer)
     {
-      (*buffer)[i] = ((pos >> 16) & mask) ? 0xC000 : 0x4000;
-      pos += vpb->resampling_ratio;
+      sample = ((pos >> 16) & mask) ? 0xC000 : 0x4000;
+      pos += ratio;
     }
     vpb->current_pos_frac = (pos >> shift) & 0xFFFF;
     break;
@@ -1412,9 +1517,9 @@ void ZeldaAudioRenderer::LoadInputSamples(MixingBuffer* buffer, VPB* vpb)
   case VPB::SRC_SAW_WAVE:
   {
     u32 pos = vpb->current_pos_frac;
-    for (size_t i = 0; i < buffer->size(); ++i)
+    for (s16& sample : *buffer)
     {
-      (*buffer)[i] = pos & 0xFFFF;
+      sample = pos & 0xFFFF;
       pos += (vpb->resampling_ratio) >> 1;
     }
     vpb->current_pos_frac = pos & 0xFFFF;
@@ -1480,7 +1585,7 @@ void ZeldaAudioRenderer::LoadInputSamples(MixingBuffer* buffer, VPB* vpb)
     break;
 
   default:
-    PanicAlert("Using an unknown/unimplemented sample source: %04x", vpb->samples_source_type);
+    PanicAlertFmt("Using an unknown/unimplemented sample source: {:04x}", vpb->samples_source_type);
     buffer->fill(0);
     return;
   }
@@ -1537,12 +1642,21 @@ void ZeldaAudioRenderer::Resample(VPB* vpb, const s16* src, MixingBuffer* dst)
   vpb->current_pos_frac = pos & 0xFFF;
 }
 
-void* ZeldaAudioRenderer::GetARAMPtr() const
+static u8* GetARAMPointerForRange(const Core::System& system, u32 aram_base_addr, u32 offset,
+                                  size_t size)
 {
-  if (m_aram_base_addr)
-    return HLEMemory_Get_Pointer(m_aram_base_addr);
+  if (system.IsWii())
+  {
+    const auto& memory = system.GetMemory();
+    return memory.GetPointerForRange(aram_base_addr + offset, size);
+  }
   else
-    return DSP::GetARAMPtr();
+  {
+    const auto& dsp = system.GetDSP();
+    if (offset >= dsp.GetARAMSize() || size > dsp.GetARAMSize() - offset)
+      return nullptr;
+    return system.GetDSP().GetARAMPtr() + offset;
+  }
 }
 
 template <typename T>
@@ -1579,8 +1693,9 @@ void ZeldaAudioRenderer::DownloadPCMSamplesFromARAM(s16* dst, VPB* vpb, u16 requ
       vpb->SetCurrentARAMAddr(vpb->GetBaseAddress() + vpb->GetCurrentPosition() * sizeof(T));
     }
 
-    T* src_ptr = (T*)((u8*)GetARAMPtr() + vpb->GetCurrentARAMAddr());
     u16 samples_to_download = std::min(vpb->GetRemainingLength(), (u32)requested_samples_count);
+    T* src_ptr = reinterpret_cast<T*>(GetARAMPointerForRange(
+        m_system, m_aram_base_addr, vpb->GetCurrentARAMAddr(), samples_to_download * sizeof(T)));
 
     for (u16 i = 0; i < samples_to_download; ++i)
       *dst++ = Common::FromBigEndian<T>(*src_ptr++) << (16 - 8 * sizeof(T));
@@ -1609,6 +1724,12 @@ void ZeldaAudioRenderer::DownloadAFCSamplesFromARAM(s16* dst, VPB* vpb, u16 requ
     for (u16 i = 0; i < requested_samples_count; ++i)
       dst[i] = 0;
     return;
+  }
+
+  if (vpb->afc_remaining_decoded_samples > 0x10) [[unlikely]]
+  {
+    ERROR_LOG_FMT(DSPHLE, "afc_remaining_decoded_samples > 0x10");
+    vpb->afc_remaining_decoded_samples = 0x10;
   }
 
   // Try several things until we have output enough samples.
@@ -1714,7 +1835,8 @@ void ZeldaAudioRenderer::DownloadAFCSamplesFromARAM(s16* dst, VPB* vpb, u16 requ
 void ZeldaAudioRenderer::DecodeAFC(VPB* vpb, s16* dst, size_t block_count)
 {
   u32 addr = vpb->GetCurrentARAMAddr();
-  u8* src = (u8*)GetARAMPtr() + addr;
+  u8* src = (u8*)GetARAMPointerForRange(m_system, m_aram_base_addr, addr,
+                                        block_count * vpb->samples_source_type);
   vpb->SetCurrentARAMAddr(addr + (u32)block_count * vpb->samples_source_type);
 
   for (size_t b = 0; b < block_count; ++b)
@@ -1726,6 +1848,7 @@ void ZeldaAudioRenderer::DecodeAFC(VPB* vpb, s16* dst, size_t block_count)
 
     if (vpb->samples_source_type == VPB::SRC_AFC_HQ_FROM_ARAM)
     {
+      // 4-bit samples
       for (size_t i = 0; i < 16; i += 2)
       {
         nibbles[i + 0] = *src >> 4;
@@ -1733,14 +1856,11 @@ void ZeldaAudioRenderer::DecodeAFC(VPB* vpb, s16* dst, size_t block_count)
         src++;
       }
       for (auto& nibble : nibbles)
-      {
-        if (nibble >= 8)
-          nibble -= 16;
-        nibble <<= 11;
-      }
+        nibble = s16(nibble << 12) >> 1;
     }
     else
     {
+      // 2-bit samples
       for (size_t i = 0; i < 16; i += 4)
       {
         nibbles[i + 0] = (*src >> 6) & 3;
@@ -1750,18 +1870,13 @@ void ZeldaAudioRenderer::DecodeAFC(VPB* vpb, s16* dst, size_t block_count)
         src++;
       }
       for (auto& nibble : nibbles)
-      {
-        if (nibble >= 2)
-          nibble -= 4;
-        nibble <<= 13;
-      }
+        nibble = s16(nibble << 14) >> 1;
     }
 
     s32 yn1 = *vpb->AFCYN1(), yn2 = *vpb->AFCYN2();
-    for (size_t i = 0; i < 16; ++i)
+    for (s16 nibble : nibbles)
     {
-      s32 sample =
-          delta * nibbles[i] + yn1 * m_afc_coeffs[idx * 2] + yn2 * m_afc_coeffs[idx * 2 + 1];
+      s32 sample = delta * nibble + yn1 * m_afc_coeffs[idx * 2] + yn2 * m_afc_coeffs[idx * 2 + 1];
       sample >>= 11;
       sample = std::clamp(sample, -0x8000, 0x7fff);
       *dst++ = (s16)sample;
@@ -1776,40 +1891,41 @@ void ZeldaAudioRenderer::DecodeAFC(VPB* vpb, s16* dst, size_t block_count)
 
 void ZeldaAudioRenderer::DownloadRawSamplesFromMRAM(s16* dst, VPB* vpb, u16 requested_samples_count)
 {
+  auto& memory = m_system.GetMemory();
   u32 addr = vpb->GetBaseAddress() + vpb->current_position_h * sizeof(u16);
-  s16* src_ptr = (s16*)HLEMemory_Get_Pointer(addr);
 
-  if (requested_samples_count > vpb->GetRemainingLength())
+  u32 remaining_length = vpb->GetRemainingLength();
+  if (requested_samples_count > remaining_length)
   {
     s16 last_sample = 0;
-    for (u16 i = 0; i < vpb->GetRemainingLength(); ++i)
-      *dst++ = last_sample = Common::swap16(*src_ptr++);
-    for (u16 i = vpb->GetRemainingLength(); i < requested_samples_count; ++i)
+    if (remaining_length != 0)
+    {
+      memory.CopyFromEmuSwapped(dst, addr, remaining_length * sizeof(s16));
+      last_sample = dst[remaining_length - 1];
+    }
+    for (u16 i = remaining_length; i < requested_samples_count; ++i)
       *dst++ = last_sample;
 
-    vpb->current_position_h += vpb->GetRemainingLength();
+    vpb->current_position_h += remaining_length;
     vpb->SetRemainingLength(0);
     vpb->done = true;
   }
   else
   {
-    vpb->SetRemainingLength(vpb->GetRemainingLength() - requested_samples_count);
+    vpb->SetRemainingLength(remaining_length - requested_samples_count);
     vpb->samples_before_loop = vpb->loop_start_position_h - vpb->current_position_h;
     if (requested_samples_count <= vpb->samples_before_loop)
     {
-      for (u16 i = 0; i < requested_samples_count; ++i)
-        *dst++ = Common::swap16(*src_ptr++);
+      memory.CopyFromEmuSwapped(dst, addr, requested_samples_count * sizeof(s16));
       vpb->current_position_h += requested_samples_count;
     }
     else
     {
-      for (u16 i = 0; i < vpb->samples_before_loop; ++i)
-        *dst++ = Common::swap16(*src_ptr++);
+      memory.CopyFromEmuSwapped(dst, addr, vpb->samples_before_loop * sizeof(s16));
       vpb->SetBaseAddress(vpb->GetLoopAddress());
-      src_ptr = (s16*)HLEMemory_Get_Pointer(vpb->GetLoopAddress());
-      for (u16 i = vpb->samples_before_loop; i < requested_samples_count; ++i)
-        *dst++ = Common::swap16(*src_ptr++);
       vpb->current_position_h = requested_samples_count - vpb->samples_before_loop;
+      memory.CopyFromEmuSwapped(dst + vpb->samples_before_loop, vpb->GetLoopAddress(),
+                                vpb->current_position_h * sizeof(s16));
     }
   }
 }

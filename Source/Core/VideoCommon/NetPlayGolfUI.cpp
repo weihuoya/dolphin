@@ -1,22 +1,22 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
-
-#include "Common/StringUtil.h"
-
-#include "Core/NetPlayClient.h"
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoCommon/NetPlayGolfUI.h"
 
+#include <utility>
+
+#include <fmt/format.h>
 #include <imgui.h>
+
+#include "Core/NetPlayClient.h"
 
 constexpr float DEFAULT_WINDOW_WIDTH = 220.0f;
 constexpr float DEFAULT_WINDOW_HEIGHT = 45.0f;
 
 std::unique_ptr<NetPlayGolfUI> g_netplay_golf_ui;
 
-NetPlayGolfUI::NetPlayGolfUI(std::shared_ptr<NetPlay::NetPlayClient> netplay_client)
-    : m_netplay_client{netplay_client}
+NetPlayGolfUI::NetPlayGolfUI(std::weak_ptr<NetPlay::NetPlayClient> netplay_client)
+    : m_netplay_client{std::move(netplay_client)}
 {
 }
 
@@ -57,7 +57,7 @@ void NetPlayGolfUI::Display()
       if (client->IsLocalPlayer(player->pid) || !client->PlayerHasControllerMapped(player->pid))
         continue;
 
-      if (ImGui::Button(StringFromFormat("Give Control to %s", player->name.c_str()).c_str()))
+      if (ImGui::Button(fmt::format("Give Control to {}", player->name).c_str()))
       {
         client->RequestGolfControl(player->pid);
       }

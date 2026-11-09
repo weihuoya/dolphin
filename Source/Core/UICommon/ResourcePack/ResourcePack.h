@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -31,7 +30,6 @@ public:
   bool Uninstall(const std::string& path);
 
   bool operator==(const ResourcePack& pack) const;
-  bool operator!=(const ResourcePack& pack) const;
 
 private:
   bool m_valid = true;

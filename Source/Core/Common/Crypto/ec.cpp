@@ -1,24 +1,14 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
-
 // Copyright 2007,2008  Segher Boessenkool  <segher@kernel.crashing.org>
-// Licensed under the terms of the GNU GPL, version 2
-// http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "Common/Crypto/ec.h"
 
 #include <algorithm>
 #include <cstring>
 
-#include "Common/Compiler.h"
 #include "Common/Crypto/bn.h"
-#include "Common/Crypto/ec.h"
 #include "Common/Random.h"
-#include "Common/StringUtil.h"
-
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4505)
-#endif
 
 namespace Common::ec
 {
@@ -32,7 +22,7 @@ struct Elt
 {
   bool IsZero() const
   {
-    return std::all_of(data.begin(), data.end(), [](u8 b) { return b == 0; });
+    return std::ranges::all_of(data, [](u8 b) { return b == 0; });
   }
 
   void MulX()
@@ -143,7 +133,7 @@ static Elt operator/(const Elt& dividend, const Elt& divisor)
 struct Point
 {
   Point() = default;
-  constexpr explicit Point(Elt x, Elt y) : m_data{{std::move(x), std::move(y)}} {}
+  constexpr explicit Point(Elt x, Elt y) : m_data{{x, y}} {}
   explicit Point(const u8* data) { std::copy_n(data, sizeof(m_data), Data()); }
 
   bool IsZero() const { return X().IsZero() && Y().IsZero(); }
@@ -260,8 +250,8 @@ Signature Sign(const u8* key, const u8* hash)
   bn_mul(s.data.data(), minv, kk, ec_N, 30);
 
   Signature signature;
-  std::copy(r.data.cbegin(), r.data.cend(), signature.begin());
-  std::copy(s.data.cbegin(), s.data.cend(), signature.begin() + 30);
+  std::ranges::copy(r.data, signature.begin());
+  std::ranges::copy(s.data, signature.begin() + 30);
   return signature;
 }
 
@@ -302,7 +292,4 @@ std::array<u8, 60> ComputeSharedSecret(const u8* private_key, const u8* public_k
   std::copy_n(data.Data(), shared_secret.size(), shared_secret.begin());
   return shared_secret;
 }
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 }  // namespace Common::ec

@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -13,13 +12,13 @@ namespace ResourcePack
 {
 bool Init();
 
-bool Add(const std::string& path, int offset = -1);
+ResourcePack* Add(const std::string& path, int offset = -1);
 bool Remove(ResourcePack& pack);
 void SetInstalled(const ResourcePack& pack, bool installed);
 bool IsInstalled(const ResourcePack& pack);
 
 std::vector<ResourcePack>& GetPacks();
 
-std::vector<ResourcePack*> GetHigherPriorityPacks(ResourcePack& pack);
-std::vector<ResourcePack*> GetLowerPriorityPacks(ResourcePack& pack);
+std::vector<ResourcePack*> GetHigherPriorityPacks(const ResourcePack& pack);
+std::vector<ResourcePack*> GetLowerPriorityPacks(const ResourcePack& pack);
 }  // namespace ResourcePack

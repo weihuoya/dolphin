@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 /*      $NetBSD: l2cap.h,v 1.9 2009/09/13 18:45:11 pooka Exp $  */
 
@@ -126,7 +125,7 @@
 /*      Transport Protocol */
 /* 0x0019 - 0x1000 - reserved for future use */
 
-#define L2CAP_PSM_INVALID(psm) (((psm)&0x0101) != 0x0001)
+#define L2CAP_PSM_INVALID(psm) (((psm) & 0x0101) != 0x0001)
 
 /* L2CAP Connection response command result codes */
 #define L2CAP_SUCCESS 0x0000
@@ -152,9 +151,9 @@
 
 /* L2CAP Configuration options */
 #define L2CAP_OPT_CFLAG_BIT 0x0001
-#define L2CAP_OPT_CFLAG(flags) ((flags)&L2CAP_OPT_CFLAG_BIT)
+#define L2CAP_OPT_CFLAG(flags) ((flags) & L2CAP_OPT_CFLAG_BIT)
 #define L2CAP_OPT_HINT_BIT 0x80
-#define L2CAP_OPT_HINT(type) ((type)&L2CAP_OPT_HINT_BIT)
+#define L2CAP_OPT_HINT(type) ((type) & L2CAP_OPT_HINT_BIT)
 #define L2CAP_OPT_HINT_MASK 0x7f
 #define L2CAP_OPT_MTU 0x01
 #define L2CAP_OPT_MTU_SIZE sizeof(uint16_t)

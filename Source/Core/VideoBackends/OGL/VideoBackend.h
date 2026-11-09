@@ -1,6 +1,5 @@
 // Copyright 2011 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -13,16 +12,19 @@ namespace OGL
 {
 class VideoBackend : public VideoBackendBase
 {
+public:
   bool Initialize(const WindowSystemInfo& wsi) override;
   void Shutdown() override;
 
-  std::string GetName() const override;
+  std::string GetConfigName() const override;
   std::string GetDisplayName() const override;
 
-  void InitBackendInfo() override;
+  void InitBackendInfo(const WindowSystemInfo& wsi) override;
+
+  static constexpr const char* CONFIG_NAME = "OGL";
 
 private:
   bool InitializeGLExtensions(GLContext* context);
-  bool FillBackendInfo();
+  bool FillBackendInfo(GLContext* context);
 };
 }  // namespace OGL

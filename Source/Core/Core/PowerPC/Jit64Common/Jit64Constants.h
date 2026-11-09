@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -21,4 +20,4 @@ constexpr Gen::X64Reg RMEM = Gen::RBX;
 // to address as much as possible in a one-byte offset form.
 constexpr Gen::X64Reg RPPCSTATE = Gen::RBP;
 
-constexpr size_t CODE_SIZE = 1024 * 1024 * 32;
+constexpr size_t CODE_SIZE = 1024 * 1024 * 128;

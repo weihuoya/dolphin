@@ -1,14 +1,24 @@
 add_library(common
   Analytics.cpp
   Analytics.h
+  Assembler/AssemblerShared.cpp
+  Assembler/AssemblerShared.h
+  Assembler/AssemblerTables.cpp
+  Assembler/AssemblerTables.h
+  Assembler/GekkoAssembler.cpp
+  Assembler/GekkoAssembler.h
+  Assembler/GekkoIRGen.cpp
+  Assembler/GekkoIRGen.h
+  Assembler/GekkoLexer.cpp
+  Assembler/GekkoLexer.h
+  Assembler/GekkoParser.cpp
+  Assembler/GekkoParser.h
   Assert.h
-  Atomic.h
   BitField.h
   BitSet.h
   BitUtils.h
   BlockingLoop.h
-  CDUtils.cpp
-  CDUtils.h
+  Buffer.h
   ChunkFile.h
   CodeBlock.h
   ColorUtil.cpp
@@ -18,7 +28,6 @@ add_library(common
   CommonFuncs.h
   CommonPaths.h
   CommonTypes.h
-  Compiler.h
   Config/Config.cpp
   Config/Config.h
   Config/ConfigInfo.cpp
@@ -26,6 +35,7 @@ add_library(common
   Config/Enums.h
   Config/Layer.cpp
   Config/Layer.h
+  Contains.h
   CPUDetect.h
   Crypto/AES.cpp
   Crypto/AES.h
@@ -33,81 +43,109 @@ add_library(common
   Crypto/bn.h
   Crypto/ec.cpp
   Crypto/ec.h
+  Crypto/HMAC.cpp
+  Crypto/HMAC.h
+  Crypto/SHA1.cpp
+  Crypto/SHA1.h
+  CWDemangler.cpp
+  CWDemangler.h
   Debug/MemoryPatches.cpp
   Debug/MemoryPatches.h
+  Debug/Threads.h
   Debug/Watches.cpp
   Debug/Watches.h
-  DebugInterface.h
+  DirectIOFile.cpp
+  DirectIOFile.h
   DynamicLibrary.cpp
   DynamicLibrary.h
-  ENetUtil.cpp
-  ENetUtil.h
+  ENet.cpp
+  ENet.h
+  EnumFormatter.h
+  EnumMap.h
   Event.h
-  File.cpp
-  File.h
+  FatFsUtil.cpp
+  FatFsUtil.h
   FileSearch.cpp
   FileSearch.h
+  FilesystemWatcher.cpp
+  FilesystemWatcher.h
   FileUtil.cpp
   FileUtil.h
   FixedSizeQueue.h
   Flag.h
   FloatUtils.cpp
   FloatUtils.h
+  Functional.h
+  FormatUtil.h
   FPURoundMode.h
   GekkoDisassembler.cpp
   GekkoDisassembler.h
   Hash.cpp
   Hash.h
+  HookableEvent.h
+  HostDisassembler.cpp
+  HostDisassembler.h
   HttpRequest.cpp
   HttpRequest.h
   Image.cpp
   Image.h
   IniFile.cpp
   IniFile.h
+  Inline.h
+  IOFile.cpp
+  IOFile.h
   JitRegister.cpp
   JitRegister.h
+  JsonUtil.h
+  JsonUtil.cpp
   Lazy.h
+  LazyMemoryRegionBitSet.cpp
+  LazyMemoryRegionBitSet.h
   LinearDiskCache.h
+  UnixUtil.h
+  LocaleUtil.cpp
+  LocaleUtil.h
   Logging/ConsoleListener.h
   Logging/Log.h
   Logging/LogManager.cpp
   Logging/LogManager.h
-  MathUtil.cpp
   MathUtil.h
   Matrix.cpp
   Matrix.h
-  MD5.cpp
-  MD5.h
-  MemArena.cpp
   MemArena.h
   MemoryUtil.cpp
   MemoryUtil.h
   MinizipUtil.h
   MsgHandler.cpp
   MsgHandler.h
+  Mutex.h
   NandPaths.cpp
   NandPaths.h
   Network.cpp
   Network.h
+  OneShotEvent.h
   PcapFile.cpp
   PcapFile.h
-  PerformanceCounter.cpp
-  PerformanceCounter.h
   Profiler.cpp
   Profiler.h
+  Projection.h
   QoSSession.cpp
   QoSSession.h
   Random.cpp
   Random.h
-  Result.h
+  RangeSet.h
+  RangeSizeSet.h
   ScopeGuard.h
   SDCardUtil.cpp
   SDCardUtil.h
-  Semaphore.h
-  SFMLHelper.cpp
-  SFMLHelper.h
   SettingsHandler.cpp
   SettingsHandler.h
+  SFMLHelper.cpp
+  SFMLHelper.h
+  SmallVector.h
+  SocketContext.cpp
+  SocketContext.h
+  SpanUtils.h
   SPSCQueue.h
   StringUtil.cpp
   StringUtil.h
@@ -117,38 +155,60 @@ add_library(common
   Thread.h
   Timer.cpp
   Timer.h
+  TimeUtil.cpp
+  TimeUtil.h
+  TransferableSharedMutex.h
   TraversalClient.cpp
   TraversalClient.h
   TraversalProto.h
+  TypeUtils.h
   UPnP.cpp
   UPnP.h
   VariantUtil.h
   Version.cpp
   Version.h
+  WaitableFlag.h
   WindowSystemInfo.h
   WorkQueueThread.h
 )
 
+add_dependencies(common dolphin_scmrev)
+
+if(NOT MSVC AND _M_ARM_64)
+  set_source_files_properties(
+    Crypto/AES.cpp
+    Crypto/SHA1.cpp
+    PROPERTIES COMPILE_FLAGS "-march=armv8-a+crypto")
+endif()
+
 target_link_libraries(common
 PUBLIC
   ${CMAKE_THREAD_LIBS_INIT}
-  enet
+  enet::enet
   fmt::fmt
-  ${MBEDTLS_LIBRARIES}
-  minizip
+  MbedTLS::mbedtls
+  MINIZIP::minizip-ng
+  sfml-network
 
 PRIVATE
-  ${CURL_LIBRARIES}
-  ${ICONV_LIBRARIES}
-  png
+  CURL::libcurl
+  FatFs
+  spng::spng
+  watcher
   ${VTUNE_LIBRARIES}
 )
+
+if ((DEFINED CMAKE_ANDROID_ARCH_ABI AND CMAKE_ANDROID_ARCH_ABI MATCHES "x86|x86_64") OR
+    (NOT DEFINED CMAKE_ANDROID_ARCH_ABI AND _M_X86_64))
+  target_link_libraries(common PRIVATE bdisasm)
+endif()
 
 if (APPLE)
   target_link_libraries(common
   PRIVATE
     ${APPKIT_LIBRARY}
     ${COREFOUNDATION_LIBRARY}
+    ${FOUNDATION_LIBRARY}
     ${IOK_LIBRARY}
   )
 elseif(WIN32)
@@ -156,26 +216,42 @@ elseif(WIN32)
   PRIVATE
     kernel32.lib
     shlwapi.lib
-    opengl32.lib
     winmm.lib
   )
+  if (_M_X86_64)
+    target_link_libraries(common PRIVATE opengl32.lib)
+  endif()
+elseif (ANDROID)
+  target_link_libraries(common
+  PRIVATE
+    androidcommon
+  )
+elseif(HAIKU)
+  target_link_libraries(common PRIVATE be GL)
 endif()
 
 if(ANDROID)
   target_sources(common PRIVATE
-    AndroidAnalytics.cpp
-    AndroidAnalytics.h
     Logging/ConsoleListenerDroid.cpp
+    MemArenaAndroid.cpp
   )
 elseif(WIN32)
   target_sources(common PRIVATE
     LdrWatcher.cpp
     LdrWatcher.h
     Logging/ConsoleListenerWin.cpp
+    MemArenaWin.cpp
+  )
+elseif(APPLE)
+  target_sources(common PRIVATE
+    CommonFuncsObjC.mm
+    Logging/ConsoleListenerNix.cpp
+    MemArenaDarwin.cpp
   )
 else()
   target_sources(common PRIVATE
     Logging/ConsoleListenerNix.cpp
+    MemArenaUnix.cpp
   )
 endif()
 
@@ -185,10 +261,10 @@ if(_M_ARM_64)
     Arm64Emitter.h
     ArmCommon.h
     ArmCPUDetect.cpp
-    GenericFPURoundMode.cpp
+    ArmFPURoundMode.cpp
   )
 else()
-  if(_M_X86) #X86
+  if(_M_X86_64) #X86
     target_sources(common PRIVATE
       x64ABI.cpp
       x64ABI.h
@@ -241,44 +317,86 @@ if(WIN32)
     CompatPatches.cpp
     GL/GLInterface/WGL.cpp
     GL/GLInterface/WGL.h
+    WindowsDevice.cpp
+    WindowsDevice.h
+    WindowsRegistry.cpp
   )
 elseif(APPLE)
   target_sources(common PRIVATE
     GL/GLInterface/AGL.h
     GL/GLInterface/AGL.mm
   )
+elseif(HAIKU)
+  target_sources(common PRIVATE
+    GL/GLInterface/BGL.h
+    GL/GLInterface/BGL.cpp
+  )
 elseif(ENABLE_X11 AND X11_FOUND)
   target_sources(common PRIVATE
     GL/GLX11Window.cpp
     GL/GLX11Window.h
-    GL/GLInterface/GLX.cpp
-    GL/GLInterface/GLX.h
   )
-
-  # GLX has a hard dependency on libGL.
-  # Make sure to link to it if using GLX.
-  target_link_libraries(common PUBLIC ${OPENGL_LIBRARIES})
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_libraries(common PUBLIC dl rt)
 endif()
 
+if(WIN32)
+  target_sources(common PRIVATE HRWrap.h HRWrap.cpp)
+else()
+  target_link_libraries(common PRIVATE Iconv::Iconv)
+endif()
+
 if(USE_UPNP)
   target_link_libraries(common PRIVATE Miniupnpc::miniupnpc)
 endif()
 
-if(OPROFILE_FOUND)
-  target_link_libraries(common PRIVATE OProfile::OProfile)
+if(ENABLE_LLVM)
+  find_package(LLVM CONFIG)
+  if(LLVM_FOUND)
+    message(STATUS "LLVM found, enabling LLVM support in disassembler")
+    target_compile_definitions(common PRIVATE HAVE_LLVM)
+    # Minimal documentation about LLVM's CMake functions is available here:
+    # https://releases.llvm.org/16.0.0/docs/CMake.html#embedding-llvm-in-your-project
+    # https://groups.google.com/g/llvm-dev/c/YeEVe7HTasQ?pli=1
+    #
+    # However, you have to read the source code in any case.
+    # Look for LLVM-Config.cmake in your (Unix) system:
+    # $ find /usr -name LLVM-Config\\.cmake 2>/dev/null
+    llvm_expand_pseudo_components(LLVM_EXPAND_COMPONENTS
+      AllTargetsInfos AllTargetsDisassemblers AllTargetsCodeGens
+    )
+    llvm_config(common USE_SHARED
+      mcdisassembler target ${LLVM_EXPAND_COMPONENTS}
+    )
+    target_include_directories(common PRIVATE ${LLVM_INCLUDE_DIRS})
+  endif()
 endif()
 
 if(UNIX)
   # Posix networking code needs to be fixed for Windows
   add_executable(traversal_server TraversalServer.cpp)
-  target_link_libraries(traversal_server PRIVATE common)
+  target_link_libraries(traversal_server PRIVATE common fmt::fmt)
   if(SYSTEMD_FOUND)
     target_link_libraries(traversal_server PRIVATE ${SYSTEMD_LIBRARIES})
   endif()
 elseif(WIN32)
+  find_package(PowerShell REQUIRED)
+  execute_process(
+    COMMAND ${POWERSHELL_EXE} -Command "[System.Diagnostics.FileVersionInfo]::GetVersionInfo('$ENV{VCToolsRedistDir}vc_redist.x64.exe').ProductVersion"
+    OUTPUT_VARIABLE VC_TOOLS_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/build_info.txt.in"
+    "${CMAKE_BINARY_DIR}/build_info.txt"
+    )
+
   target_link_libraries(common PRIVATE "-INCLUDE:enableCompatPatches")
+endif()
+
+if(MSVC)
+  # Add precompiled header
+  target_link_libraries(common PRIVATE use_pch)
 endif()

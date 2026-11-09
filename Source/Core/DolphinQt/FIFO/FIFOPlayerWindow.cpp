@@ -1,48 +1,55 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/FIFO/FIFOPlayerWindow.h"
 
 #include <QCheckBox>
 #include <QDialogButtonBox>
-#include <QFileDialog>
+#include <QEvent>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QIcon>
+#include <QKeyEvent>
+#include <QKeySequence>
 #include <QLabel>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QVBoxLayout>
 
-#include <algorithm>
-
 #include "Core/Core.h"
 #include "Core/FifoPlayer/FifoDataFile.h"
-#include "Core/FifoPlayer/FifoPlaybackAnalyzer.h"
 #include "Core/FifoPlayer/FifoPlayer.h"
 #include "Core/FifoPlayer/FifoRecorder.h"
+#include "Core/System.h"
 
+#include "DolphinQt/Config/ToolTipControls/ToolTipCheckBox.h"
 #include "DolphinQt/FIFO/FIFOAnalyzer.h"
+#include "DolphinQt/QtUtils/DolphinFileDialog.h"
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
 #include "DolphinQt/QtUtils/QueueOnObject.h"
+#include "DolphinQt/Resources.h"
 #include "DolphinQt/Settings.h"
 
-FIFOPlayerWindow::FIFOPlayerWindow(QWidget* parent) : QDialog(parent)
+FIFOPlayerWindow::FIFOPlayerWindow(FifoPlayer& fifo_player, FifoRecorder& fifo_recorder,
+                                   QWidget* parent)
+    : QWidget(parent), m_fifo_player(fifo_player), m_fifo_recorder(fifo_recorder)
 {
   setWindowTitle(tr("FIFO Player"));
-  setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
+  setWindowIcon(Resources::GetAppIcon());
 
   CreateWidgets();
+  LoadSettings();
   ConnectWidgets();
+  AddDescriptions();
 
   UpdateInfo();
 
   UpdateControls();
 
-  FifoPlayer::GetInstance().SetFileLoadedCallback(
+  m_fifo_player.SetFileLoadedCallback(
       [this] { QueueOnObject(this, &FIFOPlayerWindow::OnFIFOLoaded); });
-  FifoPlayer::GetInstance().SetFrameWrittenCallback([this] {
+  m_fifo_player.SetFrameWrittenCallback([this] {
     QueueOnObject(this, [this] {
       UpdateInfo();
       UpdateControls();
@@ -50,17 +57,34 @@ FIFOPlayerWindow::FIFOPlayerWindow(QWidget* parent) : QDialog(parent)
   });
 
   connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, [this](Core::State state) {
+    // We don't want to trigger OnEmulationStarted when going from Paused to Running,
+    // and nothing in UpdateControls treats Paused and Running differently
+    if (state == Core::State::Paused)
+      state = Core::State::Running;
+
+    // Skip redundant updates
+    if (state == m_emu_state)
+      return;
+
+    UpdateControls();
+
     if (state == Core::State::Running)
       OnEmulationStarted();
     else if (state == Core::State::Uninitialized)
       OnEmulationStopped();
+
+    m_emu_state = state;
   });
+
+  installEventFilter(this);
 }
 
 FIFOPlayerWindow::~FIFOPlayerWindow()
 {
-  FifoPlayer::GetInstance().SetFileLoadedCallback({});
-  FifoPlayer::GetInstance().SetFrameWrittenCallback({});
+  Settings::GetQSettings().setValue(QStringLiteral("fifoplayerwindow/geometry"), saveGeometry());
+
+  m_fifo_player.SetFileLoadedCallback({});
+  m_fifo_player.SetFrameWrittenCallback({});
 }
 
 void FIFOPlayerWindow::CreateWidgets()
@@ -110,11 +134,13 @@ void FIFOPlayerWindow::CreateWidgets()
   // Playback Options
   auto* playback_group = new QGroupBox(tr("Playback Options"));
   auto* playback_layout = new QGridLayout;
-  m_early_memory_updates = new QCheckBox(tr("Early Memory Updates"));
+  m_early_memory_updates = new ToolTipCheckBox(tr("Early Memory Updates"));
+  m_loop = new ToolTipCheckBox(tr("Loop"));
 
   playback_layout->addWidget(object_range_group, 0, 0);
   playback_layout->addWidget(frame_range_group, 0, 1);
-  playback_layout->addWidget(m_early_memory_updates, 1, 0, 1, -1);
+  playback_layout->addWidget(m_early_memory_updates, 1, 0);
+  playback_layout->addWidget(m_loop, 1, 1);
   playback_group->setLayout(playback_layout);
 
   // Recording Options
@@ -142,22 +168,32 @@ void FIFOPlayerWindow::CreateWidgets()
   layout->addWidget(info_group);
   layout->addWidget(playback_group);
   layout->addWidget(recording_group);
+  layout->addStretch();
   layout->addWidget(m_button_box);
 
-  QWidget* main_widget = new QWidget(this);
-  main_widget->setLayout(layout);
+  m_main_widget = new QWidget(this);
+  m_main_widget->setLayout(layout);
 
-  auto* tab_widget = new QTabWidget(this);
+  m_tab_widget = new QTabWidget(this);
 
-  m_analyzer = new FIFOAnalyzer;
+  m_analyzer = new FIFOAnalyzer(m_fifo_player);
 
-  tab_widget->addTab(main_widget, tr("Play / Record"));
-  tab_widget->addTab(m_analyzer, tr("Analyze"));
+  m_tab_widget->addTab(m_main_widget, tr("Play / Record"));
+  m_tab_widget->addTab(m_analyzer, tr("Analyze"));
 
   auto* tab_layout = new QVBoxLayout;
-  tab_layout->addWidget(tab_widget);
+  tab_layout->addWidget(m_tab_widget);
 
   setLayout(tab_layout);
+}
+
+void FIFOPlayerWindow::LoadSettings()
+{
+  restoreGeometry(
+      Settings::GetQSettings().value(QStringLiteral("fifoplayerwindow/geometry")).toByteArray());
+
+  m_early_memory_updates->setChecked(Config::Get(Config::MAIN_FIFOPLAYER_EARLY_MEMORY_UPDATES));
+  m_loop->setChecked(Config::Get(Config::MAIN_FIFOPLAYER_LOOP_REPLAY));
 }
 
 void FIFOPlayerWindow::ConnectWidgets()
@@ -166,24 +202,36 @@ void FIFOPlayerWindow::ConnectWidgets()
   connect(m_save, &QPushButton::clicked, this, &FIFOPlayerWindow::SaveRecording);
   connect(m_record, &QPushButton::clicked, this, &FIFOPlayerWindow::StartRecording);
   connect(m_stop, &QPushButton::clicked, this, &FIFOPlayerWindow::StopRecording);
-  connect(m_button_box, &QDialogButtonBox::rejected, this, &FIFOPlayerWindow::reject);
-  connect(m_early_memory_updates, &QCheckBox::toggled, this,
-          &FIFOPlayerWindow::OnEarlyMemoryUpdatesChanged);
-  connect(m_frame_range_from, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), this,
-          &FIFOPlayerWindow::OnLimitsChanged);
-  connect(m_frame_range_to, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), this,
-          &FIFOPlayerWindow::OnLimitsChanged);
+  connect(m_button_box, &QDialogButtonBox::rejected, this, &FIFOPlayerWindow::hide);
+  connect(m_early_memory_updates, &QCheckBox::toggled, this, &FIFOPlayerWindow::OnConfigChanged);
+  connect(m_loop, &QCheckBox::toggled, this, &FIFOPlayerWindow::OnConfigChanged);
 
-  connect(m_object_range_from, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), this,
-          &FIFOPlayerWindow::OnLimitsChanged);
-  connect(m_object_range_to, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), this,
-          &FIFOPlayerWindow::OnLimitsChanged);
+  connect(m_frame_range_from, &QSpinBox::valueChanged, this, &FIFOPlayerWindow::OnLimitsChanged);
+  connect(m_frame_range_to, &QSpinBox::valueChanged, this, &FIFOPlayerWindow::OnLimitsChanged);
+
+  connect(m_object_range_from, &QSpinBox::valueChanged, this, &FIFOPlayerWindow::OnLimitsChanged);
+  connect(m_object_range_to, &QSpinBox::valueChanged, this, &FIFOPlayerWindow::OnLimitsChanged);
+}
+
+void FIFOPlayerWindow::AddDescriptions()
+{
+  static const char TR_MEMORY_UPDATES_DESCRIPTION[] = QT_TR_NOOP(
+      "If enabled, then all memory updates happen at once before the first frame.<br><br>"
+      "Causes issues with many fifologs, but can be useful for testing.<br><br>"
+      "<dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
+  static const char TR_LOOP_DESCRIPTION[] =
+      QT_TR_NOOP("If unchecked, then playback of the fifolog stops after the final frame.<br><br>"
+                 "This is generally only useful when a frame-dumping option is enabled.<br><br>"
+                 "<dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
+
+  m_early_memory_updates->SetDescription(tr(TR_MEMORY_UPDATES_DESCRIPTION));
+  m_loop->SetDescription(tr(TR_LOOP_DESCRIPTION));
 }
 
 void FIFOPlayerWindow::LoadRecording()
 {
-  QString path = QFileDialog::getOpenFileName(this, tr("Open FIFO log"), QString(),
-                                              tr("Dolphin FIFO Log (*.dff)"));
+  QString path = DolphinFileDialog::getOpenFileName(this, tr("Open FIFO Log"), QString(),
+                                                    tr("Dolphin FIFO Log (*.dff)"));
 
   if (path.isEmpty())
     return;
@@ -193,13 +241,13 @@ void FIFOPlayerWindow::LoadRecording()
 
 void FIFOPlayerWindow::SaveRecording()
 {
-  QString path = QFileDialog::getSaveFileName(this, tr("Save FIFO log"), QString(),
-                                              tr("Dolphin FIFO Log (*.dff)"));
+  QString path = DolphinFileDialog::getSaveFileName(this, tr("Save FIFO Log"), QString(),
+                                                    tr("Dolphin FIFO Log (*.dff)"));
 
   if (path.isEmpty())
     return;
 
-  FifoDataFile* file = FifoRecorder::GetInstance().GetRecordedFile();
+  FifoDataFile* file = m_fifo_recorder.GetRecordedFile();
 
   bool result = file->Save(path.toStdString());
 
@@ -212,9 +260,8 @@ void FIFOPlayerWindow::SaveRecording()
 void FIFOPlayerWindow::StartRecording()
 {
   // Start recording
-  FifoRecorder::GetInstance().StartRecording(m_frame_record_count->value(), [this] {
-    QueueOnObject(this, [this] { OnRecordingDone(); });
-  });
+  m_fifo_recorder.StartRecording(m_frame_record_count->value(),
+                                 [this] { QueueOnObject(this, [this] { OnRecordingDone(); }); });
 
   UpdateControls();
 
@@ -223,7 +270,7 @@ void FIFOPlayerWindow::StartRecording()
 
 void FIFOPlayerWindow::StopRecording()
 {
-  FifoRecorder::GetInstance().StopRecording();
+  m_fifo_recorder.StopRecording();
 
   UpdateControls();
   UpdateInfo();
@@ -231,19 +278,19 @@ void FIFOPlayerWindow::StopRecording()
 
 void FIFOPlayerWindow::OnEmulationStarted()
 {
-  UpdateControls();
-
-  if (FifoPlayer::GetInstance().GetFile())
+  if (m_fifo_player.GetFile())
     OnFIFOLoaded();
 }
 
 void FIFOPlayerWindow::OnEmulationStopped()
 {
   // If we have previously been recording, stop now.
-  if (FifoRecorder::GetInstance().IsRecording())
+  if (m_fifo_recorder.IsRecording())
     StopRecording();
 
-  UpdateControls();
+  // When emulation stops, switch away from the analyzer tab, as it no longer shows anything useful
+  m_tab_widget->setCurrentWidget(m_main_widget);
+  m_analyzer->Update();
 }
 
 void FIFOPlayerWindow::OnRecordingDone()
@@ -254,20 +301,19 @@ void FIFOPlayerWindow::OnRecordingDone()
 
 void FIFOPlayerWindow::UpdateInfo()
 {
-  if (FifoPlayer::GetInstance().IsPlaying())
+  if (m_fifo_player.IsPlaying())
   {
-    FifoDataFile* file = FifoPlayer::GetInstance().GetFile();
-    m_info_label->setText(
-        tr("%1 frame(s)\n%2 object(s)\nCurrent Frame: %3")
-            .arg(QString::number(file->GetFrameCount()),
-                 QString::number(FifoPlayer::GetInstance().GetFrameObjectCount()),
-                 QString::number(FifoPlayer::GetInstance().GetCurrentFrameNum())));
+    FifoDataFile* file = m_fifo_player.GetFile();
+    m_info_label->setText(tr("%1 frame(s)\n%2 object(s)\nCurrent Frame: %3")
+                              .arg(QString::number(file->GetFrameCount()),
+                                   QString::number(m_fifo_player.GetCurrentFrameObjectCount()),
+                                   QString::number(m_fifo_player.GetCurrentFrameNum())));
     return;
   }
 
-  if (FifoRecorder::GetInstance().IsRecordingDone())
+  if (m_fifo_recorder.IsRecordingDone())
   {
-    FifoDataFile* file = FifoRecorder::GetInstance().GetRecordedFile();
+    FifoDataFile* file = m_fifo_recorder.GetRecordedFile();
     size_t fifo_bytes = 0;
     size_t mem_bytes = 0;
 
@@ -284,7 +330,7 @@ void FIFOPlayerWindow::UpdateInfo()
     return;
   }
 
-  if (Core::IsRunning() && FifoRecorder::GetInstance().IsRecording())
+  if (Core::IsRunning(Core::System::GetInstance()) && m_fifo_recorder.IsRecording())
   {
     m_info_label->setText(tr("Recording..."));
     return;
@@ -295,16 +341,18 @@ void FIFOPlayerWindow::UpdateInfo()
 
 void FIFOPlayerWindow::OnFIFOLoaded()
 {
-  FifoDataFile* file = FifoPlayer::GetInstance().GetFile();
+  FifoDataFile* file = m_fifo_player.GetFile();
 
-  auto object_count = FifoPlayer::GetInstance().GetFrameObjectCount();
+  auto object_count = m_fifo_player.GetMaxObjectCount();
   auto frame_count = file->GetFrameCount();
 
-  m_frame_range_to->setMaximum(frame_count);
-  m_object_range_to->setMaximum(object_count);
+  m_frame_range_to->setMaximum(frame_count - 1);
+  m_object_range_to->setMaximum(object_count - 1);
 
-  m_frame_range_to->setValue(frame_count);
-  m_object_range_to->setValue(object_count);
+  m_frame_range_from->setValue(0);
+  m_object_range_from->setValue(0);
+  m_frame_range_to->setValue(frame_count - 1);
+  m_object_range_to->setValue(object_count - 1);
 
   UpdateInfo();
   UpdateLimits();
@@ -313,14 +361,16 @@ void FIFOPlayerWindow::OnFIFOLoaded()
   m_analyzer->Update();
 }
 
-void FIFOPlayerWindow::OnEarlyMemoryUpdatesChanged(bool enabled)
+void FIFOPlayerWindow::OnConfigChanged()
 {
-  FifoPlayer::GetInstance().SetEarlyMemoryUpdates(enabled);
+  Config::SetBase(Config::MAIN_FIFOPLAYER_EARLY_MEMORY_UPDATES,
+                  m_early_memory_updates->isChecked());
+  Config::SetBase(Config::MAIN_FIFOPLAYER_LOOP_REPLAY, m_loop->isChecked());
 }
 
 void FIFOPlayerWindow::OnLimitsChanged()
 {
-  FifoPlayer& player = FifoPlayer::GetInstance();
+  FifoPlayer& player = m_fifo_player;
 
   player.SetFrameRangeStart(m_frame_range_from->value());
   player.SetFrameRangeEnd(m_frame_range_to->value());
@@ -331,17 +381,19 @@ void FIFOPlayerWindow::OnLimitsChanged()
 
 void FIFOPlayerWindow::UpdateLimits()
 {
-  m_frame_range_from->setMaximum(std::max(m_frame_range_to->value() - 1, 0));
-  m_frame_range_to->setMinimum(m_frame_range_from->value() + 1);
-  m_object_range_from->setMaximum(std::max(m_object_range_to->value() - 1, 0));
-  m_object_range_to->setMinimum(m_object_range_from->value() + 1);
+  m_frame_range_from->setMaximum(m_frame_range_to->value());
+  m_frame_range_to->setMinimum(m_frame_range_from->value());
+  m_object_range_from->setMaximum(m_object_range_to->value());
+  m_object_range_to->setMinimum(m_object_range_from->value());
 }
 
 void FIFOPlayerWindow::UpdateControls()
 {
-  bool running = Core::IsRunning();
-  bool is_recording = FifoRecorder::GetInstance().IsRecording();
-  bool is_playing = FifoPlayer::GetInstance().IsPlaying();
+  Core::System& system = Core::System::GetInstance();
+  const bool core_is_uninitialized = Core::IsUninitialized(system);
+  const bool core_is_running = Core::IsRunning(system);
+  const bool is_recording = m_fifo_recorder.IsRecording();
+  const bool is_playing = m_fifo_player.IsPlaying();
 
   m_frame_range_from->setEnabled(is_playing);
   m_frame_range_from_label->setEnabled(is_playing);
@@ -352,18 +404,28 @@ void FIFOPlayerWindow::UpdateControls()
   m_object_range_to->setEnabled(is_playing);
   m_object_range_to_label->setEnabled(is_playing);
 
-  m_early_memory_updates->setEnabled(is_playing);
-
   bool enable_frame_record_count = !is_playing && !is_recording;
 
   m_frame_record_count_label->setEnabled(enable_frame_record_count);
   m_frame_record_count->setEnabled(enable_frame_record_count);
 
-  m_load->setEnabled(!running);
-  m_record->setEnabled(running && !is_playing);
+  m_load->setEnabled(core_is_uninitialized);
+  m_record->setEnabled(core_is_running && !is_playing);
 
-  m_stop->setVisible(running && is_recording);
+  m_stop->setVisible(core_is_running && is_recording);
   m_record->setVisible(!m_stop->isVisible());
 
-  m_save->setEnabled(FifoRecorder::GetInstance().IsRecordingDone());
+  m_save->setEnabled(m_fifo_recorder.IsRecordingDone());
+}
+
+bool FIFOPlayerWindow::eventFilter(QObject* object, QEvent* event)
+{
+  // Close when escape is pressed
+  if (event->type() == QEvent::KeyPress)
+  {
+    if (static_cast<QKeyEvent*>(event)->matches(QKeySequence::Cancel))
+      hide();
+  }
+
+  return false;
 }

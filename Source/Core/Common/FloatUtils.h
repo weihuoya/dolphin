@@ -1,26 +1,13 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <array>
+#include <bit>
 #include <limits>
 
-#include "Common/BitUtils.h"
 #include "Common/CommonTypes.h"
-
-#ifdef _MSC_VER
-
-// MSVC needs a workaround, because its std::numeric_limits<double>::signaling_NaN()
-// will use __builtin_nans, which is improperly handled by the compiler and generates
-// a bad constant. Here we go back to the version MSVC used before the builtin.
-// TODO: Remove this and use numeric_limits directly whenever this bug is fixed.
-// See Visual Studio bug # 128935 "std::numeric_limits<float>::signaling_NaN() is broken"
-
-#include <ymath.h>
-
-#endif  // _MSC_VER
 
 namespace Common
 {
@@ -30,74 +17,62 @@ constexpr T SNANConstant()
   return std::numeric_limits<T>::signaling_NaN();
 }
 
-#ifdef _MSC_VER
-
-// See workaround note above.
-
-template <>
-constexpr double SNANConstant()
-{
-  return (_CSTD _Snan._Double);
-}
-template <>
-constexpr float SNANConstant()
-{
-  return (_CSTD _Snan._Float);
-}
-
-#endif  // _MSC_VER
-
 // The most significant bit of the fraction is an is-quiet bit on all architectures we care about.
-enum : u64
-{
-  DOUBLE_SIGN = 0x8000000000000000ULL,
-  DOUBLE_EXP = 0x7FF0000000000000ULL,
-  DOUBLE_FRAC = 0x000FFFFFFFFFFFFFULL,
-  DOUBLE_ZERO = 0x0000000000000000ULL,
-  DOUBLE_QBIT = 0x0008000000000000ULL
-};
+static constexpr u64 DOUBLE_QBIT = 0x0008000000000000ULL;
+static constexpr u64 DOUBLE_SIGN = 0x8000000000000000ULL;
+static constexpr u64 DOUBLE_EXP = 0x7FF0000000000000ULL;
+static constexpr u64 DOUBLE_FRAC = 0x000FFFFFFFFFFFFFULL;
+static constexpr u64 DOUBLE_ZERO = 0x0000000000000000ULL;
+static constexpr int DOUBLE_EXP_WIDTH = 11;
+static constexpr int DOUBLE_FRAC_WIDTH = 52;
 
-enum : u32
-{
-  FLOAT_SIGN = 0x80000000,
-  FLOAT_EXP = 0x7F800000,
-  FLOAT_FRAC = 0x007FFFFF,
-  FLOAT_ZERO = 0x00000000
-};
+static constexpr u32 FLOAT_SIGN = 0x80000000;
+static constexpr u32 FLOAT_EXP = 0x7F800000;
+static constexpr u32 FLOAT_FRAC = 0x007FFFFF;
+static constexpr u32 FLOAT_ZERO = 0x00000000;
+static constexpr int FLOAT_EXP_WIDTH = 8;
+static constexpr int FLOAT_FRAC_WIDTH = 23;
 
 inline bool IsQNAN(double d)
 {
-  const u64 i = BitCast<u64>(d);
+  const u64 i = std::bit_cast<u64>(d);
   return ((i & DOUBLE_EXP) == DOUBLE_EXP) && ((i & DOUBLE_QBIT) == DOUBLE_QBIT);
 }
 
 inline bool IsSNAN(double d)
 {
-  const u64 i = BitCast<u64>(d);
+  const u64 i = std::bit_cast<u64>(d);
   return ((i & DOUBLE_EXP) == DOUBLE_EXP) && ((i & DOUBLE_FRAC) != DOUBLE_ZERO) &&
          ((i & DOUBLE_QBIT) == DOUBLE_ZERO);
 }
 
 inline float FlushToZero(float f)
 {
-  u32 i = BitCast<u32>(f);
+  u32 i = std::bit_cast<u32>(f);
   if ((i & FLOAT_EXP) == 0)
   {
     // Turn into signed zero
     i &= FLOAT_SIGN;
   }
-  return BitCast<float>(i);
+  return std::bit_cast<float>(i);
 }
 
 inline double FlushToZero(double d)
 {
-  u64 i = BitCast<u64>(d);
+  u64 i = std::bit_cast<u64>(d);
   if ((i & DOUBLE_EXP) == 0)
   {
     // Turn into signed zero
     i &= DOUBLE_SIGN;
   }
-  return BitCast<double>(i);
+  return std::bit_cast<double>(i);
+}
+
+inline double MakeQuiet(double d)
+{
+  const u64 integral = std::bit_cast<u64>(d) | Common::DOUBLE_QBIT;
+
+  return std::bit_cast<double>(integral);
 }
 
 enum PPCFpClass
@@ -116,7 +91,6 @@ enum PPCFpClass
 // Uses PowerPC conventions for the return value, so it can be easily
 // used directly in CPU emulation.
 u32 ClassifyDouble(double dvalue);
-// More efficient float version.
 u32 ClassifyFloat(float fvalue);
 
 struct BaseAndDec

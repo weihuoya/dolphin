@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -48,11 +47,10 @@ public:
   // Creates an instance of GLContext specific to the platform we are running on.
   // If successful, the context is made current on the calling thread.
   static std::unique_ptr<GLContext> Create(const WindowSystemInfo& wsi, bool stereo = false,
-                                           bool core = true, bool prefer_egl = false,
-                                           bool prefer_gles = false);
+                                           bool core = true, bool prefer_gles = false);
 
 protected:
-  virtual bool Initialize(void* display_handle, void* window_handle, bool stereo, bool core);
+  virtual bool Initialize(const WindowSystemInfo& wsi, bool stereo, bool core);
 
   Mode m_opengl_mode = Mode::Detect;
 

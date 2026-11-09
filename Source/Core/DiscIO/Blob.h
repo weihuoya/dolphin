@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -15,6 +14,7 @@
 // automatically do the right thing.
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,6 +25,8 @@
 
 namespace DiscIO
 {
+enum class WIARVZCompressionType : u32;
+
 // Increment CACHE_REVISION (GameFileCache.cpp) if the enum below is modified
 enum class BlobType
 {
@@ -34,17 +36,45 @@ enum class BlobType
   GCZ,
   CISO,
   WBFS,
-  TGC
+  TGC,
+  WIA,
+  RVZ,
+  MOD_DESCRIPTOR,
+  NFS,
+  SPLIT_PLAIN,
 };
+
+// If you convert an ISO file to another format and then call GetDataSize on it, what is the result?
+enum class DataSizeType
+{
+  // The result is the same as for the ISO.
+  Accurate,
+  // The result is not larger than for the ISO. (It's usually a little smaller than for the ISO.)
+  // Reads to offsets that are larger than the result will return some kind of "blank" data.
+  LowerBound,
+  // The result is not smaller than for the ISO. (It's usually much larger than for the ISO.)
+  UpperBound,
+};
+
+std::string GetName(BlobType blob_type, bool translate);
 
 class BlobReader
 {
 public:
-  virtual ~BlobReader() {}
+  virtual ~BlobReader() = default;
+
   virtual BlobType GetBlobType() const = 0;
+  virtual std::unique_ptr<BlobReader> CopyReader() const = 0;
+
   virtual u64 GetRawSize() const = 0;
   virtual u64 GetDataSize() const = 0;
-  virtual bool IsDataSizeAccurate() const = 0;
+  virtual DataSizeType GetDataSizeType() const = 0;
+
+  // Returns 0 if the format does not use blocks
+  virtual u64 GetBlockSize() const = 0;
+  virtual bool HasFastRandomAccessInBlock() const = 0;
+  virtual std::string GetCompressionMethod() const = 0;
+  virtual std::optional<int> GetCompressionLevel() const = 0;
 
   // NOT thread-safe - can't call this from multiple threads.
   virtual bool Read(u64 offset, u64 size, u8* out_ptr) = 0;
@@ -53,15 +83,22 @@ public:
   {
     T temp;
     if (!Read(offset, sizeof(T), reinterpret_cast<u8*>(&temp)))
-      return {};
+      return std::nullopt;
     return Common::FromBigEndian(temp);
   }
 
-  virtual bool SupportsReadWiiDecrypted() const { return false; }
-  virtual bool ReadWiiDecrypted(u64 offset, u64 size, u8* out_ptr, u64 partition_offset)
+  virtual bool SupportsReadWiiDecrypted(u64 offset, u64 size, u64 partition_data_offset) const
   {
     return false;
   }
+
+  virtual bool ReadWiiDecrypted(u64 offset, u64 size, u8* out_ptr, u64 partition_data_offset)
+  {
+    return false;
+  }
+
+  // Returns true only for CachedBlobReader.
+  virtual bool IsCached() const { return false; }
 
 protected:
   BlobReader() {}
@@ -73,7 +110,7 @@ protected:
 class SectorReader : public BlobReader
 {
 public:
-  virtual ~SectorReader() = 0;
+  ~SectorReader() override = 0;
 
   bool Read(u64 offset, u64 size, u8* out_ptr) override;
 
@@ -158,12 +195,16 @@ private:
 // Factory function - examines the path to choose the right type of BlobReader, and returns one.
 std::unique_ptr<BlobReader> CreateBlobReader(const std::string& filename);
 
-typedef bool (*CompressCB)(const std::string& text, float percent, void* arg);
+using CompressCB = std::function<bool(const std::string& text, float percent)>;
 
-bool CompressFileToBlob(const std::string& infile_path, const std::string& outfile_path,
-                        u32 sub_type = 0, int sector_size = 16384, CompressCB callback = nullptr,
-                        void* arg = nullptr);
-bool DecompressBlobToFile(const std::string& infile_path, const std::string& outfile_path,
-                          CompressCB callback = nullptr, void* arg = nullptr);
+bool ConvertToGCZ(BlobReader* infile, const std::string& infile_path,
+                  const std::string& outfile_path, u32 sub_type, int sector_size,
+                  const CompressCB& callback);
+bool ConvertToPlain(BlobReader* infile, const std::string& infile_path,
+                    const std::string& outfile_path, const CompressCB& callback);
+bool ConvertToWIAOrRVZ(BlobReader* infile, const std::string& infile_path,
+                       const std::string& outfile_path, bool rvz,
+                       WIARVZCompressionType compression_type, int compression_level,
+                       int chunk_size, const CompressCB& callback);
 
 }  // namespace DiscIO

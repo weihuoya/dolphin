@@ -1,6 +1,5 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // Multithreaded event class. This allows waiting in a thread for an event to
 // be triggered in another thread. While waiting, the CPU will be available for
@@ -11,10 +10,6 @@
 //            triggered. Usually a bad idea.
 
 #pragma once
-
-#ifdef _WIN32
-#include <concrt.h>
-#endif
 
 #include <chrono>
 #include <condition_variable>

@@ -1,57 +1,81 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Config/ARCodeWidget.h"
 
-#include <QButtonGroup>
+#include <algorithm>
+#include <functional>
+#include <utility>
+
 #include <QCursor>
 #include <QHBoxLayout>
+#ifdef USE_RETRO_ACHIEVEMENTS
+#include <QIcon>
+#endif  // USE_RETRO_ACHIEVEMENTS
 #include <QListWidget>
 #include <QMenu>
 #include <QPushButton>
+#ifdef USE_RETRO_ACHIEVEMENTS
+#include <QStyle>
+#endif  // USE_RETRO_ACHIEVEMENTS
 #include <QVBoxLayout>
 
 #include "Common/FileUtil.h"
 #include "Common/IniFile.h"
 
+#include "Core/AchievementManager.h"
 #include "Core/ActionReplay.h"
 #include "Core/ConfigManager.h"
 
 #include "DolphinQt/Config/CheatCodeEditor.h"
 #include "DolphinQt/Config/CheatWarningWidget.h"
+#include "DolphinQt/Config/HardcoreWarningWidget.h"
+#include "DolphinQt/QtUtils/NonDefaultQPushButton.h"
+#ifdef USE_RETRO_ACHIEVEMENTS
+#include "DolphinQt/Settings.h"
+#endif  // USE_RETRO_ACHIEVEMENTS
 
-#include "UICommon/GameFile.h"
-
-ARCodeWidget::ARCodeWidget(const UICommon::GameFile& game, bool restart_required)
-    : m_game(game), m_game_id(game.GetGameID()), m_game_revision(game.GetRevision()),
+ARCodeWidget::ARCodeWidget(std::string game_id, u16 game_revision, bool restart_required)
+    : m_game_id(std::move(game_id)), m_game_revision(game_revision),
       m_restart_required(restart_required)
 {
   CreateWidgets();
   ConnectWidgets();
 
-  IniFile game_ini_local;
-
-  // We don't use LoadLocalGameIni() here because user cheat codes that are installed via the UI
-  // will always be stored in GS/${GAMEID}.ini
-  game_ini_local.Load(File::GetUserPath(D_GAMESETTINGS_IDX) + m_game_id + ".ini");
-
-  const IniFile game_ini_default = SConfig::LoadDefaultGameIni(m_game_id, m_game_revision);
-  m_ar_codes = ActionReplay::LoadCodes(game_ini_default, game_ini_local);
-
-  UpdateList();
-  OnSelectionChanged();
+  LoadCodes();
 }
 
 ARCodeWidget::~ARCodeWidget() = default;
 
+void ARCodeWidget::ChangeGame(std::string game_id, const u16 game_revision)
+{
+  m_game_id = std::move(game_id);
+  m_game_revision = game_revision;
+  m_restart_required = false;
+
+  m_ar_codes.clear();
+
+  // If a CheatCodeEditor is open, it's now trying to add or edit a code in the previous game's code
+  // list which is no longer loaded. Letting the user save the code wouldn't make sense, so close
+  // the dialog instead.
+  m_cheat_code_editor->reject();
+
+  LoadCodes();
+}
+
 void ARCodeWidget::CreateWidgets()
 {
   m_warning = new CheatWarningWidget(m_game_id, m_restart_required, this);
+#ifdef USE_RETRO_ACHIEVEMENTS
+  m_hc_warning = new HardcoreWarningWidget(this);
+#endif  // USE_RETRO_ACHIEVEMENTS
   m_code_list = new QListWidget;
-  m_code_add = new QPushButton(tr("&Add New Code..."));
-  m_code_edit = new QPushButton(tr("&Edit Code..."));
-  m_code_remove = new QPushButton(tr("&Remove Code"));
+  m_code_add = new NonDefaultQPushButton(tr("&Add New Code..."));
+  m_code_edit = new NonDefaultQPushButton(tr("&Edit Code..."));
+  m_code_remove = new NonDefaultQPushButton(tr("&Remove Code"));
+  m_code_toggle_all = new NonDefaultQPushButton(tr("Disable All"));
+
+  m_cheat_code_editor = new CheatCodeEditor(this);
 
   m_code_list->setContextMenuPolicy(Qt::CustomContextMenu);
 
@@ -60,20 +84,27 @@ void ARCodeWidget::CreateWidgets()
   button_layout->addWidget(m_code_add);
   button_layout->addWidget(m_code_edit);
   button_layout->addWidget(m_code_remove);
+  button_layout->addWidget(m_code_toggle_all);
 
-  QVBoxLayout* layout = new QVBoxLayout;
+  auto* const layout = new QVBoxLayout{this};
 
   layout->addWidget(m_warning);
+#ifdef USE_RETRO_ACHIEVEMENTS
+  layout->addWidget(m_hc_warning);
+#endif  // USE_RETRO_ACHIEVEMENTS
   layout->addWidget(m_code_list);
   layout->addLayout(button_layout);
-
-  setLayout(layout);
 }
 
 void ARCodeWidget::ConnectWidgets()
 {
   connect(m_warning, &CheatWarningWidget::OpenCheatEnableSettings, this,
           &ARCodeWidget::OpenGeneralSettings);
+#ifdef USE_RETRO_ACHIEVEMENTS
+  connect(m_hc_warning, &HardcoreWarningWidget::OpenAchievementSettings, this,
+          &ARCodeWidget::OpenAchievementSettings);
+  connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, &ARCodeWidget::UpdateList);
+#endif  // USE_RETRO_ACHIEVEMENTS
 
   connect(m_code_list, &QListWidget::itemChanged, this, &ARCodeWidget::OnItemChanged);
   connect(m_code_list, &QListWidget::itemSelectionChanged, this, &ARCodeWidget::OnSelectionChanged);
@@ -85,16 +116,17 @@ void ARCodeWidget::ConnectWidgets()
   connect(m_code_add, &QPushButton::clicked, this, &ARCodeWidget::OnCodeAddClicked);
   connect(m_code_edit, &QPushButton::clicked, this, &ARCodeWidget::OnCodeEditClicked);
   connect(m_code_remove, &QPushButton::clicked, this, &ARCodeWidget::OnCodeRemoveClicked);
+  connect(m_code_toggle_all, &QPushButton::clicked, this, &ARCodeWidget::OnCodeToggleAllClicked);
 }
 
 void ARCodeWidget::OnItemChanged(QListWidgetItem* item)
 {
-  m_ar_codes[m_code_list->row(item)].active = (item->checkState() == Qt::Checked);
+  m_ar_codes[m_code_list->row(item)].enabled = (item->checkState() == Qt::Checked);
 
   if (!m_restart_required)
-    ActionReplay::ApplyCodes(m_ar_codes);
+    ActionReplay::ApplyCodes(m_ar_codes, m_game_id, m_game_revision);
 
-  UpdateList();
+  UpdateToggleButton();
   SaveCodes();
 }
 
@@ -103,6 +135,8 @@ void ARCodeWidget::OnContextMenuRequested()
   QMenu menu;
 
   menu.addAction(tr("Sort Alphabetically"), this, &ARCodeWidget::SortAlphabetically);
+  menu.addAction(tr("Show Enabled Codes First"), this, &ARCodeWidget::SortEnabledCodesFirst);
+  menu.addAction(tr("Show Disabled Codes First"), this, &ARCodeWidget::SortDisabledCodesFirst);
 
   menu.exec(QCursor::pos());
 }
@@ -111,6 +145,35 @@ void ARCodeWidget::SortAlphabetically()
 {
   m_code_list->sortItems();
   OnListReordered();
+}
+
+void ARCodeWidget::SortEnabledCodesFirst()
+{
+  std::ranges::stable_partition(m_ar_codes, std::identity{}, &ActionReplay::ARCode::enabled);
+  UpdateList();
+  SaveCodes();
+}
+
+void ARCodeWidget::SortDisabledCodesFirst()
+{
+  std::ranges::stable_partition(m_ar_codes, std::logical_not{}, &ActionReplay::ARCode::enabled);
+  UpdateList();
+  SaveCodes();
+}
+
+bool ARCodeWidget::IsEveryCodeEnabled()
+{
+  return std::ranges::all_of(m_ar_codes, &ActionReplay::ARCode::enabled);
+}
+
+void ARCodeWidget::UpdateToggleButton()
+{
+  if (IsEveryCodeEnabled())
+    m_code_toggle_all->setText(tr("Disable All"));
+  else
+    m_code_toggle_all->setText(tr("Enable All"));
+
+  m_code_toggle_all->setDisabled(m_ar_codes.empty());
 }
 
 void ARCodeWidget::OnListReordered()
@@ -133,14 +196,18 @@ void ARCodeWidget::OnListReordered()
 
 void ARCodeWidget::OnSelectionChanged()
 {
-  auto items = m_code_list->selectedItems();
+  const QList<QListWidgetItem*> items = m_code_list->selectedItems();
+  const bool empty = items.empty();
 
-  if (items.empty())
+  m_code_edit->setDisabled(empty);
+  m_code_remove->setDisabled(empty);
+
+  if (empty)
     return;
 
-  const auto* selected = items[0];
+  const QListWidgetItem* const selected = items[0];
 
-  bool user_defined = m_ar_codes[m_code_list->row(selected)].user_defined;
+  const bool user_defined = m_ar_codes[m_code_list->row(selected)].user_defined;
 
   m_code_remove->setEnabled(user_defined);
   m_code_edit->setText(user_defined ? tr("&Edit Code...") : tr("Clone and &Edit Code..."));
@@ -159,21 +226,63 @@ void ARCodeWidget::UpdateList()
 
     item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable |
                    Qt::ItemIsDragEnabled);
-    item->setCheckState(ar.active ? Qt::Checked : Qt::Unchecked);
+    item->setCheckState(ar.enabled ? Qt::Checked : Qt::Unchecked);
     item->setData(Qt::UserRole, static_cast<int>(i));
+
+#ifdef USE_RETRO_ACHIEVEMENTS
+    const AchievementManager& achievement_manager = AchievementManager::GetInstance();
+
+    if (achievement_manager.IsHardcoreModeActive())
+    {
+      const QIcon approved_icon = style()->standardIcon(QStyle::SP_DialogYesButton);
+      const QIcon warning_icon = style()->standardIcon(QStyle::SP_MessageBoxWarning);
+
+      if (achievement_manager.IsApprovedARCode(ar, m_game_id, m_game_revision))
+        item->setIcon(approved_icon);
+      else
+        item->setIcon(warning_icon);
+    }
+#endif  // USE_RETRO_ACHIEVEMENTS
 
     m_code_list->addItem(item);
   }
 
   m_code_list->setDragDropMode(QAbstractItemView::InternalMove);
+  UpdateToggleButton();
+}
+
+void ARCodeWidget::LoadCodes()
+{
+  if (!m_game_id.empty())
+  {
+    Common::IniFile game_ini_local;
+
+    // We don't use LoadLocalGameIni() here because user cheat codes that are installed via the UI
+    // will always be stored in GS/${GAMEID}.ini
+    game_ini_local.Load(File::GetUserPath(D_GAMESETTINGS_IDX) + m_game_id + ".ini");
+
+    const Common::IniFile game_ini_default =
+        SConfig::LoadDefaultGameIni(m_game_id, m_game_revision);
+    m_ar_codes = ActionReplay::LoadCodes(game_ini_default, game_ini_local);
+  }
+
+  m_code_list->setEnabled(!m_game_id.empty());
+  m_code_add->setEnabled(!m_game_id.empty());
+  m_code_edit->setEnabled(false);
+  m_code_remove->setEnabled(false);
+
+  UpdateList();
 }
 
 void ARCodeWidget::SaveCodes()
 {
+  if (m_game_id.empty())
+    return;
+
   const auto ini_path =
       std::string(File::GetUserPath(D_GAMESETTINGS_IDX)).append(m_game_id).append(".ini");
 
-  IniFile game_ini_local;
+  Common::IniFile game_ini_local;
   game_ini_local.Load(ini_path);
   ActionReplay::SaveCodes(&game_ini_local, m_ar_codes);
   game_ini_local.Save(ini_path);
@@ -190,11 +299,10 @@ void ARCodeWidget::AddCode(ActionReplay::ARCode code)
 void ARCodeWidget::OnCodeAddClicked()
 {
   ActionReplay::ARCode ar;
-  ar.active = true;
+  ar.enabled = false;
 
-  CheatCodeEditor ed(this);
-  ed.SetARCode(&ar);
-  if (ed.exec() == QDialog::Rejected)
+  m_cheat_code_editor->SetARCode(&ar);
+  if (m_cheat_code_editor->exec() == QDialog::Rejected)
     return;
 
   m_ar_codes.push_back(std::move(ar));
@@ -210,22 +318,21 @@ void ARCodeWidget::OnCodeEditClicked()
     return;
 
   const auto* const selected = items[0];
+  const bool enabled = selected->checkState() == Qt::Checked;
+
   auto& current_ar = m_ar_codes[m_code_list->row(selected)];
 
-  CheatCodeEditor ed(this);
   if (current_ar.user_defined)
   {
-    ed.SetARCode(&current_ar);
-
-    if (ed.exec() == QDialog::Rejected)
+    m_cheat_code_editor->SetARCode(&current_ar);
+    if (m_cheat_code_editor->exec() == QDialog::Rejected)
       return;
   }
   else
   {
     ActionReplay::ARCode ar = current_ar;
-    ed.SetARCode(&ar);
-
-    if (ed.exec() == QDialog::Rejected)
+    m_cheat_code_editor->SetARCode(&ar);
+    if (m_cheat_code_editor->exec() == QDialog::Rejected)
       return;
 
     m_ar_codes.push_back(std::move(ar));
@@ -233,6 +340,9 @@ void ARCodeWidget::OnCodeEditClicked()
 
   SaveCodes();
   UpdateList();
+
+  if (!m_restart_required && enabled)
+    ActionReplay::ApplyCodes(m_ar_codes, m_game_id, m_game_revision);
 }
 
 void ARCodeWidget::OnCodeRemoveClicked()
@@ -250,4 +360,29 @@ void ARCodeWidget::OnCodeRemoveClicked()
   UpdateList();
 
   m_code_remove->setEnabled(false);
+}
+
+void ARCodeWidget::OnCodeToggleAllClicked()
+{
+  const bool new_state = !IsEveryCodeEnabled();
+  const Qt::CheckState new_check_state =
+      new_state ? Qt::CheckState::Checked : Qt::CheckState::Unchecked;
+
+  {
+    // Without this blocker, the call to setCheckState below would end up loading and saving the ini
+    // file once per code.
+    QSignalBlocker blocker(m_code_list);
+
+    for (int i = 0; i < static_cast<int>(m_ar_codes.size()); ++i)
+    {
+      m_ar_codes[i].enabled = new_state;
+      m_code_list->item(i)->setCheckState(new_check_state);
+    }
+  }
+
+  if (!m_restart_required)
+    ActionReplay::ApplyCodes(m_ar_codes, m_game_id, m_game_revision);
+
+  UpdateList();
+  SaveCodes();
 }

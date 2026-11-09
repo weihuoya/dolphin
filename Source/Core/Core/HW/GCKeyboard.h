@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -20,6 +19,7 @@ namespace Keyboard
 void Shutdown();
 void Initialize();
 void LoadConfig();
+void GenerateDynamicInputTextures();
 
 InputConfig* GetConfig();
 ControllerEmu::ControlGroup* GetGroup(int port, KeyboardGroup group);

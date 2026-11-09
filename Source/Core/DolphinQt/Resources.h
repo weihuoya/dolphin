@@ -1,11 +1,11 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <QIcon>
 #include <QList>
-#include <QPixmap>
+#include <string_view>
 
 namespace DiscIO
 {
@@ -20,29 +20,26 @@ public:
   enum class MiscID
   {
     BannerMissing,
-    LogoLarge,
-    LogoSmall
+    Logo,
   };
 
   static void Init();
 
-  static QPixmap GetPlatform(DiscIO::Platform platform);
-  static QPixmap GetCountry(DiscIO::Country country);
+  static QIcon GetPlatform(DiscIO::Platform platform);
+  static QIcon GetCountry(DiscIO::Country country);
 
-  static QPixmap GetMisc(MiscID id);
+  static QIcon GetMisc(MiscID id);
 
-  static QIcon GetScaledIcon(const std::string& name);
-  static QIcon GetScaledThemeIcon(const std::string& name);
+  static QIcon GetResourceIcon(std::string_view name);
+  static QIcon GetThemeIcon(std::string_view name);
   static QIcon GetAppIcon();
-
-  static QPixmap GetScaledPixmap(const std::string& name);
 
 private:
   Resources() {}
-  static QIcon GetIcon(const QString& name, const QString& dir);
-  static QPixmap GetPixmap(const QString& name, const QString& dir);
+  static QIcon LoadNamedIcon(std::string_view name, const QString& dir);
 
-  static QList<QPixmap> m_platforms;
-  static QList<QPixmap> m_countries;
-  static QList<QPixmap> m_misc;
+  static bool m_svg_supported;
+  static QList<QIcon> m_platforms;
+  static QList<QIcon> m_countries;
+  static QList<QIcon> m_misc;
 };

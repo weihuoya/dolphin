@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,6 +7,7 @@
 
 #include <QObject>
 
+#include "Common/CommonTypes.h"
 #include "Common/Flag.h"
 #include "InputCommon/InputProfile.h"
 
@@ -16,7 +16,7 @@ class HotkeyScheduler : public QObject
   Q_OBJECT
 public:
   explicit HotkeyScheduler();
-  ~HotkeyScheduler();
+  ~HotkeyScheduler() override;
 
   void Start();
   void Stop();
@@ -26,6 +26,7 @@ signals:
   void ChangeDisc();
 
   void ExitHotkey();
+  void UnlockCursor();
   void ActivateChat();
   void RequestGolfControl();
   void FullScreenHotkey();
@@ -35,6 +36,8 @@ signals:
   void ScreenShotHotkey();
   void RefreshGameListHotkey();
   void SetStateSlotHotkey(int slot);
+  void IncrementSelectedStateSlotHotkey();
+  void DecrementSelectedStateSlotHotkey();
   void StateLoadSlotHotkey();
   void StateSaveSlotHotkey();
   void StateLoadSlot(int state);
@@ -46,9 +49,13 @@ signals:
   void StateLoadUndo();
   void StateSaveUndo();
   void StartRecording();
+  void PlayRecording();
   void ExportRecording();
   void ToggleReadOnlyMode();
   void ConnectWiiRemote(int id);
+#ifdef USE_RETRO_ACHIEVEMENTS
+  void OpenAchievements();
+#endif  // USE_RETRO_ACHIEVEMENTS
 
   void Step();
   void StepOver();
@@ -61,9 +68,13 @@ signals:
   void ToggleBreakpoint();
   void AddBreakpoint();
 
+  void SkylandersPortalHotkey();
+  void InfinityBaseHotkey();
+
 private:
   void Run();
   void CheckDebuggingHotkeys();
+  void CheckGBAHotkeys();
 
   Common::Flag m_stop_requested;
   std::thread m_thread;

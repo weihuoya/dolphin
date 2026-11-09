@@ -1,12 +1,12 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <array>
 #include <string>
 
+#include "Common/BitUtils.h"
 #include "Core/HW/EXI/EXI_Device.h"
 
 class PointerWrap;
@@ -16,7 +16,7 @@ namespace ExpansionInterface
 class CEXIIPL : public IEXIDevice
 {
 public:
-  CEXIIPL();
+  explicit CEXIIPL(Core::System& system);
   ~CEXIIPL() override;
 
   void SetCS(int cs) override;
@@ -26,7 +26,7 @@ public:
   static constexpr u32 UNIX_EPOCH = 0;         // 1970-01-01 00:00:00
   static constexpr u32 GC_EPOCH = 0x386D4380;  // 2000-01-01 00:00:00
 
-  static u32 GetEmulatedTime(u32 epoch);
+  static u32 GetEmulatedTime(Core::System& system, u32 epoch);
   static u64 NetPlay_GetEmulatedTime();
 
   static void Descrambler(u8* data, u32 size);
@@ -78,4 +78,17 @@ private:
 
   static std::string FindIPLDump(const std::string& path_prefix);
 };
+
+// Used to indicate disc changes on the Wii, as insane as that sounds.
+// However, the name is definitely RTCFlag, as the code that gets it is __OSGetRTCFlags and
+// __OSClearRTCFlags in OSRtc.o (based on symbols from Kirby's Dream Collection)
+// This may simply be a single byte that gets repeated 4 times by some EXI quirk,
+// as reading it gives the value repeated 4 times but code only checks the first bit.
+enum class RTCFlag : u32
+{
+  EjectButton = 0x01010101,
+  DiscChanged = 0x02020202,
+};
+
+extern Common::Flags<RTCFlag> g_rtc_flags;
 }  // namespace ExpansionInterface

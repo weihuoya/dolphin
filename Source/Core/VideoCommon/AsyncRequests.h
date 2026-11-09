@@ -1,16 +1,14 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
-#include <condition_variable>
-#include <mutex>
-#include <queue>
-#include <vector>
+#include <concepts>
+#include <functional>
+#include <future>
 
-#include "Common/CommonTypes.h"
-#include "Common/Flag.h"
+#include "Common/Functional.h"
+#include "Common/SPSCQueue.h"
 
 struct EfbPokeData;
 class PointerWrap;
@@ -18,89 +16,51 @@ class PointerWrap;
 class AsyncRequests
 {
 public:
-  struct Event
-  {
-    enum Type
-    {
-      EFB_POKE_COLOR,
-      EFB_POKE_Z,
-      EFB_PEEK_COLOR,
-      EFB_PEEK_Z,
-      SWAP_EVENT,
-      BBOX_READ,
-      PERF_QUERY,
-      DO_SAVE_STATE,
-    } type;
-    u64 time;
-
-    union
-    {
-      struct
-      {
-        u16 x;
-        u16 y;
-        u32 data;
-      } efb_poke;
-
-      struct
-      {
-        u16 x;
-        u16 y;
-        u32* data;
-      } efb_peek;
-
-      struct
-      {
-        u32 xfbAddr;
-        u32 fbWidth;
-        u32 fbStride;
-        u32 fbHeight;
-      } swap_event;
-
-      struct
-      {
-        int index;
-        u16* data;
-      } bbox;
-
-      struct
-      {
-      } perf_query;
-
-      struct
-      {
-        PointerWrap* p;
-      } do_save_state;
-    };
-  };
-
   AsyncRequests();
 
-  void PullEvents()
+  // Called from the Video thread.
+  void PullEvents();
+
+  // The following are called from the CPU thread.
+  void WaitForEmptyQueue();
+
+  template <std::invocable<> F>
+  void PushEvent(F&& callback)
   {
-    if (!m_empty.IsSet())
-      PullEventsInternal();
+    if (m_passthrough)
+    {
+      std::invoke(std::forward<F>(callback));
+      return;
+    }
+
+    QueueEvent(Event{std::forward<F>(callback)});
   }
-  void PushEvent(const Event& event, bool blocking = false);
-  void SetEnable(bool enable);
+
+  template <std::invocable<> F>
+  auto PushBlockingEvent(F&& callback) -> std::invoke_result_t<F>
+  {
+    if (m_passthrough)
+      return std::invoke(std::forward<F>(callback));
+
+    std::packaged_task task{std::forward<F>(callback)};
+    QueueEvent(Event{[&] { task(); }});
+
+    return task.get_future().get();
+  }
+
+  // Not thread-safe. Only set during initialization.
   void SetPassthrough(bool enable);
 
   static AsyncRequests* GetInstance() { return &s_singleton; }
 
 private:
-  void PullEventsInternal();
-  void HandleEvent(const Event& e);
+  using Event = Common::MoveOnlyFunction<void()>;
+
+  void QueueEvent(Event&& event);
 
   static AsyncRequests s_singleton;
 
-  Common::Flag m_empty;
-  std::queue<Event> m_queue;
-  std::mutex m_mutex;
-  std::condition_variable m_cond;
+  Common::WaitableSPSCQueue<Event> m_queue;
 
-  bool m_wake_me_up_again = false;
-  bool m_enable = false;
   bool m_passthrough = true;
-
-  std::vector<EfbPokeData> m_merged_efb_pokes;
 };

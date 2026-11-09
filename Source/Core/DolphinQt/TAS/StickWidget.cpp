@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/TAS/StickWidget.h"
 
@@ -12,12 +11,22 @@
 
 #include "Common/CommonTypes.h"
 
+constexpr int PADDING = 1;
+
 StickWidget::StickWidget(QWidget* parent, u16 max_x, u16 max_y)
     : QWidget(parent), m_max_x(max_x), m_max_y(max_y)
 {
   setMouseTracking(false);
   setToolTip(tr("Left click to set the stick value.\n"
                 "Right click to re-center it."));
+
+  // If the widget gets too small, it will get deformed.
+  setMinimumSize(QSize(64, 64));
+}
+
+QSize StickWidget::sizeHint() const
+{
+  return QSize(128, 128);
 }
 
 void StickWidget::SetX(u16 x)
@@ -41,22 +50,27 @@ void StickWidget::paintEvent(QPaintEvent* event)
   painter.setRenderHint(QPainter::Antialiasing, true);
   painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-  painter.setBrush(Qt::white);
-  painter.drawEllipse(0, 0, width() - 1, height() - 1);
+  const int diameter = std::min(width(), height()) - PADDING * 2;
 
-  painter.drawLine(0, height() / 2, width(), height() / 2);
-  painter.drawLine(width() / 2, 0, width() / 2, height());
+  // inscribe the StickWidget inside a square
+  painter.fillRect(PADDING, PADDING, diameter, diameter, Qt::lightGray);
+
+  painter.setBrush(Qt::white);
+  painter.drawEllipse(PADDING, PADDING, diameter, diameter);
+
+  painter.drawLine(PADDING, PADDING + diameter / 2, PADDING + diameter, PADDING + diameter / 2);
+  painter.drawLine(PADDING + diameter / 2, PADDING, PADDING + diameter / 2, PADDING + diameter);
 
   // convert from value space to widget space
-  u16 x = (m_x * width()) / m_max_x;
-  u16 y = height() - (m_y * height()) / m_max_y;
+  u16 x = PADDING + ((m_x * diameter) / m_max_x);
+  u16 y = PADDING + (diameter - (m_y * diameter) / m_max_y);
 
-  painter.drawLine(width() / 2, height() / 2, x, y);
+  painter.drawLine(PADDING + diameter / 2, PADDING + diameter / 2, x, y);
 
   painter.setBrush(Qt::blue);
-  int wh_avg = (width() + height()) / 2;
-  int radius = wh_avg / 30;
-  painter.drawEllipse(x - radius, y - radius, radius * 2, radius * 2);
+  int neutral_radius = diameter / 30;
+  painter.drawEllipse(x - neutral_radius, y - neutral_radius, neutral_radius * 2,
+                      neutral_radius * 2);
 }
 
 void StickWidget::mousePressEvent(QMouseEvent* event)
@@ -73,6 +87,9 @@ void StickWidget::mouseMoveEvent(QMouseEvent* event)
 
 void StickWidget::handleMouseEvent(QMouseEvent* event)
 {
+  u16 prev_x = m_x;
+  u16 prev_y = m_y;
+
   if (event->button() == Qt::RightButton)
   {
     m_x = std::round(m_max_x / 2.);
@@ -81,14 +98,25 @@ void StickWidget::handleMouseEvent(QMouseEvent* event)
   else
   {
     // convert from widget space to value space
-    int new_x = (event->x() * m_max_x) / width();
-    int new_y = m_max_y - (event->y() * m_max_y) / height();
+    int new_x = (event->pos().x() * m_max_x) / width();
+    int new_y = m_max_y - (event->pos().y() * m_max_y) / height();
 
     m_x = std::max(0, std::min(static_cast<int>(m_max_x), new_x));
     m_y = std::max(0, std::min(static_cast<int>(m_max_y), new_y));
   }
 
-  emit ChangedX(m_x);
-  emit ChangedY(m_y);
-  update();
+  bool changed = false;
+  if (prev_x != m_x)
+  {
+    emit ChangedX(m_x);
+    changed = true;
+  }
+  if (prev_y != m_y)
+  {
+    emit ChangedY(m_y);
+    changed = true;
+  }
+
+  if (changed)
+    update();
 }

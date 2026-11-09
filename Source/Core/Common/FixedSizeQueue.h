@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -14,6 +13,8 @@
 //
 // Not fully featured, no safety checking yet. Add features as needed.
 
+namespace Common
+{
 template <class T, int N>
 class FixedSizeQueue
 {
@@ -79,9 +80,10 @@ public:
   bool empty() const noexcept { return size() == 0; }
 
 private:
-  std::array<T, N> storage;
+  std::array<T, N> storage{};
   int head = 0;
   int tail = 0;
   // Sacrifice 4 bytes for a simpler implementation. may optimize away in the future.
   int count = 0;
 };
+}  // namespace Common

@@ -1,12 +1,18 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <QuartzCore/QuartzCore.h>
 
-#include "InputCommon/ControllerInterface/Device.h"
+#include "Common/Matrix.h"
+#include "InputCommon/ControllerInterface/CoreDevice.h"
+
+#ifdef __OBJC__
+@class DolWindowPositionObserver;
+#else
+class DolWindowPositionObserver;
+#endif
 
 namespace ciface::Quartz
 {
@@ -35,7 +41,7 @@ private:
     {
     }
     std::string GetName() const override;
-    bool IsDetectable() override { return false; }
+    bool IsDetectable() const override { return false; }
     ControlState GetState() const override;
 
   private:
@@ -56,19 +62,20 @@ private:
   };
 
 public:
-  void UpdateInput() override;
+  Core::DeviceRemoval UpdateInput() override;
 
-  explicit KeyboardAndMouse(void* window);
+  explicit KeyboardAndMouse(void* view);
+  ~KeyboardAndMouse() override;
 
   std::string GetName() const override;
   std::string GetSource() const override;
+  int GetSortPriority() const override;
 
 private:
-  struct
-  {
-    float x, y;
-  } m_cursor;
+  void MainThreadInitialization(void* view);
 
-  uint32_t m_windowid;
+  Common::Vec2 m_cursor;
+
+  DolWindowPositionObserver* m_window_pos_observer;
 };
 }  // namespace ciface::Quartz

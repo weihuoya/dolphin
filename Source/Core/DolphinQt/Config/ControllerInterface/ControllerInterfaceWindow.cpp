@@ -1,6 +1,5 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Config/ControllerInterface/ControllerInterfaceWindow.h"
 
@@ -18,7 +17,6 @@ ControllerInterfaceWindow::ControllerInterfaceWindow(QWidget* parent) : QDialog(
   CreateMainLayout();
 
   setWindowTitle(tr("Alternate Input Sources"));
-  setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 }
 
 void ControllerInterfaceWindow::CreateMainLayout()

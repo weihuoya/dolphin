@@ -1,6 +1,5 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 /* $VER: ppc_disasm.h V1.6 (09.12.2011)
  *
@@ -57,7 +56,7 @@ private:
 
   static std::string ra_rb(u32 in);
   static std::string rd_ra_rb(u32 in, int mask);
-  static std::string fd_ra_rb(u32 in, int mask);
+  static std::string fd_ra_rb(u32 in);
 
   static void trapi(u32 in, unsigned char dmode);
   static void cmpi(u32 in, int uimm);
@@ -67,39 +66,29 @@ private:
   static void bli(u32 in);
   static void mcrf(u32 in, std::string_view suffix);
   static void crop(u32 in, std::string_view n1, std::string_view n2);
-  static void nooper(u32 in, std::string_view name, unsigned char dmode);
+  static void nooper(u32 in, std::string_view name);
   static void rlw(u32 in, std::string_view name, int i);
   static void ori(u32 in, std::string_view name);
   static void rld(u32 in, std::string_view name, int i);
   static void cmp(u32 in);
   static void trap(u32 in, unsigned char dmode);
-  static void dab(u32 in, std::string_view name, int mask, int smode, int chkoe, int chkrc,
-                  unsigned char dmode);
-  static void rrn(u32 in, std::string_view name, int smode, int chkoe, int chkrc,
-                  unsigned char dmode);
+  static void dab(u32 in, std::string_view name, int mask, int smode, int chkoe, int chkrc);
+  static void rrn(u32 in, std::string_view name, int smode, int chkoe, int chkrc);
   static void mtcr(u32 in);
   static void msr(u32 in, int smode);
   static void mspr(u32 in, int smode);
   static void mtb(u32 in);
   static void sradi(u32 in);
-  static void ldst(u32 in, std::string_view name, char reg, unsigned char dmode);
-  static void fdabc(u32 in, std::string_view name, int mask, unsigned char dmode);
+  static void ldst(u32 in, std::string_view name, char reg);
+  static void fdabc(u32 in, std::string_view name, int mask);
   static void fmr(u32 in);
-  static void fdab(u32 in, std::string_view name, int mask);
+  static void fdab(u32 in, std::string_view name);
   static void fcmp(u32 in, char c);
   static void mtfsb(u32 in, int n);
   static void ps(u32 inst);
   static void ps_mem(u32 inst);
 
   static u32* DoDisassembly(bool big_endian);
-
-  enum InstructionType
-  {
-    PPCINSTR_OTHER = 0,   // No additional info for other instr.
-    PPCINSTR_BRANCH = 1,  // Branch dest. = PC+displacement
-    PPCINSTR_LDST = 2,    // Load/store instruction: displ(sreg)
-    PPCINSTR_IMM = 3,     // 16-bit immediate val. in displacement
-  };
 
   enum Flags
   {
@@ -113,9 +102,5 @@ private:
   static u32* m_iaddr;            // Instruction.address., usually the same as instr
   static std::string m_opcode;    // Buffer for opcode, min. 10 chars.
   static std::string m_operands;  // Operand buffer, min. 24 chars.
-  static unsigned char m_type;    // Type of instruction, see below
-  static unsigned char m_flags;   // Additional flags
-  static unsigned short m_sreg;   // Register in load/store instructions
-  static u32 m_displacement;      // Branch- or load/store displacement
 };
 }  // namespace Common

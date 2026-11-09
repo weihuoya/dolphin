@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,7 +7,7 @@
 #include "Common/x64Reg.h"
 
 // x64 ABI:s, and helpers to help follow them when JIT-ing code.
-// All convensions return values in EAX (+ possibly EDX).
+// All conventions return values in EAX (+ possibly EDX).
 
 // Windows 64-bit
 // * 4-reg "fastcall" variant, very new-skool stack handling
@@ -51,7 +50,7 @@
 // FIXME: avoid pushing all 16 XMM registers when possible? most functions we call probably
 // don't actually clobber them.
 #define ABI_ALL_CALLER_SAVED (BitSet32{RAX, RCX, RDX, RDI, RSI, R8, R9, R10, R11} | ABI_ALL_FPRS)
-#endif  // WIN32
+#endif  // _WIN32
 
 #define ABI_ALL_CALLEE_SAVED (~ABI_ALL_CALLER_SAVED)
 

@@ -1,23 +1,27 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Config/VerifyWidget.h"
 
+#include <future>
 #include <memory>
+#include <optional>
+#include <span>
 #include <tuple>
-#include <vector>
 
 #include <QByteArray>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
-#include <QProgressDialog>
 #include <QVBoxLayout>
 
 #include "Common/CommonTypes.h"
+#include "Core/Core.h"
+#include "Core/System.h"
 #include "DiscIO/Volume.h"
 #include "DiscIO/VolumeVerifier.h"
+#include "DolphinQt/QtUtils/ParallelProgressDialog.h"
+#include "DolphinQt/Settings.h"
 
 VerifyWidget::VerifyWidget(std::shared_ptr<DiscIO::Volume> volume) : m_volume(std::move(volume))
 {
@@ -36,11 +40,26 @@ VerifyWidget::VerifyWidget(std::shared_ptr<DiscIO::Volume> volume) : m_volume(st
   layout->setStretchFactor(m_summary_text, 2);
 
   setLayout(layout);
+
+  connect(&Settings::Instance(), &Settings::EmulationStateChanged, this,
+          &VerifyWidget::OnEmulationStateChanged);
+
+  OnEmulationStateChanged(Core::GetState(Core::System::GetInstance()));
+}
+
+void VerifyWidget::OnEmulationStateChanged(Core::State state)
+{
+  const bool running = state != Core::State::Uninitialized;
+
+  // Verifying a Wii game while emulation is running doesn't work correctly
+  // due to verification of a Wii game creating an instance of IOS
+  m_verify_button->setEnabled(!running);
 }
 
 void VerifyWidget::CreateWidgets()
 {
   m_problems = new QTableWidget(0, 2, this);
+  m_problems->setTabKeyNavigation(false);
   m_problems->setHorizontalHeaderLabels({tr("Problem"), tr("Severity")});
   m_problems->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
   m_problems->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
@@ -56,11 +75,18 @@ void VerifyWidget::CreateWidgets()
   std::tie(m_md5_checkbox, m_md5_line_edit) = AddHashLine(m_hash_layout, tr("MD5:"));
   std::tie(m_sha1_checkbox, m_sha1_line_edit) = AddHashLine(m_hash_layout, tr("SHA-1:"));
 
+  const auto default_to_calculate = DiscIO::VolumeVerifier::GetDefaultHashesToCalculate();
+  m_crc32_checkbox->setChecked(default_to_calculate.crc32);
+  m_md5_checkbox->setChecked(default_to_calculate.md5);
+  m_sha1_checkbox->setChecked(default_to_calculate.sha1);
+
   m_redump_layout = new QFormLayout;
   if (DiscIO::IsDisc(m_volume->GetVolumeType()))
   {
     std::tie(m_redump_checkbox, m_redump_line_edit) =
-        AddHashLine(m_redump_layout, tr("Redump.org Status:"));
+        AddHashLine(m_redump_layout, tr("Redump.info Status:"));
+    m_redump_checkbox->setChecked(CanVerifyRedump());
+    UpdateRedumpEnabled();
   }
   else
   {
@@ -75,12 +101,12 @@ void VerifyWidget::CreateWidgets()
   m_verify_button = new QPushButton(tr("Verify Integrity"), this);
 }
 
-std::pair<QCheckBox*, QLineEdit*> VerifyWidget::AddHashLine(QFormLayout* layout, QString text)
+std::pair<QCheckBox*, QLineEdit*> VerifyWidget::AddHashLine(QFormLayout* layout,
+                                                            const QString& text)
 {
   QLineEdit* line_edit = new QLineEdit(this);
   line_edit->setReadOnly(true);
   QCheckBox* checkbox = new QCheckBox(tr("Calculate"), this);
-  checkbox->setChecked(true);
 
   QHBoxLayout* hbox_layout = new QHBoxLayout;
   hbox_layout->addWidget(line_edit);
@@ -95,11 +121,16 @@ void VerifyWidget::ConnectWidgets()
 {
   connect(m_verify_button, &QPushButton::clicked, this, &VerifyWidget::Verify);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+  connect(m_md5_checkbox, &QCheckBox::checkStateChanged, this, &VerifyWidget::UpdateRedumpEnabled);
+  connect(m_sha1_checkbox, &QCheckBox::checkStateChanged, this, &VerifyWidget::UpdateRedumpEnabled);
+#else
   connect(m_md5_checkbox, &QCheckBox::stateChanged, this, &VerifyWidget::UpdateRedumpEnabled);
   connect(m_sha1_checkbox, &QCheckBox::stateChanged, this, &VerifyWidget::UpdateRedumpEnabled);
+#endif
 }
 
-static void SetHash(QLineEdit* line_edit, const std::vector<u8>& hash)
+static void SetHash(QLineEdit* line_edit, std::span<const u8> hash)
 {
   const QByteArray byte_array = QByteArray::fromRawData(reinterpret_cast<const char*>(hash.data()),
                                                         static_cast<int>(hash.size()));
@@ -130,33 +161,42 @@ void VerifyWidget::Verify()
   // We have to divide the number of processed bytes with something so it won't make ints overflow
   constexpr int DIVISOR = 0x100;
 
-  QProgressDialog progress(tr("Verifying"), tr("Cancel"), 0, verifier.GetTotalBytes() / DIVISOR,
-                           this);
-  progress.setWindowTitle(tr("Verifying"));
-  progress.setWindowFlags(progress.windowFlags() & ~Qt::WindowContextHelpButtonHint);
-  progress.setMinimumDuration(500);
-  progress.setWindowModality(Qt::WindowModal);
+  ParallelProgressDialog progress(tr("Verifying"), tr("Cancel"), 0,
+                                  static_cast<int>(verifier.GetTotalBytes() / DIVISOR), this);
+  progress.GetRaw()->setWindowTitle(tr("Verifying"));
+  progress.GetRaw()->setMinimumDuration(500);
+  progress.GetRaw()->setWindowModality(Qt::WindowModal);
 
-  verifier.Start();
-  while (verifier.GetBytesProcessed() != verifier.GetTotalBytes())
-  {
-    progress.setValue(verifier.GetBytesProcessed() / DIVISOR);
-    if (progress.wasCanceled())
-      return;
+  auto future =
+      std::async(std::launch::async,
+                 [&verifier, &progress]() -> std::optional<DiscIO::VolumeVerifier::Result> {
+                   progress.SetValue(0);
+                   verifier.Start();
+                   while (verifier.GetBytesProcessed() != verifier.GetTotalBytes())
+                   {
+                     progress.SetValue(static_cast<int>(verifier.GetBytesProcessed() / DIVISOR));
+                     if (progress.WasCanceled())
+                       return std::nullopt;
 
-    verifier.Process();
-  }
-  verifier.Finish();
+                     verifier.Process();
+                   }
+                   verifier.Finish();
 
-  DiscIO::VolumeVerifier::Result result = verifier.GetResult();
-  progress.setValue(verifier.GetBytesProcessed() / DIVISOR);
+                   progress.Reset();
+                   return verifier.GetResult();
+                 });
+  progress.GetRaw()->exec();
 
-  m_summary_text->setText(QString::fromStdString(result.summary_text));
+  std::optional<DiscIO::VolumeVerifier::Result> result = future.get();
+  if (!result)
+    return;
 
-  m_problems->setRowCount(static_cast<int>(result.problems.size()));
+  m_summary_text->setText(QString::fromStdString(result->summary_text));
+
+  m_problems->setRowCount(static_cast<int>(result->problems.size()));
   for (int i = 0; i < m_problems->rowCount(); ++i)
   {
-    const DiscIO::VolumeVerifier::Problem problem = result.problems[i];
+    const DiscIO::VolumeVerifier::Problem problem = result->problems[i];
 
     QString severity;
     switch (problem.severity)
@@ -170,21 +210,23 @@ void VerifyWidget::Verify()
     case DiscIO::VolumeVerifier::Severity::High:
       severity = tr("High");
       break;
+    case DiscIO::VolumeVerifier::Severity::None:
+      break;
     }
 
     SetProblemCellText(i, 0, QString::fromStdString(problem.text));
     SetProblemCellText(i, 1, severity);
   }
 
-  SetHash(m_crc32_line_edit, result.hashes.crc32);
-  SetHash(m_md5_line_edit, result.hashes.md5);
-  SetHash(m_sha1_line_edit, result.hashes.sha1);
+  SetHash(m_crc32_line_edit, result->hashes.crc32);
+  SetHash(m_md5_line_edit, result->hashes.md5);
+  SetHash(m_sha1_line_edit, result->hashes.sha1);
 
   if (m_redump_line_edit)
-    m_redump_line_edit->setText(QString::fromStdString(result.redump.message));
+    m_redump_line_edit->setText(QString::fromStdString(result->redump.message));
 }
 
-void VerifyWidget::SetProblemCellText(int row, int column, QString text)
+void VerifyWidget::SetProblemCellText(int row, int column, const QString& text)
 {
   QLabel* label = new QLabel(text);
   label->setTextInteractionFlags(Qt::TextSelectableByMouse);

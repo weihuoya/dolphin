@@ -1,29 +1,22 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <cstring>
+#include "VideoCommon/GeometryShaderManager.h"
 
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
 #include "VideoCommon/BPMemory.h"
-#include "VideoCommon/GeometryShaderManager.h"
+#include "VideoCommon/RenderState.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
 
-static const int LINE_PT_TEX_OFFSETS[8] = {0, 16, 8, 4, 2, 1, 1, 1};
-
-GeometryShaderConstants GeometryShaderManager::constants;
-bool GeometryShaderManager::dirty;
-
-static bool s_projection_changed;
-static bool s_viewport_changed;
+static constexpr int LINE_PT_TEX_OFFSETS[8] = {0, 16, 8, 4, 2, 1, 1, 1};
 
 void GeometryShaderManager::Init()
 {
   constants = {};
 
-  // Init any intial constants which aren't zero when bpmem is zero.
+  // Init any initial constants which aren't zero when bpmem is zero.
   SetViewportChanged();
   SetProjectionChanged();
 
@@ -34,21 +27,32 @@ void GeometryShaderManager::Dirty()
 {
   // This function is called after a savestate is loaded.
   // Any constants that can changed based on settings should be re-calculated
-  s_projection_changed = true;
+  m_projection_changed = true;
+
+  // Uses EFB scale config
+  SetLinePtWidthChanged();
 
   dirty = true;
 }
 
-void GeometryShaderManager::SetConstants()
+void GeometryShaderManager::SetVSExpand(VSExpand expand)
 {
-  if (s_projection_changed && g_ActiveConfig.stereo_mode != StereoMode::Off)
+  if (constants.vs_expand != expand)
   {
-    s_projection_changed = false;
+    constants.vs_expand = expand;
+    dirty = true;
+  }
+}
 
-    if (xfmem.projection.type == GX_PERSPECTIVE)
+void GeometryShaderManager::SetConstants(PrimitiveType prim)
+{
+  if (m_projection_changed && g_ActiveConfig.stereo_mode != StereoMode::Off)
+  {
+    m_projection_changed = false;
+
+    if (xfmem.projection.type == ProjectionType::Perspective)
     {
-      float offset = (g_ActiveConfig.iStereoDepth / 1000.0f) *
-                     (g_ActiveConfig.iStereoDepthPercentage / 100.0f);
+      const float offset = g_ActiveConfig.stereo_depth;
       constants.stereoparams[0] = g_ActiveConfig.bStereoSwapEyes ? offset : -offset;
       constants.stereoparams[1] = g_ActiveConfig.bStereoSwapEyes ? -offset : offset;
     }
@@ -57,15 +61,24 @@ void GeometryShaderManager::SetConstants()
       constants.stereoparams[0] = constants.stereoparams[1] = 0;
     }
 
-    constants.stereoparams[2] = (float)(g_ActiveConfig.iStereoConvergence *
-                                        (g_ActiveConfig.iStereoConvergencePercentage / 100.0f));
+    constants.stereoparams[2] = g_ActiveConfig.stereo_convergence;
 
     dirty = true;
   }
 
-  if (s_viewport_changed)
+  if (g_ActiveConfig.UseVSForLinePointExpand())
   {
-    s_viewport_changed = false;
+    if (prim == PrimitiveType::Points)
+      SetVSExpand(VSExpand::Point);
+    else if (prim == PrimitiveType::Lines)
+      SetVSExpand(VSExpand::Line);
+    else
+      SetVSExpand(VSExpand::None);
+  }
+
+  if (m_viewport_changed)
+  {
+    m_viewport_changed = false;
 
     constants.lineptparams[0] = 2.0f * xfmem.viewport.wd;
     constants.lineptparams[1] = -2.0f * xfmem.viewport.ht;
@@ -76,12 +89,12 @@ void GeometryShaderManager::SetConstants()
 
 void GeometryShaderManager::SetViewportChanged()
 {
-  s_viewport_changed = true;
+  m_viewport_changed = true;
 }
 
 void GeometryShaderManager::SetProjectionChanged()
 {
-  s_projection_changed = true;
+  m_projection_changed = true;
 }
 
 void GeometryShaderManager::SetLinePtWidthChanged()
@@ -106,12 +119,12 @@ void GeometryShaderManager::SetTexCoordChanged(u8 texmapid)
 
 void GeometryShaderManager::DoState(PointerWrap& p)
 {
-  p.Do(s_projection_changed);
-  p.Do(s_viewport_changed);
+  p.Do(m_projection_changed);
+  p.Do(m_viewport_changed);
 
   p.Do(constants);
 
-  if (p.GetMode() == PointerWrap::MODE_READ)
+  if (p.IsReadMode())
   {
     // Fixup the current state from global GPU state
     // NOTE: This requires that all GPU memory has been loaded already.

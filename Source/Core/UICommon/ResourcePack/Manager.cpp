@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "UICommon/ResourcePack/Manager.h"
 
@@ -18,11 +17,11 @@ namespace
 std::vector<ResourcePack> packs;
 std::string packs_path;
 
-IniFile GetPackConfig()
+Common::IniFile GetPackConfig()
 {
   packs_path = File::GetUserPath(D_RESOURCEPACK_IDX) + "/Packs.ini";
 
-  IniFile file;
+  Common::IniFile file;
   file.Load(packs_path);
 
   return file;
@@ -32,35 +31,43 @@ IniFile GetPackConfig()
 bool Init()
 {
   packs.clear();
-  auto pack_list = Common::DoFileSearch({File::GetUserPath(D_RESOURCEPACK_IDX)}, {".zip"});
+  const std::vector<std::string> pack_list =
+      Common::DoFileSearch(File::GetUserPath(D_RESOURCEPACK_IDX), ".zip");
 
-  bool error = false;
-
-  IniFile file = GetPackConfig();
+  Common::IniFile file = GetPackConfig();
 
   auto* order = file.GetOrCreateSection("Order");
 
-  std::sort(pack_list.begin(), pack_list.end(), [order](std::string& a, std::string& b) {
-    std::string order_a = a, order_b = b;
-
-    order->Get(ResourcePack(a).GetManifest()->GetID(), &order_a);
-    order->Get(ResourcePack(b).GetManifest()->GetID(), &order_b);
-
-    return order_a < order_b;
-  });
-
-  for (size_t i = 0; i < pack_list.size(); i++)
+  struct OrderHelper
   {
-    const auto& path = pack_list[i];
+    size_t pack_list_index;
+    std::string manifest_id;
+  };
 
-    if (!Add(path))
+  std::vector<OrderHelper> pack_list_order;
+  pack_list_order.reserve(pack_list.size());
+  for (size_t i = 0; i < pack_list.size(); ++i)
+  {
+    const ResourcePack pack(pack_list[i]);
+    std::string manifest_id = pack.IsValid() ? pack.GetManifest()->GetID() : pack_list[i];
+    pack_list_order.emplace_back(OrderHelper{i, std::move(manifest_id)});
+  }
+
+  std::ranges::sort(pack_list_order, {}, &OrderHelper::manifest_id);
+
+  bool error = false;
+  for (size_t i = 0; i < pack_list_order.size(); ++i)
+  {
+    const auto& path = pack_list[pack_list_order[i].pack_list_index];
+
+    const ResourcePack* const pack = Add(path);
+    if (pack == nullptr)
     {
       error = true;
       continue;
     }
 
-    if (i < packs.size())
-      order->Set(packs[i].GetManifest()->GetID(), static_cast<u64>(i));
+    order->Set(pack->GetManifest()->GetID(), static_cast<u64>(i));
   }
 
   file.Save(packs_path);
@@ -73,10 +80,10 @@ std::vector<ResourcePack>& GetPacks()
   return packs;
 }
 
-std::vector<ResourcePack*> GetLowerPriorityPacks(ResourcePack& pack)
+std::vector<ResourcePack*> GetLowerPriorityPacks(const ResourcePack& pack)
 {
   std::vector<ResourcePack*> list;
-  for (auto it = std::find(packs.begin(), packs.end(), pack) + 1; it != packs.end(); it++)
+  for (auto it = std::ranges::find(packs, pack) + 1; it != packs.end(); ++it)
   {
     auto& entry = *it;
     if (!IsInstalled(pack))
@@ -88,12 +95,12 @@ std::vector<ResourcePack*> GetLowerPriorityPacks(ResourcePack& pack)
   return list;
 }
 
-std::vector<ResourcePack*> GetHigherPriorityPacks(ResourcePack& pack)
+std::vector<ResourcePack*> GetHigherPriorityPacks(const ResourcePack& pack)
 {
   std::vector<ResourcePack*> list;
-  auto end = std::find(packs.begin(), packs.end(), pack);
+  auto end = std::ranges::find(packs, pack);
 
-  for (auto it = packs.begin(); it != end; it++)
+  for (auto it = packs.begin(); it != end; ++it)
   {
     auto& entry = *it;
     if (!IsInstalled(entry))
@@ -104,7 +111,7 @@ std::vector<ResourcePack*> GetHigherPriorityPacks(ResourcePack& pack)
   return list;
 }
 
-bool Add(const std::string& path, int offset)
+ResourcePack* Add(const std::string& path, int offset)
 {
   if (offset == -1)
     offset = static_cast<int>(packs.size());
@@ -112,9 +119,9 @@ bool Add(const std::string& path, int offset)
   ResourcePack pack(path);
 
   if (!pack.IsValid())
-    return false;
+    return nullptr;
 
-  IniFile file = GetPackConfig();
+  Common::IniFile file = GetPackConfig();
 
   auto* order = file.GetOrCreateSection("Order");
 
@@ -125,9 +132,8 @@ bool Add(const std::string& path, int offset)
 
   file.Save(packs_path);
 
-  packs.insert(packs.begin() + offset, std::move(pack));
-
-  return true;
+  auto it = packs.insert(packs.begin() + offset, std::move(pack));
+  return &*it;
 }
 
 bool Remove(ResourcePack& pack)
@@ -137,12 +143,12 @@ bool Remove(ResourcePack& pack)
   if (!result)
     return false;
 
-  auto pack_iterator = std::find(packs.begin(), packs.end(), pack);
+  auto pack_iterator = std::ranges::find(packs, pack);
 
   if (pack_iterator == packs.end())
     return false;
 
-  IniFile file = GetPackConfig();
+  Common::IniFile file = GetPackConfig();
 
   auto* order = file.GetOrCreateSection("Order");
 
@@ -162,7 +168,7 @@ bool Remove(ResourcePack& pack)
 
 void SetInstalled(const ResourcePack& pack, bool installed)
 {
-  IniFile file = GetPackConfig();
+  Common::IniFile file = GetPackConfig();
 
   auto* install = file.GetOrCreateSection("Installed");
 
@@ -176,7 +182,7 @@ void SetInstalled(const ResourcePack& pack, bool installed)
 
 bool IsInstalled(const ResourcePack& pack)
 {
-  IniFile file = GetPackConfig();
+  Common::IniFile file = GetPackConfig();
 
   auto* install = file.GetOrCreateSection("Installed");
 

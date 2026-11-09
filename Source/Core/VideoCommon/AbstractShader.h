@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -9,6 +8,14 @@
 #include <vector>
 
 #include "Common/CommonTypes.h"
+
+// Note: not directly used in this file
+// but done here to avoid specifying in
+// every derived class that needs it
+namespace VideoCommon
+{
+class ShaderIncluder;
+}
 
 enum class ShaderStage
 {

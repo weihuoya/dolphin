@@ -1,12 +1,9 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <cctype>
 #include <cstring>
 #include <disasm.h>  // From Bochs, fallback included in Externals.
 #include <gtest/gtest.h>
-#include <map>
 #include <memory>
 #include <vector>
 
@@ -18,7 +15,13 @@
 #undef TEST
 
 #include "Common/CPUDetect.h"
+#include "Common/StringUtil.h"
 #include "Common/x64Emitter.h"
+
+#ifdef _MSC_VER
+// This file is extremely slow to optimize (40s on amd 3990x), so just disable optimizations
+#pragma optimize("", off)
+#endif
 
 namespace Gen
 {
@@ -88,17 +91,45 @@ class x64EmitterTest : public testing::Test
 protected:
   void SetUp() override
   {
-    memset(&cpu_info, 0x01, sizeof(cpu_info));
+    // Ensure settings are constant no matter on which actual hardware the test runs.
+    // Attempt to maximize complex code coverage. Note that this will miss some paths.
+    cpu_info.vendor = CPUVendor::Intel;
+    cpu_info.cpu_id = "GenuineIntel";
+    cpu_info.model_name = "Unknown";
+    cpu_info.HTT = true;
+    cpu_info.num_cores = 8;
+    cpu_info.bSSE3 = true;
+    cpu_info.bSSSE3 = true;
+    cpu_info.bSSE4_1 = true;
+    cpu_info.bSSE4_2 = true;
+    cpu_info.bLZCNT = true;
+    cpu_info.bAVX = true;
+    cpu_info.bBMI1 = true;
+    cpu_info.bBMI2 = true;
+    cpu_info.bBMI2FastParallelBitOps = true;
+    cpu_info.bFMA = true;
+    cpu_info.bFMA4 = true;
+    cpu_info.bAES = true;
+    cpu_info.bMOVBE = true;
+    cpu_info.bFlushToZero = true;
+    cpu_info.bAtom = false;
+    cpu_info.bCRC32 = true;
+    cpu_info.bSHA1 = true;
+    cpu_info.bSHA2 = true;
 
     emitter.reset(new X64CodeBlock());
     emitter->AllocCodeSpace(4096);
     code_buffer = emitter->GetWritableCodePtr();
+    code_buffer_end = emitter->GetWritableCodeEnd();
 
     disasm.reset(new disassembler);
     disasm->set_syntax_intel();
   }
 
   void TearDown() override { cpu_info = CPUInfo(); }
+
+  void ResetCodeBuffer() { emitter->SetCodePtr(code_buffer, code_buffer_end); }
+
   void ExpectDisassembly(const std::string& expected)
   {
     std::string disasmed;
@@ -125,7 +156,7 @@ protected:
       bool inside_parens = false;
       for (auto c : str)
       {
-        c = tolower(c);
+        c = Common::ToLower(c);
         if (c == '(')
         {
           inside_parens = true;
@@ -157,13 +188,22 @@ protected:
 
     EXPECT_EQ(expected_norm, disasmed_norm);
 
-    // Reset code buffer afterwards.
-    emitter->SetCodePtr(code_buffer);
+    ResetCodeBuffer();
+  }
+
+  void ExpectBytes(const std::vector<u8>& expected_bytes)
+  {
+    const std::vector code_bytes(code_buffer, emitter->GetWritableCodePtr());
+
+    EXPECT_EQ(expected_bytes, code_bytes);
+
+    ResetCodeBuffer();
   }
 
   std::unique_ptr<X64CodeBlock> emitter;
   std::unique_ptr<disassembler> disasm;
-  u8* code_buffer;
+  u8* code_buffer = nullptr;
+  u8* code_buffer_end = nullptr;
 };
 
 #define TEST_INSTR_NO_OPERANDS(Name, ExpectedDisasm)                                               \
@@ -197,8 +237,6 @@ TEST_INSTR_NO_OPERANDS(CBW, "cbw")
 TEST_INSTR_NO_OPERANDS(CWDE, "cwde")
 TEST_INSTR_NO_OPERANDS(CDQE, "cdqe")
 TEST_INSTR_NO_OPERANDS(XCHG_AHAL, "xchg al, ah")
-TEST_INSTR_NO_OPERANDS(FWAIT, "fwait")
-TEST_INSTR_NO_OPERANDS(FNSTSW_AX, "fnstsw ax")
 TEST_INSTR_NO_OPERANDS(RDTSC, "rdtsc")
 
 TEST_F(x64EmitterTest, NOP_MultiByte)
@@ -258,15 +296,15 @@ TEST_F(x64EmitterTest, POP_Register)
 
 TEST_F(x64EmitterTest, JMP)
 {
-  emitter->NOP(6);
+  emitter->NOP(1);
   emitter->JMP(code_buffer);
-  ExpectDisassembly("multibyte nop "
-                    "jmp .-8");
+  ExpectBytes({/* nop */ 0x90, /* short jmp */ 0xeb, /* offset -3 */ 0xfd});
 
-  emitter->NOP(6);
-  emitter->JMP(code_buffer, true);
-  ExpectDisassembly("multibyte nop "
-                    "jmp .-11");
+  emitter->NOP(0x90);
+  const u8* after_nops = emitter->GetCodePtr();
+  ResetCodeBuffer();
+  emitter->JMP(after_nops);
+  ExpectBytes({/* near jmp */ 0xe9, /* offset */ 0x8B, 0, 0, 0});
 }
 
 TEST_F(x64EmitterTest, JMPptr_Register)
@@ -278,11 +316,93 @@ TEST_F(x64EmitterTest, JMPptr_Register)
   }
 }
 
-// TODO: J/SetJumpTarget
+TEST_F(x64EmitterTest, J)
+{
+  FixupBranch jump = emitter->J(XEmitter::Jump::Short);
+  emitter->NOP(1);
+  emitter->SetJumpTarget(jump);
+  ExpectBytes({/* short jmp */ 0xeb, /* offset 1 */ 0x1, /* nop */ 0x90});
 
-// TODO: CALL
+  jump = emitter->J(XEmitter::Jump::Near);
+  emitter->NOP(1);
+  emitter->SetJumpTarget(jump);
+  ExpectBytes({/* near jmp */ 0xe9, /* offset 1 */ 0x1, 0x0, 0x0, 0x0, /* nop */ 0x90});
+}
 
-// TODO: J_CC
+TEST_F(x64EmitterTest, CALL)
+{
+  FixupBranch call = emitter->CALL();
+  emitter->NOP(6);
+  emitter->SetJumpTarget(call);
+  ExpectDisassembly("call .+6 "
+                    "multibyte nop");
+
+  const u8* const code_start = emitter->GetCodePtr();
+  emitter->CALL(code_start + 5);
+  ExpectDisassembly("call .+0");
+
+  emitter->NOP(6);
+  emitter->CALL(code_start);
+  ExpectDisassembly("multibyte nop "
+                    "call .-11");
+}
+
+TEST_F(x64EmitterTest, J_CC)
+{
+  for (const auto& [condition_code, condition_name] : ccnames)
+  {
+    FixupBranch fixup = emitter->J_CC(condition_code, XEmitter::Jump::Short);
+    emitter->NOP(1);
+    emitter->SetJumpTarget(fixup);
+    const u8 short_jump_condition_opcode = 0x70 + condition_code;
+    ExpectBytes({short_jump_condition_opcode, /* offset 1 */ 0x1, /* nop */ 0x90});
+
+    fixup = emitter->J_CC(condition_code, XEmitter::Jump::Near);
+    emitter->NOP(1);
+    emitter->SetJumpTarget(fixup);
+    const u8 near_jump_condition_opcode = 0x80 + condition_code;
+    ExpectBytes({/* two byte opcode */ 0x0f, near_jump_condition_opcode, /* offset 1 */ 0x1, 0x0,
+                 0x0, 0x0, /* nop */ 0x90});
+  }
+
+  // Verify a short jump is used when possible and a near jump when needed.
+  //
+  // A short jump to a particular address and a near jump to that same address will have different
+  // offsets. This is because short jumps are 2 bytes and near jumps are 6 bytes, and the offset to
+  // the target is calculated from the address of the next instruction.
+
+  const u8* const code_start = emitter->GetCodePtr();
+  constexpr int short_jump_bytes = 2;
+  const u8* const next_byte_after_short_jump_instruction = code_start + short_jump_bytes;
+
+  constexpr int longest_backward_short_jump = 0x80;
+  const u8* const furthest_byte_reachable_with_backward_short_jump =
+      next_byte_after_short_jump_instruction - longest_backward_short_jump;
+  emitter->J_CC(CC_O, furthest_byte_reachable_with_backward_short_jump);
+  ExpectBytes({/* JO opcode */ 0x70, /* offset -128 */ 0x80});
+
+  const u8* const closest_byte_requiring_backward_near_jump =
+      furthest_byte_reachable_with_backward_short_jump - 1;
+  emitter->J_CC(CC_O, closest_byte_requiring_backward_near_jump);
+  // This offset is 5 less than the offset for the furthest backward short jump. -1 because this
+  // target is 1 byte before the short target, and -4 because the address of the next instruction is
+  // 4 bytes further away from the jump target than it would be with a short jump.
+  ExpectBytes({/* two byte JO opcode */ 0x0f, 0x80, /* offset -133 */ 0x7b, 0xff, 0xff, 0xff});
+
+  constexpr int longest_forward_short_jump = 0x7f;
+  const u8* const furthest_byte_reachable_with_forward_short_jump =
+      next_byte_after_short_jump_instruction + longest_forward_short_jump;
+  emitter->J_CC(CC_O, furthest_byte_reachable_with_forward_short_jump);
+  ExpectBytes({/* JO opcode */ 0x70, /* offset 127 */ 0x7f});
+
+  const u8* const closest_byte_requiring_forward_near_jump =
+      furthest_byte_reachable_with_forward_short_jump + 1;
+  emitter->J_CC(CC_O, closest_byte_requiring_forward_near_jump);
+  // This offset is 3 less than the offset for the furthest forward short jump. +1 because this
+  // target is 1 byte after the short target, and -4 because the address of the next instruction is
+  // 4 bytes closer to the jump target than it would be with a short jump.
+  ExpectBytes({/* two byte JO opcode */ 0x0f, 0x80, /* offset 124 */ 0x7c, 0x0, 0x0, 0x0});
+}
 
 TEST_F(x64EmitterTest, SETcc)
 {
@@ -352,10 +472,10 @@ BITSEARCH_TEST(TZCNT);
 
 TEST_F(x64EmitterTest, PREFETCH)
 {
-  emitter->PREFETCH(XEmitter::PF_NTA, MatR(R12));
-  emitter->PREFETCH(XEmitter::PF_T0, MatR(R12));
-  emitter->PREFETCH(XEmitter::PF_T1, MatR(R12));
-  emitter->PREFETCH(XEmitter::PF_T2, MatR(R12));
+  emitter->PREFETCH(XEmitter::PrefetchLevel::NTA, MatR(R12));
+  emitter->PREFETCH(XEmitter::PrefetchLevel::T0, MatR(R12));
+  emitter->PREFETCH(XEmitter::PrefetchLevel::T1, MatR(R12));
+  emitter->PREFETCH(XEmitter::PrefetchLevel::T2, MatR(R12));
 
   ExpectDisassembly("prefetchnta byte ptr ds:[r12] "
                     "prefetcht0 byte ptr ds:[r12] "
@@ -554,7 +674,7 @@ TWO_OP_ARITH_TEST(OR)
 TWO_OP_ARITH_TEST(XOR)
 TWO_OP_ARITH_TEST(MOV)
 
-TEST_F(x64EmitterTest, MOV_Imm64)
+TEST_F(x64EmitterTest, MOV64)
 {
   for (size_t i = 0; i < reg64names.size(); i++)
   {
@@ -569,6 +689,101 @@ TEST_F(x64EmitterTest, MOV_Imm64)
     emitter->MOV(64, R(reg64names[i].reg), Imm64(0xDEADBEEF));
     EXPECT_EQ(emitter->GetCodePtr(), code_buffer + 5 + (i > 7));
     ExpectDisassembly("mov " + reg32names[i].name + ", 0xdeadbeef");
+
+    emitter->MOV(64, R(reg64names[i].reg), Imm32(0x7FFFFFFF));
+    EXPECT_EQ(emitter->GetCodePtr(), code_buffer + 5 + (i > 7));
+    ExpectDisassembly("mov " + reg32names[i].name + ", 0x7fffffff");
+  }
+}
+
+TEST_F(x64EmitterTest, MOV_AtReg)
+{
+  for (const auto& src : reg64names)
+  {
+    std::string segment = src.reg == RSP || src.reg == RBP ? "ss" : "ds";
+
+    emitter->MOV(64, R(RAX), MatR(src.reg));
+    EXPECT_EQ(emitter->GetCodePtr(),
+              code_buffer + 3 + ((src.reg & 7) == RBP || (src.reg & 7) == RSP));
+    ExpectDisassembly("mov rax, qword ptr " + segment + ":[" + src.name + "]");
+  }
+}
+
+TEST_F(x64EmitterTest, MOV_RegSum)
+{
+  for (const auto& src2 : reg64names)
+  {
+    for (const auto& src1 : reg64names)
+    {
+      if (src2.reg == RSP)
+        continue;
+      std::string segment = src1.reg == RSP || src1.reg == RBP ? "ss" : "ds";
+
+      emitter->MOV(64, R(RAX), MRegSum(src1.reg, src2.reg));
+      EXPECT_EQ(emitter->GetCodePtr(), code_buffer + 4 + ((src1.reg & 7) == RBP));
+      ExpectDisassembly("mov rax, qword ptr " + segment + ":[" + src1.name + "+" + src2.name + "]");
+    }
+  }
+}
+
+TEST_F(x64EmitterTest, MOV_Disp)
+{
+  for (const auto& dest : reg64names)
+  {
+    for (const auto& src : reg64names)
+    {
+      std::string segment = src.reg == RSP || src.reg == RBP ? "ss" : "ds";
+
+      emitter->MOV(64, R(dest.reg), MDisp(src.reg, 42));
+      EXPECT_EQ(emitter->GetCodePtr(), code_buffer + 4 + ((src.reg & 7) == RSP));
+      ExpectDisassembly("mov " + dest.name + ", qword ptr " + segment + ":[" + src.name + "+42]");
+
+      emitter->MOV(64, R(dest.reg), MDisp(src.reg, 1000));
+      EXPECT_EQ(emitter->GetCodePtr(), code_buffer + 7 + ((src.reg & 7) == RSP));
+      ExpectDisassembly("mov " + dest.name + ", qword ptr " + segment + ":[" + src.name + "+1000]");
+    }
+  }
+}
+
+TEST_F(x64EmitterTest, MOV_Scaled)
+{
+  for (const auto& src : reg64names)
+  {
+    if (src.reg == RSP)
+      continue;
+
+    emitter->MOV(64, R(RAX), MScaled(src.reg, 2, 42));
+    EXPECT_EQ(emitter->GetCodePtr(), code_buffer + 8);
+    ExpectDisassembly("mov rax, qword ptr ds:[" + src.name + "*2+42]");
+  }
+}
+
+TEST_F(x64EmitterTest, MOV_Complex)
+{
+  for (const auto& src1 : reg64names)
+  {
+    std::string segment = src1.reg == RSP || src1.reg == RBP ? "ss" : "ds";
+
+    for (const auto& src2 : reg64names)
+    {
+      if (src2.reg == RSP)
+        continue;
+
+      emitter->MOV(64, R(RAX), MComplex(src1.reg, src2.reg, 4, 0));
+      EXPECT_EQ(emitter->GetCodePtr(), code_buffer + 4 + ((src1.reg & 7) == RBP));
+      ExpectDisassembly("mov rax, qword ptr " + segment + ":[" + src1.name + "+" + src2.name +
+                        "*4]");
+
+      emitter->MOV(64, R(RAX), MComplex(src1.reg, src2.reg, 4, 42));
+      EXPECT_EQ(emitter->GetCodePtr(), code_buffer + 5);
+      ExpectDisassembly("mov rax, qword ptr " + segment + ":[" + src1.name + "+" + src2.name +
+                        "*4+42]");
+
+      emitter->MOV(64, R(RAX), MComplex(src1.reg, src2.reg, 4, 1000));
+      EXPECT_EQ(emitter->GetCodePtr(), code_buffer + 8);
+      ExpectDisassembly("mov rax, qword ptr " + segment + ":[" + src1.name + "+" + src2.name +
+                        "*4+1000]");
+    }
   }
 }
 
@@ -650,30 +865,6 @@ TEST_F(x64EmitterTest, LDMXCSR)
 {
   emitter->LDMXCSR(MatR(R12));
   ExpectDisassembly("ldmxcsr dword ptr ds:[r12]");
-}
-
-TEST_F(x64EmitterTest, FLD_FST_FSTP)
-{
-  emitter->FLD(32, MatR(RBP));
-  emitter->FLD(64, MatR(RBP));
-  emitter->FLD(80, MatR(RBP));
-
-  emitter->FST(32, MatR(RBP));
-  emitter->FST(64, MatR(RBP));
-  // No 80 bit version of FST
-
-  emitter->FSTP(32, MatR(RBP));
-  emitter->FSTP(64, MatR(RBP));
-  emitter->FSTP(80, MatR(RBP));
-
-  ExpectDisassembly("fld dword ptr ss:[rbp] "
-                    "fld qword ptr ss:[rbp] "
-                    "fld tbyte ptr ss:[rbp] "
-                    "fst dword ptr ss:[rbp] "
-                    "fst qword ptr ss:[rbp] "
-                    "fstp dword ptr ss:[rbp] "
-                    "fstp qword ptr ss:[rbp] "
-                    "fstp tbyte ptr ss:[rbp]");
 }
 
 #define TWO_OP_SSE_TEST(Name, MemBits)                                                             \
@@ -1173,3 +1364,7 @@ FMA4_TEST(VFMADDSUB, P, true)
 FMA4_TEST(VFMSUBADD, P, true)
 
 }  // namespace Gen
+
+#ifdef _MSC_VER
+#pragma optimize("", on)
+#endif

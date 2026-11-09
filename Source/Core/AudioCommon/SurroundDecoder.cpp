@@ -1,11 +1,10 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "AudioCommon/SurroundDecoder.h"
 
 #include <FreeSurround/FreeSurroundDecoder.h>
 #include <limits>
-
-#include "AudioCommon/SurroundDecoder.h"
 
 namespace AudioCommon
 {
@@ -33,7 +32,7 @@ size_t SurroundDecoder::QueryFramesNeededForSurroundOutput(const size_t output_f
   if (m_decoded_fifo.size() < output_frames * SURROUND_CHANNELS)
   {
     // Output stereo frames needed to have at least the desired number of surround frames
-    size_t frames_needed = output_frames - m_decoded_fifo.size() / SURROUND_CHANNELS;
+    const size_t frames_needed = output_frames - m_decoded_fifo.size() / SURROUND_CHANNELS;
     return frames_needed + m_frame_block_size - frames_needed % m_frame_block_size;
   }
 

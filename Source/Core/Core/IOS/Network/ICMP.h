@@ -1,11 +1,10 @@
 // Copyright 2012 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #ifdef _WIN32
-#include <WinSock2.h>
+#include <winsock2.h>
 #else
 #include <netinet/in.h>
 #endif

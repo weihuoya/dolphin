@@ -1,15 +1,23 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "Common/CommonTypes.h"
 
+namespace Common
+{
 class IniFile;
+}
+namespace Core
+{
+class System;
+}
 
 namespace PatchEngine
 {
@@ -27,25 +35,34 @@ struct PatchEntry
   PatchType type = PatchType::Patch8Bit;
   u32 address = 0;
   u32 value = 0;
+  u32 comparand = 0;
+  bool conditional = false;
 };
 
 struct Patch
 {
   std::string name;
   std::vector<PatchEntry> entries;
-  bool active = false;
+  bool enabled = false;
+  bool default_enabled = false;
   bool user_defined = false;  // False if this code is shipped with Dolphin.
 };
 
 const char* PatchTypeAsString(PatchType type);
 
-int GetSpeedhackCycles(const u32 addr);
-void LoadPatchSection(const std::string& section, std::vector<Patch>& patches, IniFile& globalIni,
-                      IniFile& localIni);
+std::optional<PatchEntry> DeserializeLine(std::string line);
+std::string SerializeLine(const PatchEntry& entry);
+void LoadPatchSection(const std::string& section, std::vector<Patch>* patches,
+                      const Common::IniFile& globalIni, const Common::IniFile& localIni);
+void SavePatchSection(Common::IniFile* local_ini, std::span<const Patch> patches);
 void LoadPatches();
-bool ApplyFramePatches();
+
+void AddMemoryPatch(std::size_t index);
+void RemoveMemoryPatch(std::size_t index);
+
+bool ApplyFramePatches(Core::System& system);
 void Shutdown();
-void Reload();
+void Reload(Core::System& system);
 
 inline int GetPatchTypeCharLength(PatchType type)
 {

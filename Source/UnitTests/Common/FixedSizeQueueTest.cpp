@@ -1,6 +1,5 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <gtest/gtest.h>
 
@@ -8,7 +7,7 @@
 
 TEST(FixedSizeQueue, Simple)
 {
-  FixedSizeQueue<int, 5> q;
+  Common::FixedSizeQueue<int, 5> q;
 
   EXPECT_EQ(0u, q.size());
 
@@ -35,7 +34,7 @@ TEST(FixedSizeQueue, Simple)
 TEST(FixedSizeQueue, RingBuffer)
 {
   // Testing if queue works when used as a ring buffer
-  FixedSizeQueue<int, 5> q;
+  Common::FixedSizeQueue<int, 5> q;
 
   EXPECT_EQ(0u, q.size());
 
@@ -85,7 +84,7 @@ public:
 TEST(FixedSizeQueue, NonTrivialTypes)
 {
   // Testing if construction/destruction of non-trivial types happens as expected
-  FixedSizeQueue<NonTrivialTypeTestData, 2> q;
+  Common::FixedSizeQueue<NonTrivialTypeTestData, 2> q;
 
   EXPECT_EQ(0u, q.size());
 

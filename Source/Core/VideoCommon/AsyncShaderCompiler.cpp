@@ -1,11 +1,16 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoCommon/AsyncShaderCompiler.h"
+
 #include <thread>
+
 #include "Common/Assert.h"
 #include "Common/Logging/Log.h"
+#include "Common/Thread.h"
+
+#include "Core/Core.h"
+#include "Core/System.h"
 
 namespace VideoCommon
 {
@@ -30,7 +35,7 @@ void AsyncShaderCompiler::QueueWorkItem(WorkItemPtr item, u32 priority)
   }
   else
   {
-    std::lock_guard<std::mutex> guard(m_pending_work_lock);
+    std::lock_guard guard(m_pending_work_lock);
     m_pending_work.emplace(priority, std::move(item));
     m_worker_thread_wake.notify_one();
   }
@@ -40,7 +45,7 @@ void AsyncShaderCompiler::RetrieveWorkItems()
 {
   std::deque<WorkItemPtr> completed_work;
   {
-    std::lock_guard<std::mutex> guard(m_completed_work_lock);
+    std::lock_guard guard(m_completed_work_lock);
     m_completed_work.swap(completed_work);
   }
 
@@ -53,27 +58,34 @@ void AsyncShaderCompiler::RetrieveWorkItems()
 
 bool AsyncShaderCompiler::HasPendingWork()
 {
-  std::lock_guard<std::mutex> guard(m_pending_work_lock);
+  std::lock_guard guard(m_pending_work_lock);
   return !m_pending_work.empty() || m_busy_workers.load() != 0;
 }
 
 bool AsyncShaderCompiler::HasCompletedWork()
 {
-  std::lock_guard<std::mutex> guard(m_completed_work_lock);
+  std::lock_guard guard(m_completed_work_lock);
   return !m_completed_work.empty();
 }
 
-void AsyncShaderCompiler::WaitUntilCompletion()
+void AsyncShaderCompiler::ClearAllWork()
 {
-  while (HasPendingWork())
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  {
+    std::lock_guard guard(m_pending_work_lock);
+    m_pending_work.clear();
+  }
+
+  {
+    std::lock_guard guard(m_completed_work_lock);
+    m_completed_work.clear();
+  }
 }
 
-void AsyncShaderCompiler::WaitUntilCompletion(
+bool AsyncShaderCompiler::WaitUntilCompletion(
     const std::function<void(size_t, size_t)>& progress_callback)
 {
   if (!HasPendingWork())
-    return;
+    return true;
 
   // Wait a second before opening a progress dialog.
   // This way, if the operation completes quickly, we don't annoy the user.
@@ -83,32 +95,33 @@ void AsyncShaderCompiler::WaitUntilCompletion(
   {
     std::this_thread::sleep_for(std::chrono::milliseconds(CHECK_INTERVAL));
     if (!HasPendingWork())
-      return;
+      return true;
   }
 
   // Grab the number of pending items. We use this to work out how many are left.
-  size_t total_items = 0;
+  size_t total_items;
   {
     // Safe to hold both locks here, since nowhere else does.
-    std::lock_guard<std::mutex> pending_guard(m_pending_work_lock);
-    std::lock_guard<std::mutex> completed_guard(m_completed_work_lock);
+    std::lock_guard pending_guard(m_pending_work_lock);
+    std::lock_guard completed_guard(m_completed_work_lock);
     total_items = m_completed_work.size() + m_pending_work.size() + m_busy_workers.load() + 1;
   }
 
   // Update progress while the compiles complete.
-  for (;;)
+  while (Core::GetState(Core::System::GetInstance()) != Core::State::Stopping)
   {
     size_t remaining_items;
     {
-      std::lock_guard<std::mutex> pending_guard(m_pending_work_lock);
+      std::lock_guard pending_guard(m_pending_work_lock);
       if (m_pending_work.empty() && !m_busy_workers.load())
-        break;
+        return true;
       remaining_items = m_pending_work.size();
     }
 
     progress_callback(total_items - remaining_items, total_items);
     std::this_thread::sleep_for(CHECK_INTERVAL);
   }
+  return false;
 }
 
 bool AsyncShaderCompiler::StartWorkerThreads(u32 num_worker_threads)
@@ -121,7 +134,7 @@ bool AsyncShaderCompiler::StartWorkerThreads(u32 num_worker_threads)
     void* thread_param = nullptr;
     if (!WorkerThreadInitMainThread(&thread_param))
     {
-      WARN_LOG(VIDEO, "Failed to initialize shader compiler worker thread.");
+      WARN_LOG_FMT(VIDEO, "Failed to initialize shader compiler worker thread.");
       break;
     }
 
@@ -132,7 +145,7 @@ bool AsyncShaderCompiler::StartWorkerThreads(u32 num_worker_threads)
 
     if (!m_worker_thread_start_result.load())
     {
-      WARN_LOG(VIDEO, "Failed to start shader compiler worker thread.");
+      WARN_LOG_FMT(VIDEO, "Failed to start shader compiler worker thread.");
       thr.join();
       break;
     }
@@ -164,7 +177,7 @@ void AsyncShaderCompiler::StopWorkerThreads()
 
   // Signal worker threads to stop, and wake all of them.
   {
-    std::lock_guard<std::mutex> guard(m_pending_work_lock);
+    std::lock_guard guard(m_pending_work_lock);
     m_exit_flag.Set();
     m_worker_thread_wake.notify_all();
   }
@@ -192,10 +205,12 @@ void AsyncShaderCompiler::WorkerThreadExit(void* param)
 
 void AsyncShaderCompiler::WorkerThreadEntryPoint(void* param)
 {
+  Common::SetCurrentThreadName("AsyncShaderCompiler Worker");
+
   // Initialize worker thread with backend-specific method.
   if (!WorkerThreadInitWorkerThread(param))
   {
-    WARN_LOG(VIDEO, "Failed to initialize shader compiler worker.");
+    WARN_LOG_FMT(VIDEO, "Failed to initialize shader compiler worker.");
     m_worker_thread_start_result.store(false);
     m_init_event.Set();
     return;
@@ -211,7 +226,7 @@ void AsyncShaderCompiler::WorkerThreadEntryPoint(void* param)
 
 void AsyncShaderCompiler::WorkerThreadRun()
 {
-  std::unique_lock<std::mutex> pending_lock(m_pending_work_lock);
+  std::unique_lock pending_lock(m_pending_work_lock);
   while (!m_exit_flag.IsSet())
   {
     m_worker_thread_wake.wait(pending_lock);
@@ -226,7 +241,7 @@ void AsyncShaderCompiler::WorkerThreadRun()
 
       if (item->Compile())
       {
-        std::lock_guard<std::mutex> completed_guard(m_completed_work_lock);
+        std::lock_guard completed_guard(m_completed_work_lock);
         m_completed_work.push_back(std::move(item));
       }
 

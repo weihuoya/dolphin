@@ -1,11 +1,11 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <array>
 
+#include "Common/BitField.h"
 #include "Core/HW/WiimoteEmu/Extension/Extension.h"
 #include "InputCommon/ControllerEmu/Setting/NumericSetting.h"
 
@@ -29,6 +29,15 @@ enum class DrumsGroup
 class Drums : public Extension1stParty
 {
 public:
+  struct DesiredState
+  {
+    u8 stick_x;    // 6 bits
+    u8 stick_y;    // 6 bits
+    u8 buttons;    // 2 bits
+    u8 drum_pads;  // 6 bits
+    u8 softness;   // 7 bits
+  };
+
   struct DataFormat
   {
     u8 stick_x : 6;
@@ -39,24 +48,28 @@ public:
     // Seemingly random.
     u8 unk2 : 2;
 
-    // Always 1 with no velocity data and seemingly random otherwise.
-    u8 unk3 : 1;
+    u8 velocity3 : 1;
+
     // For which "pad" the velocity data is for.
     u8 velocity_id : 7;
 
-    // Always 1 with no velocity data and seemingly random otherwise.
-    u8 unk4 : 1;
+    u8 velocity2 : 1;
     // 1 with no velocity data and 0 when velocity data is present.
     u8 no_velocity_data_1 : 1;
     // These two bits seem to always be set. (0b11)
     u8 unk5 : 2;
     // 1 with no velocity data and 0 when velocity data is present.
     u8 no_velocity_data_2 : 1;
-    // How "soft" a drum pad has been hit as a range from 0:very-hard to 7:very-soft.
-    u8 softness : 3;
+
+    u8 velocity4 : 3;
 
     // Button bits.
-    u8 buttons;
+    union
+    {
+      u8 buttons;  // buttons
+      BitField<0, 1, u8> velocity0;
+      BitField<7, 1, u8> velocity1;
+    };
 
     // Drum-pad bits.
     u8 drum_pads;
@@ -78,16 +91,14 @@ public:
 
   Drums();
 
-  void Update() override;
-  bool IsButtonPressed() const override;
+  void BuildDesiredExtensionState(DesiredExtensionState* target_state) override;
+  void Update(const DesiredExtensionState& target_state) override;
   void Reset() override;
 
   ControllerEmu::ControlGroup* GetGroup(DrumsGroup group);
 
   void DoState(PointerWrap& p) override;
 
-  // FYI: The low/high bits of the button byte are "random" when velocity data is present.
-  // static constexpr u8 HAVE_VELOCITY_DATA = 0b10000001;
   static constexpr u8 BUTTON_PLUS = 0x04;
   static constexpr u8 BUTTON_MINUS = 0x10;
 
@@ -114,10 +125,10 @@ private:
   ControllerEmu::SettingValue<double> m_hit_strength_setting;
 
   // Holds previous user input state to watch for "new" hits.
-  u8 m_prev_pad_input;
+  u8 m_prev_pad_input = 0;
   // Holds new drum pad hits that still need velocity data to be sent.
-  u8 m_new_pad_hits;
+  u8 m_new_pad_hits = 0;
   // Holds how many more frames to send each drum-pad bit.
-  std::array<u8, 6> m_pad_remaining_frames;
+  std::array<u8, 6> m_pad_remaining_frames{};
 };
 }  // namespace WiimoteEmu

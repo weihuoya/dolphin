@@ -1,14 +1,14 @@
 // Copyright 2008 Dolphin Emulator Project
 // Copyright 2005 Duddie
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/DSP/DSPDisassembler.h"
 
-#include <algorithm>
 #include <limits>
 #include <string>
-#include <vector>
+#include <utility>
+
+#include <fmt/format.h>
 
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
@@ -22,7 +22,7 @@ DSPDisassembler::DSPDisassembler(const AssemblerSettings& settings) : settings_(
 {
 }
 
-bool DSPDisassembler::Disassemble(const std::vector<u16>& code, std::string& text)
+bool DSPDisassembler::Disassemble(std::span<const u16> code, std::string& text)
 {
   if (code.size() > std::numeric_limits<u16>::max())
   {
@@ -32,9 +32,10 @@ bool DSPDisassembler::Disassemble(const std::vector<u16>& code, std::string& tex
 
   for (u16 pc = 0; pc < code.size();)
   {
-    if (!DisassembleOpcode(code.data(), &pc, text))
-      return false;
+    bool failed = !DisassembleOpcode(code, &pc, text);
     text.append("\n");
+    if (failed)
+      return false;
   }
   return true;
 }
@@ -73,16 +74,16 @@ std::string DSPDisassembler::DisassembleParameters(const DSPOPCTemplate& opc, u1
     {
     case P_REG:
       if (settings_.decode_registers)
-        buf += StringFromFormat("$%s", pdregname(val));
+        buf += fmt::format("${}", pdregname(val));
       else
-        buf += StringFromFormat("$%d", val);
+        buf += fmt::format("${}", val);
       break;
 
     case P_PRG:
       if (settings_.decode_registers)
-        buf += StringFromFormat("@$%s", pdregname(val));
+        buf += fmt::format("@${}", pdregname(val));
       else
-        buf += StringFromFormat("@$%d", val);
+        buf += fmt::format("@${}", val);
       break;
 
     case P_VAL:
@@ -94,22 +95,28 @@ std::string DSPDisassembler::DisassembleParameters(const DSPOPCTemplate& opc, u1
       }
       else
       {
-        buf += StringFromFormat("0x%04x", val);
+        buf += fmt::format("0x{:04x}", val);
       }
       break;
 
     case P_IMM:
       if (opc.params[j].size != 2)
       {
-        if (opc.params[j].mask == 0x003f)  // LSL, LSR, ASL, ASR
-          buf += StringFromFormat("#%d",
-                                  (val & 0x20) ? (val | 0xFFFFFFC0) : val);  // 6-bit sign extension
+        // LSL, LSR, ASL, ASR
+        if (opc.params[j].mask == 0x003f)
+        {
+          // Left and right shifts function essentially as a single shift by a 7-bit signed value,
+          // but are split into two instructions for clarity.
+          buf += fmt::format("#{}", (val & 0x20) != 0 ? (int(val) - 64) : int(val));
+        }
         else
-          buf += StringFromFormat("#0x%02x", val);
+        {
+          buf += fmt::format("#0x{:02x}", val);
+        }
       }
       else
       {
-        buf += StringFromFormat("#0x%04x", val);
+        buf += fmt::format("#0x{:04x}", val);
       }
       break;
 
@@ -118,13 +125,13 @@ std::string DSPDisassembler::DisassembleParameters(const DSPOPCTemplate& opc, u1
         val = (u16)(s16)(s8)val;
 
       if (settings_.decode_names)
-        buf += StringFromFormat("@%s", pdname(val));
+        buf += fmt::format("@{}", pdname(val));
       else
-        buf += StringFromFormat("@0x%04x", val);
+        buf += fmt::format("@0x{:04x}", val);
       break;
 
     default:
-      ERROR_LOG(DSPLLE, "Unknown parameter type: %x", opc.params[j].type);
+      ERROR_LOG_FMT(DSPLLE, "Unknown parameter type: {:x}", std::to_underlying(opc.params[j].type));
       break;
     }
   }
@@ -132,23 +139,28 @@ std::string DSPDisassembler::DisassembleParameters(const DSPOPCTemplate& opc, u1
   return buf;
 }
 
-bool DSPDisassembler::DisassembleOpcode(const u16* binbuf, u16* pc, std::string& dest)
+bool DSPDisassembler::DisassembleOpcode(std::span<const u16> code, u16* pc, std::string& dest)
 {
-  if ((*pc & 0x7fff) >= 0x1000)
+  return DisassembleOpcode(code.data(), code.size(), pc, dest);
+}
+
+bool DSPDisassembler::DisassembleOpcode(const u16* binbuf, size_t binbuf_size, u16* pc,
+                                        std::string& dest)
+{
+  const u16 wrapped_pc = (*pc & 0x7fff);
+  if (wrapped_pc >= binbuf_size)
   {
     ++pc;
     dest.append("; outside memory");
     return false;
   }
 
-  const u16 op1 = binbuf[*pc & 0x0fff];
+  const u16 op1 = binbuf[wrapped_pc];
 
   // Find main opcode
   const DSPOPCTemplate* opc = FindOpInfoByOpcode(op1);
-  const DSPOPCTemplate fake_op = {"CW",  0x0000, 0x0000, 1,     1,    {{P_VAL, 2, 0, 0, 0xffff}},
-                                  false, false,  false,  false, false};
   if (!opc)
-    opc = &fake_op;
+    opc = &cw;
 
   bool is_extended = false;
   bool is_only_7_bit_ext = false;
@@ -174,34 +186,43 @@ bool DSPDisassembler::DisassembleOpcode(const u16* binbuf, u16* pc, std::string&
   // printing
 
   if (settings_.show_pc)
-    dest += StringFromFormat("%04x ", *pc);
+    dest += fmt::format("{:04x} ", wrapped_pc);
 
   u16 op2;
 
   // Size 2 - the op has a large immediate.
   if (opc->size == 2)
   {
-    op2 = binbuf[(*pc + 1) & 0x0fff];
+    if (wrapped_pc + 1u >= binbuf_size)
+    {
+      if (settings_.show_hex)
+        dest += fmt::format("{:04x} ???? ", op1);
+      dest += fmt::format("; Insufficient data for large immediate");
+      *pc += opc->size;
+      return false;
+    }
+
+    op2 = binbuf[wrapped_pc + 1];
     if (settings_.show_hex)
-      dest += StringFromFormat("%04x %04x ", op1, op2);
+      dest += fmt::format("{:04x} {:04x} ", op1, op2);
   }
   else
   {
     op2 = 0;
     if (settings_.show_hex)
-      dest += StringFromFormat("%04x      ", op1);
+      dest += fmt::format("{:04x}      ", op1);
   }
 
   std::string opname = opc->name;
   if (is_extended)
-    opname += StringFromFormat("%c%s", settings_.ext_separator, opc_ext->name);
+    opname += fmt::format("{}{}", settings_.ext_separator, opc_ext->name);
   if (settings_.lower_case_ops)
-    std::transform(opname.begin(), opname.end(), opname.begin(), ::tolower);
+    Common::ToLower(&opname);
 
   if (settings_.print_tabs)
-    dest += StringFromFormat("%s\t", opname.c_str());
+    dest += fmt::format("{}\t", opname);
   else
-    dest += StringFromFormat("%-12s", opname.c_str());
+    dest += fmt::format("{:<12}", opname);
 
   if (opc->param_count > 0)
     dest += DisassembleParameters(*opc, op1, op2);

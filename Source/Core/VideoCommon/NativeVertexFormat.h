@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,56 +7,48 @@
 #include <functional>  // for hash
 
 #include "Common/CommonTypes.h"
-#include "Common/Hash.h"
+#include "VideoCommon/CPMemory.h"
 
 // m_components
-enum
+enum : u32
 {
-  VB_HAS_POSMTXIDX = (1 << 1),
-  VB_HAS_TEXMTXIDX0 = (1 << 2),
-  VB_HAS_TEXMTXIDX1 = (1 << 3),
-  VB_HAS_TEXMTXIDX2 = (1 << 4),
-  VB_HAS_TEXMTXIDX3 = (1 << 5),
-  VB_HAS_TEXMTXIDX4 = (1 << 6),
-  VB_HAS_TEXMTXIDX5 = (1 << 7),
-  VB_HAS_TEXMTXIDX6 = (1 << 8),
-  VB_HAS_TEXMTXIDX7 = (1 << 9),
-  VB_HAS_TEXMTXIDXALL = (0xff << 2),
+  VB_HAS_TEXMTXIDX0 = (1 << 0),
+  VB_HAS_TEXMTXIDX1 = (1 << 1),
+  VB_HAS_TEXMTXIDX2 = (1 << 2),
+  VB_HAS_TEXMTXIDX3 = (1 << 3),
+  VB_HAS_TEXMTXIDX4 = (1 << 4),
+  VB_HAS_TEXMTXIDX5 = (1 << 5),
+  VB_HAS_TEXMTXIDX6 = (1 << 6),
+  VB_HAS_TEXMTXIDX7 = (1 << 7),
+  VB_HAS_TEXMTXIDXALL = (0xff << 0),
+
+  VB_HAS_POSMTXIDX = (1 << 8),
 
   // VB_HAS_POS=0, // Implied, it always has pos! don't bother testing
-  VB_HAS_NRM0 = (1 << 10),
-  VB_HAS_NRM1 = (1 << 11),
-  VB_HAS_NRM2 = (1 << 12),
-  VB_HAS_NRMALL = (7 << 10),
+  VB_HAS_NORMAL = (1 << 9),
+  VB_HAS_TANGENT = (1 << 10),
+  VB_HAS_BINORMAL = (1 << 11),
 
-  VB_COL_SHIFT = 13,
-  VB_HAS_COL0 = (1 << 13),
-  VB_HAS_COL1 = (1 << 14),
+  VB_COL_SHIFT = 12,
+  VB_HAS_COL0 = (1 << 12),
+  VB_HAS_COL1 = (1 << 13),
+  VB_HAS_SHARED = 0x3f << 8,
 
-  VB_HAS_UV0 = (1 << 15),
-  VB_HAS_UV1 = (1 << 16),
-  VB_HAS_UV2 = (1 << 17),
-  VB_HAS_UV3 = (1 << 18),
-  VB_HAS_UV4 = (1 << 19),
-  VB_HAS_UV5 = (1 << 20),
-  VB_HAS_UV6 = (1 << 21),
-  VB_HAS_UV7 = (1 << 22),
-  VB_HAS_UVALL = (0xff << 15),
-  VB_HAS_UVTEXMTXSHIFT = 13,
-};
-
-enum VarType
-{
-  VAR_UNSIGNED_BYTE,   // GX_U8  = 0
-  VAR_BYTE,            // GX_S8  = 1
-  VAR_UNSIGNED_SHORT,  // GX_U16 = 2
-  VAR_SHORT,           // GX_S16 = 3
-  VAR_FLOAT,           // GX_F32 = 4
+  VB_HAS_UV0 = (1 << 16),
+  VB_HAS_UV1 = (1 << 17),
+  VB_HAS_UV2 = (1 << 18),
+  VB_HAS_UV3 = (1 << 19),
+  VB_HAS_UV4 = (1 << 20),
+  VB_HAS_UV5 = (1 << 21),
+  VB_HAS_UV6 = (1 << 22),
+  VB_HAS_UV7 = (1 << 23),
+  VB_HAS_UVALL = (0xff << 16),
+  VB_HAS_UVTEXMTXSHIFT = 16,
 };
 
 struct AttributeFormat
 {
-  VarType type;
+  ComponentFormat type;
   int components;
   int offset;
   bool enable;
@@ -69,10 +60,13 @@ struct PortableVertexDeclaration
   int stride;
 
   AttributeFormat position;
-  AttributeFormat normals[3];
-  AttributeFormat colors[2];
-  AttributeFormat texcoords[8];
+  std::array<AttributeFormat, 3> normals;
+  std::array<AttributeFormat, 2> colors;
+  std::array<AttributeFormat, 8> texcoords;
   AttributeFormat posmtx;
+
+  // Make sure we initialize padding to 0 since padding is included in the == memcmp
+  PortableVertexDeclaration() { memset(this, 0, sizeof(*this)); }
 
   inline bool operator<(const PortableVertexDeclaration& b) const
   {
@@ -84,17 +78,47 @@ struct PortableVertexDeclaration
   }
 };
 
-namespace std
-{
+static_assert(std::is_trivially_copyable_v<PortableVertexDeclaration>,
+              "Make sure we can memset-initialize");
+
 template <>
-struct hash<PortableVertexDeclaration>
+struct std::hash<PortableVertexDeclaration>
 {
-  size_t operator()(const PortableVertexDeclaration& decl) const
+  // Implementation from Wikipedia.
+  template <typename T>
+  static u32 Fletcher32(const T& data)
   {
-    return Common::HashFletcher(reinterpret_cast<const u8*>(&decl), sizeof(decl));
+    static_assert(sizeof(T) % sizeof(u16) == 0);
+
+    auto buf = reinterpret_cast<const u16*>(&data);
+    size_t len = sizeof(T) / sizeof(u16);
+    u32 sum1 = 0xffff, sum2 = 0xffff;
+
+    while (len)
+    {
+      size_t tlen = len > 360 ? 360 : len;
+      len -= tlen;
+
+      do
+      {
+        sum1 += *buf++;
+        sum2 += sum1;
+      } while (--tlen);
+
+      sum1 = (sum1 & 0xffff) + (sum1 >> 16);
+      sum2 = (sum2 & 0xffff) + (sum2 >> 16);
+    }
+
+    // Second reduction step to reduce sums to 16 bits
+    sum1 = (sum1 & 0xffff) + (sum1 >> 16);
+    sum2 = (sum2 & 0xffff) + (sum2 >> 16);
+    return (sum2 << 16 | sum1);
+  }
+  size_t operator()(const PortableVertexDeclaration& decl) const noexcept
+  {
+    return Fletcher32(decl);
   }
 };
-}  // namespace std
 
 // The implementation of this class is specific for GL/DX, so NativeVertexFormat.cpp
 // is in the respective backend, not here in VideoCommon.

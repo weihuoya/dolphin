@@ -1,8 +1,9 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/ResourcePackManager.h"
+
+#include <string>
 
 #include <QDesktopServices>
 #include <QDialogButtonBox>
@@ -14,7 +15,9 @@
 
 #include "Common/FileUtil.h"
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
+#include "DolphinQt/QtUtils/NonDefaultQPushButton.h"
 #include "UICommon/ResourcePack/Manager.h"
+#include "UICommon/ResourcePack/ResourcePack.h"
 
 ResourcePackManager::ResourcePackManager(QWidget* widget) : QDialog(widget)
 {
@@ -23,7 +26,6 @@ ResourcePackManager::ResourcePackManager(QWidget* widget) : QDialog(widget)
   RepopulateTable();
 
   setWindowTitle(tr("Resource Pack Manager"));
-  setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
   resize(QSize(900, 600));
 }
@@ -33,13 +35,14 @@ void ResourcePackManager::CreateWidgets()
   auto* layout = new QGridLayout;
 
   m_table_widget = new QTableWidget;
+  m_table_widget->setTabKeyNavigation(false);
 
-  m_open_directory_button = new QPushButton(tr("Open Directory..."));
-  m_change_button = new QPushButton(tr("Install"));
-  m_remove_button = new QPushButton(tr("Remove"));
-  m_refresh_button = new QPushButton(tr("Refresh"));
-  m_priority_up_button = new QPushButton(tr("Up"));
-  m_priority_down_button = new QPushButton(tr("Down"));
+  m_open_directory_button = new NonDefaultQPushButton(tr("Open Directory..."));
+  m_change_button = new NonDefaultQPushButton(tr("Install"));
+  m_remove_button = new NonDefaultQPushButton(tr("Remove"));
+  m_refresh_button = new NonDefaultQPushButton(tr("Refresh"));
+  m_priority_up_button = new NonDefaultQPushButton(tr("Up"));
+  m_priority_down_button = new NonDefaultQPushButton(tr("Down"));
 
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok);
 
@@ -108,13 +111,14 @@ void ResourcePackManager::RepopulateTable()
   for (int i = 0; i < size; i++)
   {
     const auto& pack = ResourcePack::GetPacks()[size - 1 - i];
-    auto* manifest = pack.GetManifest();
+    const auto* manifest = pack.GetManifest();
+    const auto& authors = manifest->GetAuthors();
 
     auto* logo_item = new QTableWidgetItem;
     auto* name_item = new QTableWidgetItem(QString::fromStdString(manifest->GetName()));
     auto* version_item = new QTableWidgetItem(QString::fromStdString(manifest->GetVersion()));
-    auto* author_item = new QTableWidgetItem(
-        QString::fromStdString(manifest->GetAuthors().value_or("Unknown author")));
+    auto* author_item =
+        new QTableWidgetItem(authors ? QString::fromStdString(*authors) : tr("Unknown author"));
     auto* description_item =
         new QTableWidgetItem(QString::fromStdString(manifest->GetDescription().value_or("")));
     auto* website_item =
@@ -161,7 +165,7 @@ void ResourcePackManager::RepopulateTable()
   SelectionChanged();
 }
 
-// Revert the indicies as to be more intuitive for users
+// Revert the indices as to be more intuitive for users
 int ResourcePackManager::GetResourcePackIndex(QTableWidgetItem* item) const
 {
   return m_table_widget->rowCount() - 1 - item->row();
@@ -193,7 +197,7 @@ void ResourcePackManager::Install()
 
   auto& item = ResourcePack::GetPacks()[GetResourcePackIndex(items[0])];
 
-  bool success = item.Install(File::GetUserPath(D_USER_IDX));
+  bool success = item.Install(File::GetUserPath(D_LOAD_IDX));
 
   if (!success)
   {
@@ -214,7 +218,7 @@ void ResourcePackManager::Uninstall()
 
   auto& item = ResourcePack::GetPacks()[GetResourcePackIndex(items[0])];
 
-  bool success = item.Uninstall(File::GetUserPath(D_USER_IDX));
+  bool success = item.Uninstall(File::GetUserPath(D_LOAD_IDX));
 
   if (!success)
   {
@@ -242,8 +246,12 @@ void ResourcePackManager::Remove()
   if (box.exec() != QMessageBox::Yes)
     return;
 
+  ResourcePack::ResourcePack& selected_pack =
+      ResourcePack::GetPacks()[GetResourcePackIndex(items[0])];
+  const std::string selected_pack_path = selected_pack.GetPath();
   Uninstall();
-  File::Delete(ResourcePack::GetPacks()[GetResourcePackIndex(items[0])].GetPath());
+  ResourcePack::Remove(selected_pack);
+  File::Delete(selected_pack_path);
   RepopulateTable();
 }
 

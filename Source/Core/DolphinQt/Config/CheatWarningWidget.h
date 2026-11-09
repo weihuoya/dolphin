@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -15,7 +14,7 @@ class CheatWarningWidget : public QWidget
 {
   Q_OBJECT
 public:
-  explicit CheatWarningWidget(const std::string& game_id, bool restart_required, QWidget* parent);
+  explicit CheatWarningWidget(std::string game_id, bool restart_required, QWidget* parent);
 
 signals:
   void OpenCheatEnableSettings();

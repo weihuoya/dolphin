@@ -1,6 +1,5 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,6 +7,14 @@
 #include "Common/CommonTypes.h"
 
 class PointerWrap;
+namespace Core
+{
+class System;
+}
+namespace SystemTimers
+{
+class SystemTimersManager;
+}
 
 namespace SerialInterface
 {
@@ -41,6 +48,42 @@ enum TSIDevices : u32
   SI_AM_BASEBOARD = 0x10110800  // gets ORd with dipswitch state
 };
 
+// Commands
+enum class EBufferCommands : u8
+{
+  CMD_STATUS = 0x00,
+  CMD_READ_GBA = 0x14,
+  CMD_WRITE_GBA = 0x15,
+  CMD_SET_GAME_ID = 0x1d,
+  CMD_DIRECT = 0x40,
+  CMD_ORIGIN = 0x41,
+  CMD_RECALIBRATE = 0x42,
+  CMD_DIRECT_KB = 0x54,
+  CMD_AM_BASEBOARD = 0x70,
+  CMD_RESET = 0xFF
+};
+
+enum class EDirectCommands : u8
+{
+  CMD_FORCE = 0x30,
+  CMD_WRITE = 0x40,
+  CMD_POLL = 0x54
+};
+
+union UCommand
+{
+  u32 hex = 0;
+  struct
+  {
+    u32 parameter1 : 8;
+    u32 parameter2 : 8;
+    u32 command : 8;
+    u32 : 8;
+  };
+  UCommand() = default;
+  UCommand(u32 value) : hex{value} {}
+};
+
 // For configuration use, since some devices can have the same SI Device ID
 enum SIDevices : int
 {
@@ -55,29 +98,39 @@ enum SIDevices : int
   SIDEVICE_GC_STEERING,
   SIDEVICE_DANCEMAT,
   SIDEVICE_GC_TARUKONGA,
-  // Was used for Triforce in the past, but the implementation is no longer in Dolphin.
-  // It's kept here so that values below will stay constant.
   SIDEVICE_AM_BASEBOARD,
   SIDEVICE_WIIU_ADAPTER,
+  SIDEVICE_GC_GBA_EMULATED,
   // Not a valid device. Used for checking whether enum values are valid.
   SIDEVICE_COUNT,
+};
+
+enum class DataResponse
+{
+  NoData,
+  Success,
+  ErrorNoResponse,
 };
 
 class ISIDevice
 {
 public:
-  ISIDevice(SIDevices device_type, int device_number);
+  ISIDevice(Core::System& system, SIDevices device_type, int device_number);
   virtual ~ISIDevice();
 
   int GetDeviceNumber() const;
   SIDevices GetDeviceType() const;
 
   // Run the SI Buffer
+  // Return value:
+  //  positive: The response length.
+  //  0: Response not ready, we will try again `TransferInterval()` cycles later.
+  //  -1: No response.
   virtual int RunBuffer(u8* buffer, int request_length);
+
   virtual int TransferInterval();
 
-  // Return true on new data
-  virtual bool GetData(u32& hi, u32& low) = 0;
+  virtual DataResponse GetData(u32& hi, u32& low) = 0;
 
   // Send a command directly (no detour per buffer)
   virtual void SendCommand(u32 command, u8 poll) = 0;
@@ -85,12 +138,22 @@ public:
   // Savestate support
   virtual void DoState(PointerWrap& p);
 
+  // Schedulable event
+  virtual void OnEvent(u64 userdata, s64 cycles_late);
+
 protected:
+  // Only the three high bytes of `si_device_id` are used.
+  static int CreateStatusResponse(u32 si_device_id, u8* buffer);
+
+  Core::System& m_system;
+
   int m_device_number;
   SIDevices m_device_type;
 };
 
+int SIDevice_GetGBATransferTime(const SystemTimers::SystemTimersManager& timers,
+                                EBufferCommands cmd);
 bool SIDevice_IsGCController(SIDevices type);
 
-std::unique_ptr<ISIDevice> SIDevice_Create(SIDevices device, int port_number);
+std::unique_ptr<ISIDevice> SIDevice_Create(Core::System& system, SIDevices device, int port_number);
 }  // namespace SerialInterface

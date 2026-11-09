@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -10,15 +9,15 @@
 
 namespace SerialInterface
 {
-class CSIDevice_GCAdapter : public CSIDevice_GCController
+class CSIDevice_GCAdapter final : public CSIDevice_GCController
 {
 public:
-  CSIDevice_GCAdapter(SIDevices device, int device_number);
+  CSIDevice_GCAdapter(Core::System& system, SIDevices device, int device_number);
 
   GCPadStatus GetPadStatus() override;
   int RunBuffer(u8* buffer, int request_length) override;
 
-  bool GetData(u32& hi, u32& low) override;
+  DataResponse GetData(u32& hi, u32& low) override;
 
 private:
   bool m_simulate_konga{};

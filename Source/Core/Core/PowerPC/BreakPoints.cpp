@@ -1,33 +1,64 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/PowerPC/BreakPoints.h"
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include "Common/BitSet.h"
 #include "Common/CommonTypes.h"
-#include "Common/DebugInterface.h"
 #include "Common/Logging/Log.h"
 #include "Core/Core.h"
+#include "Core/Debugger/DebugInterface.h"
+#include "Core/PowerPC/Expression.h"
 #include "Core/PowerPC/JitInterface.h"
 #include "Core/PowerPC/MMU.h"
+#include "Core/PowerPC/PPCSymbolDB.h"
+#include "Core/System.h"
+
+BreakPoints::BreakPoints(Core::System& system) : m_system(system)
+{
+}
+
+BreakPoints::~BreakPoints() = default;
 
 bool BreakPoints::IsAddressBreakPoint(u32 address) const
 {
-  return std::any_of(m_breakpoints.begin(), m_breakpoints.end(),
-                     [address](const auto& bp) { return bp.address == address; });
+  return GetBreakpoint(address) != nullptr;
 }
 
-bool BreakPoints::IsTempBreakPoint(u32 address) const
+bool BreakPoints::IsBreakPointEnable(u32 address) const
 {
-  return std::any_of(m_breakpoints.begin(), m_breakpoints.end(), [address](const auto& bp) {
-    return bp.address == address && bp.is_temporary;
-  });
+  if (!m_breaking_enabled)
+    return false;
+
+  const TBreakPoint* bp = GetBreakpoint(address);
+  return bp != nullptr && bp->is_enabled;
+}
+
+const TBreakPoint* BreakPoints::GetBreakpoint(u32 address) const
+{
+  // Give priority to the temporary breakpoint (it could be in the same address of a regular
+  // breakpoint that doesn't break)
+  if (m_temp_breakpoint && m_temp_breakpoint->address == address)
+    return &*m_temp_breakpoint;
+
+  return GetRegularBreakpoint(address);
+}
+
+const TBreakPoint* BreakPoints::GetRegularBreakpoint(u32 address) const
+{
+  auto bp = std::ranges::find(m_breakpoints, address, &TBreakPoint::address);
+
+  if (bp == m_breakpoints.end())
+    return nullptr;
+
+  return &*bp;
 }
 
 BreakPoints::TBreakPointsStr BreakPoints::GetStrings() const
@@ -35,12 +66,18 @@ BreakPoints::TBreakPointsStr BreakPoints::GetStrings() const
   TBreakPointsStr bp_strings;
   for (const TBreakPoint& bp : m_breakpoints)
   {
-    if (!bp.is_temporary)
-    {
-      std::stringstream ss;
-      ss << std::hex << bp.address << " " << (bp.is_enabled ? "n" : "");
-      bp_strings.push_back(ss.str());
-    }
+    std::ostringstream ss;
+    ss.imbue(std::locale::classic());
+    ss << fmt::format("${:08x} ", bp.address);
+    if (bp.is_enabled)
+      ss << "n";
+    if (bp.log_on_hit)
+      ss << "l";
+    if (bp.break_on_hit)
+      ss << "b";
+    if (bp.condition)
+      ss << "c " << bp.condition->GetText();
+    bp_strings.emplace_back(ss.str());
   }
 
   return bp_strings;
@@ -51,92 +88,171 @@ void BreakPoints::AddFromStrings(const TBreakPointsStr& bp_strings)
   for (const std::string& bp_string : bp_strings)
   {
     TBreakPoint bp;
-    std::stringstream ss;
-    ss << std::hex << bp_string;
-    ss >> bp.address;
-    bp.is_enabled = bp_string.find('n') != bp_string.npos;
-    bp.is_temporary = false;
-    Add(bp);
+    std::string flags;
+    std::istringstream iss(bp_string);
+    iss.imbue(std::locale::classic());
+
+    if (iss.peek() == '$')
+      iss.ignore();
+    iss >> std::hex >> bp.address;
+    iss >> flags;
+    bp.is_enabled = flags.contains('n');
+    bp.log_on_hit = flags.contains('l');
+    bp.break_on_hit = flags.contains('b');
+    if (flags.contains('c'))
+    {
+      iss >> std::ws;
+      std::string condition;
+      std::getline(iss, condition);
+      bp.condition = Expression::TryParse(condition);
+    }
+    Add(std::move(bp));
   }
 }
 
-void BreakPoints::Add(const TBreakPoint& bp)
+void BreakPoints::Add(TBreakPoint bp)
 {
   if (IsAddressBreakPoint(bp.address))
     return;
 
-  m_breakpoints.push_back(bp);
+  m_system.GetJitInterface().InvalidateICache(bp.address, 4, true);
 
-  JitInterface::InvalidateICache(bp.address, 4, true);
+  m_breakpoints.emplace_back(std::move(bp));
 }
 
-void BreakPoints::Add(u32 address, bool temp)
+void BreakPoints::Add(u32 address)
 {
-  // Only add new addresses
-  if (IsAddressBreakPoint(address))
-    return;
+  BreakPoints::Add(address, true, false, std::nullopt);
+}
+
+void BreakPoints::Add(u32 address, bool break_on_hit, bool log_on_hit,
+                      std::optional<Expression> condition)
+{
+  // Check for existing breakpoint, and overwrite with new info.
+  // This is assuming we usually want the new breakpoint over an old one.
+  auto iter = std::ranges::find(m_breakpoints, address, &TBreakPoint::address);
 
   TBreakPoint bp;  // breakpoint settings
   bp.is_enabled = true;
-  bp.is_temporary = temp;
+  bp.break_on_hit = break_on_hit;
+  bp.log_on_hit = log_on_hit;
   bp.address = address;
+  bp.condition = std::move(condition);
 
-  m_breakpoints.push_back(bp);
+  if (iter != m_breakpoints.end())  // We found an existing breakpoint
+  {
+    bp.is_enabled = iter->is_enabled;
+    *iter = std::move(bp);
+  }
+  else
+  {
+    m_breakpoints.emplace_back(std::move(bp));
+  }
 
-  JitInterface::InvalidateICache(address, 4, true);
+  m_system.GetJitInterface().InvalidateICache(address, 4, true);
 }
 
-void BreakPoints::Remove(u32 address)
+void BreakPoints::SetTemporary(u32 address)
 {
-  const auto iter = std::find_if(m_breakpoints.begin(), m_breakpoints.end(),
-                                 [address](const auto& bp) { return bp.address == address; });
+  TBreakPoint bp;  // breakpoint settings
+  bp.is_enabled = true;
+  bp.break_on_hit = true;
+  bp.log_on_hit = false;
+  bp.address = address;
+  bp.condition = std::nullopt;
+
+  m_temp_breakpoint.emplace(std::move(bp));
+
+  m_system.GetJitInterface().InvalidateICache(address, 4, true);
+}
+
+bool BreakPoints::ToggleBreakPoint(u32 address)
+{
+  if (!Remove(address))
+  {
+    Add(address);
+    return true;
+  }
+  return false;
+}
+
+bool BreakPoints::ToggleEnable(u32 address)
+{
+  auto iter = std::ranges::find(m_breakpoints, address, &TBreakPoint::address);
+
+  if (iter == m_breakpoints.end())
+    return false;
+
+  iter->is_enabled = !iter->is_enabled;
+  return true;
+}
+
+void BreakPoints::EnableBreaking(bool enable)
+{
+  m_breaking_enabled = enable;
+}
+
+bool BreakPoints::Remove(u32 address)
+{
+  const auto iter = std::ranges::find(m_breakpoints, address, &TBreakPoint::address);
 
   if (iter == m_breakpoints.cend())
-    return;
+    return false;
 
   m_breakpoints.erase(iter);
-  JitInterface::InvalidateICache(address, 4, true);
+  m_system.GetJitInterface().InvalidateICache(address, 4, true);
+
+  return true;
 }
 
 void BreakPoints::Clear()
 {
   for (const TBreakPoint& bp : m_breakpoints)
   {
-    JitInterface::InvalidateICache(bp.address, 4, true);
+    m_system.GetJitInterface().InvalidateICache(bp.address, 4, true);
   }
 
   m_breakpoints.clear();
+  ClearTemporary();
 }
 
-void BreakPoints::ClearAllTemporary()
+void BreakPoints::ClearTemporary()
 {
-  auto bp = m_breakpoints.begin();
-  while (bp != m_breakpoints.end())
+  if (m_temp_breakpoint)
   {
-    if (bp->is_temporary)
-    {
-      JitInterface::InvalidateICache(bp->address, 4, true);
-      bp = m_breakpoints.erase(bp);
-    }
-    else
-    {
-      ++bp;
-    }
+    m_system.GetJitInterface().InvalidateICache(m_temp_breakpoint->address, 4, true);
+    m_temp_breakpoint.reset();
   }
 }
+
+MemChecks::MemChecks(Core::System& system) : m_system(system)
+{
+}
+
+MemChecks::~MemChecks() = default;
 
 MemChecks::TMemChecksStr MemChecks::GetStrings() const
 {
   TMemChecksStr mc_strings;
   for (const TMemCheck& mc : m_mem_checks)
   {
-    std::stringstream ss;
-    ss << std::hex << mc.start_address;
-    ss << " " << (mc.is_ranged ? mc.end_address : mc.start_address) << " "
-       << (mc.is_ranged ? "n" : "") << (mc.is_break_on_read ? "r" : "")
-       << (mc.is_break_on_write ? "w" : "") << (mc.log_on_hit ? "l" : "")
-       << (mc.break_on_hit ? "p" : "");
-    mc_strings.push_back(ss.str());
+    std::ostringstream ss;
+    ss.imbue(std::locale::classic());
+    ss << fmt::format("${:08x} {:08x} ", mc.start_address, mc.end_address);
+    if (mc.is_enabled)
+      ss << 'n';
+    if (mc.is_break_on_read)
+      ss << 'r';
+    if (mc.is_break_on_write)
+      ss << 'w';
+    if (mc.log_on_hit)
+      ss << 'l';
+    if (mc.break_on_hit)
+      ss << 'b';
+    if (mc.condition)
+      ss << "c " << mc.condition->GetText();
+
+    mc_strings.emplace_back(ss.str());
   }
 
   return mc_strings;
@@ -144,64 +260,143 @@ MemChecks::TMemChecksStr MemChecks::GetStrings() const
 
 void MemChecks::AddFromStrings(const TMemChecksStr& mc_strings)
 {
+  const Core::CPUThreadGuard guard(m_system);
+  DelayedMemCheckUpdate delayed_update(this);
+
   for (const std::string& mc_string : mc_strings)
   {
     TMemCheck mc;
-    std::stringstream ss;
-    ss << std::hex << mc_string;
-    ss >> mc.start_address;
-    mc.is_ranged = mc_string.find('n') != mc_string.npos;
-    mc.is_break_on_read = mc_string.find('r') != mc_string.npos;
-    mc.is_break_on_write = mc_string.find('w') != mc_string.npos;
-    mc.log_on_hit = mc_string.find('l') != mc_string.npos;
-    mc.break_on_hit = mc_string.find('p') != mc_string.npos;
-    if (mc.is_ranged)
-      ss >> mc.end_address;
-    else
-      mc.end_address = mc.start_address;
-    Add(mc);
+    std::istringstream iss(mc_string);
+    iss.imbue(std::locale::classic());
+
+    if (iss.peek() == '$')
+      iss.ignore();
+
+    std::string flags;
+    iss >> std::hex >> mc.start_address >> mc.end_address >> flags;
+
+    mc.is_ranged = mc.start_address != mc.end_address;
+    mc.is_enabled = flags.contains('n');
+    mc.is_break_on_read = flags.contains('r');
+    mc.is_break_on_write = flags.contains('w');
+    mc.log_on_hit = flags.contains('l');
+    mc.break_on_hit = flags.contains('b');
+    if (flags.contains('c'))
+    {
+      iss >> std::ws;
+      std::string condition;
+      std::getline(iss, condition);
+      mc.condition = Expression::TryParse(condition);
+    }
+
+    delayed_update |= Add(std::move(mc));
   }
 }
 
-void MemChecks::Add(const TMemCheck& memory_check)
+DelayedMemCheckUpdate MemChecks::Add(TMemCheck memory_check)
 {
-  if (GetMemCheck(memory_check.start_address) != nullptr)
-    return;
+  const Core::CPUThreadGuard guard(m_system);
 
-  bool had_any = HasAny();
-  Core::RunAsCPUThread([&] {
-    m_mem_checks.push_back(memory_check);
-    // If this is the first one, clear the JIT cache so it can switch to
-    // watchpoint-compatible code.
-    if (!had_any)
-      JitInterface::ClearCache();
-    PowerPC::DBATUpdated();
-  });
+  // Check for existing breakpoint, and overwrite with new info.
+  // This is assuming we usually want the new breakpoint over an old one.
+  const u32 address = memory_check.start_address;
+  auto old_mem_check = std::ranges::find(m_mem_checks, address, &TMemCheck::start_address);
+  if (old_mem_check != m_mem_checks.end())
+  {
+    memory_check.is_enabled = old_mem_check->is_enabled;  // Preserve enabled status
+    *old_mem_check = std::move(memory_check);
+    old_mem_check->num_hits = 0;
+  }
+  else
+  {
+    m_mem_checks.emplace_back(std::move(memory_check));
+  }
+
+  return DelayedMemCheckUpdate(this, true);
 }
 
-void MemChecks::Remove(u32 address)
+bool MemChecks::ToggleEnable(u32 address)
 {
-  const auto iter =
-      std::find_if(m_mem_checks.cbegin(), m_mem_checks.cend(),
-                   [address](const auto& check) { return check.start_address == address; });
+  auto iter = std::ranges::find(m_mem_checks, address, &TMemCheck::start_address);
+
+  if (iter == m_mem_checks.end())
+    return false;
+
+  iter->is_enabled = !iter->is_enabled;
+  return true;
+}
+
+void MemChecks::EnableBreaking(bool enabled)
+{
+  m_breaking_enabled = enabled;
+  Update();
+}
+
+DelayedMemCheckUpdate MemChecks::Remove(u32 address)
+{
+  const auto iter = std::ranges::find(m_mem_checks, address, &TMemCheck::start_address);
 
   if (iter == m_mem_checks.cend())
-    return;
+    return DelayedMemCheckUpdate(this, false);
 
-  Core::RunAsCPUThread([&] {
-    m_mem_checks.erase(iter);
-    if (!HasAny())
-      JitInterface::ClearCache();
-    PowerPC::DBATUpdated();
-  });
+  const Core::CPUThreadGuard guard(m_system);
+  m_mem_checks.erase(iter);
+
+  return DelayedMemCheckUpdate(this, true);
+}
+
+void MemChecks::Clear()
+{
+  const Core::CPUThreadGuard guard(m_system);
+  m_mem_checks.clear();
+  Update();
+}
+
+void MemChecks::Update()
+{
+  const Core::CPUThreadGuard guard(m_system);
+
+  const bool registers_changed = UpdateRegistersUsedInConditions();
+
+  // If we've added a first memcheck, clear the JIT cache so it can switch to watchpoint-compatible
+  // code. Or, if we've added a memcheck whose condition wants to read from a new register, clear
+  // the JIT cache to make the slow memory access code flush that register. And conversely, if the
+  // aforementioned functionality is no longer needed, clear the JIT cache to switch to faster code.
+  if (registers_changed || m_mem_breakpoints_set != HasAny())
+  {
+    m_system.GetJitInterface().ClearCache(guard);
+    m_mem_breakpoints_set = HasAny();
+  }
+
+  m_system.GetMMU().DBATUpdated();
+}
+
+bool MemChecks::UpdateRegistersUsedInConditions()
+{
+  BitSet32 gprs_used, fprs_used;
+  for (TMemCheck& mem_check : m_mem_checks)
+  {
+    if (mem_check.condition)
+    {
+      gprs_used |= mem_check.condition->GetGPRsUsed();
+      fprs_used |= mem_check.condition->GetFPRsUsed();
+    }
+  }
+
+  const bool registers_changed =
+      gprs_used != m_gprs_used_in_conditions || fprs_used != m_fprs_used_in_conditions;
+
+  m_gprs_used_in_conditions = gprs_used;
+  m_fprs_used_in_conditions = fprs_used;
+
+  return registers_changed;
 }
 
 TMemCheck* MemChecks::GetMemCheck(u32 address, size_t size)
 {
-  const auto iter =
-      std::find_if(m_mem_checks.begin(), m_mem_checks.end(), [address, size](const auto& mc) {
-        return mc.end_address >= address && address + size - 1 >= mc.start_address;
-      });
+  const auto iter = std::ranges::find_if(m_mem_checks, [address, size](const auto& mc) {
+    return mc.end_address >= address && address + size - 1 >= mc.start_address;
+  });
 
   // None found
   if (iter == m_mem_checks.cend())
@@ -218,7 +413,7 @@ bool MemChecks::OverlapsMemcheck(u32 address, u32 length) const
   const u32 page_end_suffix = length - 1;
   const u32 page_end_address = address | page_end_suffix;
 
-  return std::any_of(m_mem_checks.cbegin(), m_mem_checks.cend(), [&](const auto& mc) {
+  return std::ranges::any_of(m_mem_checks, [&](const auto& mc) {
     return ((mc.start_address | page_end_suffix) == page_end_address ||
             (mc.end_address | page_end_suffix) == page_end_address) ||
            ((mc.start_address | page_end_suffix) < page_end_address &&
@@ -226,17 +421,20 @@ bool MemChecks::OverlapsMemcheck(u32 address, u32 length) const
   });
 }
 
-bool TMemCheck::Action(Common::DebugInterface* debug_interface, u32 value, u32 addr, bool write,
-                       size_t size, u32 pc)
+bool TMemCheck::Action(Core::System& system, u64 value, u32 addr, bool write, size_t size, u32 pc)
 {
-  if ((write && is_break_on_write) || (!write && is_break_on_read))
+  if (!is_enabled)
+    return false;
+
+  if (((write && is_break_on_write) || (!write && is_break_on_read)) &&
+      EvaluateCondition(system, this->condition))
   {
     if (log_on_hit)
     {
-      NOTICE_LOG(MEMMAP, "MBP %08x (%s) %s%zu %0*x at %08x (%s)", pc,
-                 debug_interface->GetDescription(pc).c_str(), write ? "Write" : "Read", size * 8,
-                 static_cast<int>(size * 2), value, addr,
-                 debug_interface->GetDescription(addr).c_str());
+      auto& ppc_symbol_db = system.GetPPCSymbolDB();
+      NOTICE_LOG_FMT(MEMMAP, "MBP {:08x} ({}) {}{} {:x} at {:08x} ({})", pc,
+                     ppc_symbol_db.GetDescription(pc), write ? "Write" : "Read", size * 8, value,
+                     addr, ppc_symbol_db.GetDescription(addr));
     }
     if (break_on_hit)
       return true;

@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // Based on:
 // https://stackoverflow.com/questions/30005540/keeping-the-aspect-ratio-of-a-sub-classed-qwidget-during-resize
@@ -14,6 +13,7 @@ AspectRatioWidget::AspectRatioWidget(QWidget* widget, float width, float height,
     : QWidget(parent), m_ar_width(width), m_ar_height(height)
 {
   m_layout = new QBoxLayout(QBoxLayout::LeftToRight, this);
+  m_layout->setContentsMargins(0, 0, 0, 0);
 
   // add spacer, then your widget, then spacer
   m_layout->addItem(new QSpacerItem(0, 0));

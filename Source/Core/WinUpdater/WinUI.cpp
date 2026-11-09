@@ -1,16 +1,17 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "UpdaterCommon/UI.h"
 
+#include <cstdlib>
 #include <string>
 #include <thread>
 
-#include <Windows.h>
-#include <CommCtrl.h>
-#include <ShObjIdl.h>
+#include <windows.h>
+#include <commctrl.h>
 #include <shellapi.h>
+#include <shlobj.h>
+#include <shobjidl.h>
 #include <wrl/client.h>
 
 #include "Common/Event.h"
@@ -46,7 +47,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
   }
   return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
-};  // namespace
+}  // namespace
 
 constexpr int PROGRESSBAR_FLAGS = WS_VISIBLE | WS_CHILD | PBS_SMOOTH | PBS_SMOOTHREVERSE;
 constexpr int WINDOW_FLAGS = WS_CLIPCHILDREN;
@@ -54,7 +55,7 @@ constexpr int PADDING_HEIGHT = 5;
 
 namespace UI
 {
-bool InitWindow()
+static bool InitWindow()
 {
   InitCommonControls();
 
@@ -76,8 +77,8 @@ bool InitWindow()
   if (!window_handle)
     return false;
 
-  if (SUCCEEDED(CoCreateInstance(CLSID_TaskbarList, NULL, CLSCTX_INPROC_SERVER,
-                                 IID_PPV_ARGS(taskbar_list.GetAddressOf()))))
+  if (SUCCEEDED(CoCreateInstance(CLSID_TaskbarList, nullptr, CLSCTX_INPROC_SERVER,
+                                 IID_PPV_ARGS(&taskbar_list))))
   {
     if (FAILED(taskbar_list->HrInit()))
     {
@@ -87,8 +88,8 @@ bool InitWindow()
 
   int y = PADDING_HEIGHT;
 
-  label_handle = CreateWindow(L"STATIC", NULL, WS_VISIBLE | WS_CHILD, 5, y, 500, 25, window_handle,
-                              nullptr, nullptr, 0);
+  label_handle = CreateWindow(L"STATIC", nullptr, WS_VISIBLE | WS_CHILD, 5, y, 500, 25,
+                              window_handle, nullptr, nullptr, 0);
 
   if (!label_handle)
     return false;
@@ -105,7 +106,7 @@ bool InitWindow()
 
   y += GetWindowHeight(label_handle) + PADDING_HEIGHT;
 
-  total_progressbar_handle = CreateWindow(PROGRESS_CLASS, NULL, PROGRESSBAR_FLAGS, 5, y, 470, 25,
+  total_progressbar_handle = CreateWindow(PROGRESS_CLASS, nullptr, PROGRESSBAR_FLAGS, 5, y, 470, 25,
                                           window_handle, nullptr, nullptr, 0);
 
   y += GetWindowHeight(total_progressbar_handle) + PADDING_HEIGHT;
@@ -113,8 +114,8 @@ bool InitWindow()
   if (!total_progressbar_handle)
     return false;
 
-  current_progressbar_handle = CreateWindow(PROGRESS_CLASS, NULL, PROGRESSBAR_FLAGS, 5, y, 470, 25,
-                                            window_handle, nullptr, nullptr, 0);
+  current_progressbar_handle = CreateWindow(PROGRESS_CLASS, nullptr, PROGRESSBAR_FLAGS, 5, y, 470,
+                                            25, window_handle, nullptr, nullptr, 0);
 
   y += GetWindowHeight(current_progressbar_handle) + PADDING_HEIGHT;
 
@@ -180,11 +181,13 @@ void ResetCurrentProgress()
 
 void Error(const std::string& text)
 {
-  auto wide_text = UTF8ToUTF16(text);
+  auto message = L"A fatal error occurred and the updater cannot continue:\n " +
+                 UTF8ToWString(text) + L"\n" +
+                 L"If the issue persists, please manually download the latest version from "
+                 L"dolphin-emu.org/download and extract it overtop your existing installation.\n" +
+                 L"Also consider filing a bug at bugs.dolphin-emu.org/projects/emulator";
 
-  MessageBox(nullptr,
-             (L"A fatal error occured and the updater cannot continue:\n " + wide_text).c_str(),
-             L"Error", MB_ICONERROR);
+  MessageBox(nullptr, message.c_str(), L"Error", MB_ICONERROR);
 
   if (taskbar_list)
   {
@@ -200,10 +203,10 @@ void SetCurrentProgress(int current, int total)
 
 void SetDescription(const std::string& text)
 {
-  SetWindowText(label_handle, UTF8ToUTF16(text).c_str());
+  SetWindowText(label_handle, UTF8ToWString(text).c_str());
 }
 
-void MessageLoop()
+static void MessageLoop()
 {
   HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
@@ -252,11 +255,34 @@ void Stop()
   ui_thread.join();
 }
 
+bool IsTestMode()
+{
+  return std::getenv("DOLPHIN_UPDATE_SERVER_URL") != nullptr;
+}
+
 void LaunchApplication(std::string path)
 {
-  // Hack: Launching the updater over the explorer ensures that admin priviliges are dropped. Why?
-  // Ask Microsoft.
-  ShellExecuteW(nullptr, nullptr, L"explorer.exe", UTF8ToUTF16(path).c_str(), nullptr, SW_SHOW);
+  const auto wpath = UTF8ToWString(path);
+  if (IsUserAnAdmin())
+  {
+    // Indirectly start the application via explorer. This effectively drops admin privileges
+    // because explorer is running as current user.
+    ShellExecuteW(nullptr, nullptr, L"explorer.exe", wpath.c_str(), nullptr, SW_SHOW);
+  }
+  else
+  {
+    std::wstring cmdline = L"\"" + wpath + L"\"";
+    STARTUPINFOW startup_info{.cb = sizeof(startup_info)};
+    PROCESS_INFORMATION process_info;
+    if (IsTestMode())
+      SetEnvironmentVariableA("DOLPHIN_UPDATE_TEST_DONE", "1");
+    if (CreateProcessW(wpath.c_str(), cmdline.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr,
+                       &startup_info, &process_info))
+    {
+      CloseHandle(process_info.hThread);
+      CloseHandle(process_info.hProcess);
+    }
+  }
 }
 
 void Sleep(int sleep)
@@ -279,4 +305,4 @@ void SetVisible(bool visible)
   ShowWindow(window_handle, visible ? SW_SHOW : SW_HIDE);
 }
 
-};  // namespace UI
+}  // namespace UI

@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -19,17 +18,34 @@ class QPlainTextEdit;
 class QPushButton;
 class QTimer;
 
-class LogWidget final : public QDockWidget, LogListener
+class LogWidget final : public QDockWidget
 {
   Q_OBJECT
 public:
   explicit LogWidget(QWidget* parent = nullptr);
-  ~LogWidget();
+  ~LogWidget() override;
 
 protected:
   void closeEvent(QCloseEvent*) override;
 
 private:
+  // LogListener instances are owned by LogManager, so we can't make LogWidget inherit from
+  // LogListener, since Qt should be in control of LogWidget's lifetime. Instead we have
+  // this LogListenerImpl class to act as an adapter.
+  class LogListenerImpl final : public Common::Log::LogListener
+  {
+  public:
+    explicit LogListenerImpl(LogWidget* log_widget) : m_log_widget(log_widget) {}
+
+  private:
+    void Log(Common::Log::LogLevel level, const char* text) override
+    {
+      m_log_widget->Log(level, text);
+    }
+
+    LogWidget* m_log_widget;
+  };
+
   void UpdateLog();
   void UpdateFont();
   void CreateWidgets();
@@ -37,7 +53,7 @@ private:
   void LoadSettings();
   void SaveSettings();
 
-  void Log(LogTypes::LOG_LEVELS level, const char* text) override;
+  void Log(Common::Log::LogLevel level, const char* text);
 
   // Log
   QCheckBox* m_log_wrap;
@@ -47,11 +63,11 @@ private:
 
   QTimer* m_timer;
 
-  using LogEntry = std::pair<std::string, LogTypes::LOG_LEVELS>;
+  using LogEntry = std::pair<std::string, Common::Log::LogLevel>;
 
   // Maximum number of lines to show in log viewer
   static constexpr int MAX_LOG_LINES = 5000;
 
   std::mutex m_log_mutex;
-  FixedSizeQueue<LogEntry, MAX_LOG_LINES> m_log_ring_buffer;
+  Common::FixedSizeQueue<LogEntry, MAX_LOG_LINES> m_log_ring_buffer;
 };

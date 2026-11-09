@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -11,8 +10,6 @@ namespace Gen
 {
 class X64CodeBlock;
 }
-
-class JitBase;
 
 // In Dolphin, we don't use inline assembly. Instead, we generate all machine-near
 // code at runtime. In the case of fixed code like this, after writing it, we write
@@ -37,14 +34,12 @@ public:
 
   explicit Jit64AsmRoutineManager(Jit64& jit);
 
-  void Init(u8* stack_top);
+  void Init();
+  void Regenerate();
 
   void ResetStack(Gen::X64CodeBlock& emitter);
 
 private:
   void Generate();
   void GenerateCommon();
-
-  u8* m_stack_top = nullptr;
-  JitBase& m_jit;
 };

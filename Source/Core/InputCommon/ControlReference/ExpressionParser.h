@@ -1,6 +1,5 @@
 // Copyright 2013 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -9,7 +8,7 @@
 #include <optional>
 #include <string>
 
-#include "InputCommon/ControllerInterface/Device.h"
+#include "InputCommon/ControllerInterface/CoreDevice.h"
 
 namespace ciface::ExpressionParser
 {
@@ -26,20 +25,25 @@ enum TokenType
   TOK_VARIABLE,
   TOK_BAREWORD,
   TOK_COMMENT,
+  TOK_HOTKEY,
+  TOK_QUESTION,
+  TOK_COLON,
   // Binary Ops:
   TOK_BINARY_OPS_BEGIN,
+  TOK_COMPOUND_ASSIGN_OPS_BEGIN = TOK_BINARY_OPS_BEGIN,
   TOK_AND = TOK_BINARY_OPS_BEGIN,
   TOK_OR,
+  TOK_XOR,
   TOK_ADD,
   TOK_SUB,
   TOK_MUL,
   TOK_DIV,
   TOK_MOD,
-  TOK_ASSIGN,
+  TOK_COMPOUND_ASSIGN_OPS_END,
+  TOK_ASSIGN = TOK_COMPOUND_ASSIGN_OPS_END,
   TOK_LTHAN,
   TOK_GTHAN,
   TOK_COMMA,
-  TOK_XOR,
   TOK_BINARY_OPS_END,
 };
 
@@ -62,7 +66,9 @@ public:
 enum class ParseStatus
 {
   Successful,
+  // Note that the expression could still work in this case (be valid and return a value)
   SyntaxError,
+  // Will return the default value
   EmptyExpression,
 };
 
@@ -89,8 +95,8 @@ private:
     return value;
   }
 
-  std::string FetchDelimString(char delim);
   std::string FetchWordChars();
+  Token GetDelimitedToken(TokenType type, char delimiter);
   Token GetDelimitedLiteral();
   Token GetVariable();
   Token GetFullyQualifiedControl();
@@ -106,6 +112,7 @@ class ControlQualifier
 public:
   bool has_device;
   Core::DeviceQualifier device_qualifier;
+  // Makes no distinction between input and output
   std::string control_name;
 
   ControlQualifier() : has_device(false) {}
@@ -139,7 +146,7 @@ public:
 class ControlEnvironment
 {
 public:
-  using VariableContainer = std::map<std::string, ControlState>;
+  using VariableContainer = std::map<std::string, std::shared_ptr<ControlState>>;
 
   ControlEnvironment(const Core::DeviceContainer& container_, const Core::DeviceQualifier& default_,
                      VariableContainer& vars)
@@ -147,10 +154,13 @@ public:
   {
   }
 
-  std::shared_ptr<Core::Device> FindDevice(ControlQualifier qualifier) const;
-  Core::Device::Input* FindInput(ControlQualifier qualifier) const;
-  Core::Device::Output* FindOutput(ControlQualifier qualifier) const;
-  ControlState* GetVariablePtr(const std::string& name);
+  std::shared_ptr<Core::Device> FindDevice(const ControlQualifier& qualifier) const;
+  Core::Device::Input* FindInput(const ControlQualifier& qualifier) const;
+  Core::Device::Output* FindOutput(const ControlQualifier& qualifier) const;
+  // Returns an existing variable by the specified name if already existing. Creates it otherwise.
+  std::shared_ptr<ControlState> GetVariablePtr(const std::string& name);
+
+  void CleanUnusedVariables();
 
 private:
   VariableContainer& m_variables;
@@ -162,10 +172,13 @@ class Expression
 {
 public:
   virtual ~Expression() = default;
-  virtual ControlState GetValue() const = 0;
+  virtual ControlState GetValue() = 0;
   virtual void SetValue(ControlState state) = 0;
   virtual int CountNumControls() const = 0;
   virtual void UpdateReferences(ControlEnvironment& finder) = 0;
+
+  // Perform any side effects and return Expression to be SetValue'd.
+  virtual Expression* GetLValue();
 };
 
 class ParseResult
@@ -175,7 +188,7 @@ public:
   static ParseResult MakeSuccessfulResult(std::unique_ptr<Expression>&& expr);
   static ParseResult MakeErrorResult(Token token, std::string description);
 
-  ParseStatus status;
+  ParseStatus status = ParseStatus::EmptyExpression;
   std::unique_ptr<Expression> expr;
 
   // Used for parse errors:
@@ -189,6 +202,5 @@ private:
 
 ParseResult ParseExpression(const std::string& expr);
 ParseResult ParseTokens(const std::vector<Token>& tokens);
-void RemoveInertTokens(std::vector<Token>* tokens);
 
 }  // namespace ciface::ExpressionParser

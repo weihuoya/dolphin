@@ -1,10 +1,7 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
-
-#include <string>
 
 #include "Common/CommonTypes.h"
 #include "Core/IOS/Device.h"
@@ -12,24 +9,28 @@
 
 class PointerWrap;
 
-namespace IOS::HLE::Device
+namespace IOS::HLE
 {
 enum
 {
+  // /dev/stm/eventhook
   IOCTL_STM_EVENTHOOK = 0x1000,
-  IOCTL_STM_GET_IDLEMODE = 0x3001,
-  IOCTL_STM_RELEASE_EH = 0x3002,
+
+  // /dev/stm/immediate
   IOCTL_STM_HOTRESET = 0x2001,
   IOCTL_STM_HOTRESET_FOR_PD = 0x2002,
   IOCTL_STM_SHUTDOWN = 0x2003,
   IOCTL_STM_IDLE = 0x2004,
   IOCTL_STM_WAKEUP = 0x2005,
+  IOCTL_STM_GET_IDLEMODE = 0x3001,
+  IOCTL_STM_RELEASE_EH = 0x3002,
+  IOCTL_STM_READDDRREG = 0x4001,
+  IOCTL_STM_READDDRREG2 = 0x4002,
   IOCTL_STM_VIDIMMING = 0x5001,
   IOCTL_STM_LEDFLASH = 0x6001,
   IOCTL_STM_LEDMODE = 0x6002,
   IOCTL_STM_READVER = 0x7001,
-  IOCTL_STM_READDDRREG = 0x4001,
-  IOCTL_STM_READDDRREG2 = 0x4002,
+  IOCTL_STM_WRITEDMCU = 0x8001,
 };
 
 enum
@@ -39,20 +40,20 @@ enum
 };
 
 // The /dev/stm/immediate
-class STMImmediate final : public Device
+class STMImmediateDevice final : public EmulationDevice
 {
 public:
-  using Device::Device;
-  IPCCommandResult IOCtl(const IOCtlRequest& request) override;
+  using EmulationDevice::EmulationDevice;
+  std::optional<IPCReply> IOCtl(const IOCtlRequest& request) override;
 };
 
 // The /dev/stm/eventhook
-class STMEventHook final : public Device
+class STMEventHookDevice final : public EmulationDevice
 {
 public:
-  using Device::Device;
-  ~STMEventHook() override;
-  IPCCommandResult IOCtl(const IOCtlRequest& request) override;
+  using EmulationDevice::EmulationDevice;
+  ~STMEventHookDevice() override;
+  std::optional<IPCReply> IOCtl(const IOCtlRequest& request) override;
   void DoState(PointerWrap& p) override;
 
   bool HasHookInstalled() const;
@@ -62,4 +63,4 @@ public:
 private:
   void TriggerEvent(u32 event) const;
 };
-}  // namespace IOS::HLE::Device
+}  // namespace IOS::HLE

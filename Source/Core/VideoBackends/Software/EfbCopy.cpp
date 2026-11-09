@@ -1,16 +1,15 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoBackends/Software/EfbCopy.h"
+
+#include <algorithm>
+
 #include "Common/CommonTypes.h"
-#include "Common/Logging/Log.h"
-#include "Core/HW/Memmap.h"
-#include "VideoBackends/Software/EfbInterface.h"
-#include "VideoBackends/Software/TextureEncoder.h"
+#include "VideoBackends/Software/SWEfbInterface.h"
 
 #include "VideoCommon/BPMemory.h"
-#include "VideoCommon/Fifo.h"
+#include "VideoCommon/VideoCommon.h"
 
 namespace EfbCopy
 {
@@ -21,8 +20,8 @@ void ClearEfb()
 
   int left = bpmem.copyTexSrcXY.x;
   int top = bpmem.copyTexSrcXY.y;
-  int right = left + bpmem.copyTexSrcWH.x;
-  int bottom = top + bpmem.copyTexSrcWH.y;
+  int right = std::min(left + bpmem.copyTexSrcWH.x, EFB_WIDTH - 1);
+  int bottom = std::min(top + bpmem.copyTexSrcWH.y, EFB_HEIGHT - 1);
 
   for (u16 y = top; y <= bottom; y++)
   {

@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "InputCommon/ControllerEmu/Control/Control.h"
 
@@ -10,14 +9,15 @@
 namespace ControllerEmu
 {
 Control::Control(std::unique_ptr<ControlReference> ref, Translatability translate_,
-                 const std::string& name_, const std::string& ui_name_)
-    : control_ref(std::move(ref)), translate(translate_), name(name_), ui_name(ui_name_)
+                 std::string name_, std::string ui_name_)
+    : control_ref(std::move(ref)), translate(translate_), name(std::move(name_)),
+      ui_name(std::move(ui_name_))
 {
 }
 
 Control::Control(std::unique_ptr<ControlReference> ref, Translatability translate_,
-                 const std::string& name_)
-    : Control(std::move(ref), translate_, name_, name_)
+                 std::string name_)
+    : control_ref(std::move(ref)), translate(translate_), name(name_), ui_name(std::move(name_))
 {
 }
 

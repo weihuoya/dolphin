@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -13,6 +12,8 @@
 #include <QStringList>
 #include <QVariant>
 
+#include "Core/Core.h"
+#include "Core/TimePlayed.h"
 #include "Core/TitleDatabase.h"
 
 #include "DolphinQt/GameList/GameTracker.h"
@@ -37,26 +38,31 @@ public:
   int columnCount(const QModelIndex& parent) const override;
 
   std::shared_ptr<const UICommon::GameFile> GetGameFile(int index) const;
-  // Path of the game at the specified index.
-  QString GetPath(int index) const;
-  // Unique identifier of the game at the specified index.
-  QString GetUniqueIdentifier(int index) const;
+  std::string GetNetPlayName(const UICommon::GameFile& game) const;
   bool ShouldDisplayGameListItem(int index) const;
   void SetSearchTerm(const QString& term);
 
-  enum
+  // Using a custom sort role as it sometimes differs slightly from the default Qt::DisplayRole.
+  static constexpr int SORT_ROLE = Qt::UserRole;
+
+  enum class Column
   {
-    COL_PLATFORM = 0,
-    COL_BANNER,
-    COL_TITLE,
-    COL_DESCRIPTION,
-    COL_MAKER,
-    COL_ID,
-    COL_COUNTRY,
-    COL_SIZE,
-    COL_FILE_NAME,
-    COL_TAGS,
-    NUM_COLS
+    Platform = 0,
+    Banner,
+    Title,
+    Description,
+    Maker,
+    ID,
+    Country,
+    Size,
+    FileName,
+    FilePath,
+    FileFormat,
+    BlockSize,
+    Compression,
+    TimePlayed,
+    Tags,
+    Count,
   };
 
   void AddGame(const std::shared_ptr<const UICommon::GameFile>& game);
@@ -84,12 +90,15 @@ private:
   // Index in m_games, or -1 if it isn't found
   int FindGameIndex(const std::string& path) const;
 
+  void OnEmulationStateChanged(Core::State state);
+
   QStringList m_tag_list;
   QMap<QString, QVariant> m_game_tags;
 
   GameTracker m_tracker;
   QList<std::shared_ptr<const UICommon::GameFile>> m_games;
   Core::TitleDatabase m_title_database;
+  TimePlayed m_timer;
   QString m_term;
   float m_scale = 1.0;
 };

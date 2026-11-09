@@ -1,12 +1,13 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <map>
 #include <string>
 #include <vector>
+
+#include "InputCommon/ControllerInterface/ControllerInterface.h"
 
 namespace ciface::Pipes
 {
@@ -20,15 +21,15 @@ namespace ciface::Pipes
 // SET {L, R} [0, 1]
 // SET {MAIN, C} [0, 1] [0, 1]
 
-void PopulateDevices();
+std::unique_ptr<ciface::InputBackend> CreateInputBackend(ControllerInterface* controller_interface);
 
 class PipeDevice : public Core::Device
 {
 public:
-  PipeDevice(int fd, const std::string& name);
+  PipeDevice(int fd, std::string name);
   ~PipeDevice();
 
-  void UpdateInput() override;
+  Core::DeviceRemoval UpdateInput() override;
   std::string GetName() const override { return m_name; }
   std::string GetSource() const override { return "Pipe"; }
 

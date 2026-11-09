@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // TODO(ector): Tons of pshufb optimization of the loads/stores, for SSSE3+, possibly SSE4, only.
 // Should give a very noticeable speed boost to paired single heavy code.
@@ -11,7 +10,6 @@
 #include "Common/x64Emitter.h"
 #include "Core/PowerPC/Jit64/RegCache/JitRegCache.h"
 #include "Core/PowerPC/Jit64Common/Jit64PowerPCState.h"
-#include "Core/PowerPC/JitCommon/JitAsmCommon.h"
 #include "Core/PowerPC/PowerPC.h"
 
 using namespace Gen;
@@ -24,7 +22,7 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
   JITDISABLE(bJITLoadStorePairedOff);
 
   // For performance, the AsmCommon routines assume address translation is on.
-  FALLBACK_IF(!MSR.DR);
+  FALLBACK_IF(!(m_ppc_state.feature_flags & FEATURE_FLAG_MSR_DR));
 
   s32 offset = inst.SIMM_12;
   bool indexed = inst.OPCD == 4;
@@ -36,9 +34,7 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
   int w = indexed ? inst.Wx : inst.W;
   FALLBACK_IF(!a);
 
-  auto it = js.constantGqr.find(i);
-  bool gqrIsConstant = it != js.constantGqr.end();
-  u32 gqrValue = gqrIsConstant ? it->second & 0xffff : 0;
+  FlushRegistersBeforeSlowAccess();
 
   RCX64Reg scratch_guard = gpr.Scratch(RSCRATCH_EXTRA);
   RCOpArg Ra = update ? gpr.Bind(a, RCMode::ReadWrite) : gpr.Use(a, RCMode::Read);
@@ -57,8 +53,10 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
   else
     CVTPD2PS(XMM0, Rs);  // pair
 
+  const bool gqrIsConstant = js.constantGqrValid[i];
   if (gqrIsConstant)
   {
+    const u32 gqrValue = js.constantGqr[i] & 0xffff;
     int type = gqrValue & 0x7;
 
     // Paired stores (other than w/type zero) don't yield any real change in
@@ -72,8 +70,8 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
     }
     else
     {
-      // Stash PC in case asm_routine causes exception
-      MOV(32, PPCSTATE(pc), Imm32(js.compilerPC));
+      FlushPCBeforeSlowAccess();
+
       // We know what GQR is here, so we can load RSCRATCH2 and call into the store method directly
       // with just the scale bits.
       MOV(32, R(RSCRATCH2), Imm32(gqrValue & 0x3F00));
@@ -86,14 +84,14 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
   }
   else
   {
-    // Stash PC incase asm_routine causes exception
-    MOV(32, PPCSTATE(pc), Imm32(js.compilerPC));
+    FlushPCBeforeSlowAccess();
+
     // Some games (e.g. Dirt 2) incorrectly set the unused bits which breaks the lookup table code.
     // Hence, we need to mask out the unused bits. The layout of the GQR register is
     // UU[SCALE]UUUUU[TYPE] where SCALE is 6 bits and TYPE is 3 bits, so we have to AND with
     // 0b0011111100000111, or 0x3F07.
     MOV(32, R(RSCRATCH2), Imm32(0x3F07));
-    AND(32, R(RSCRATCH2), PPCSTATE(spr[SPR_GQR0 + i]));
+    AND(32, R(RSCRATCH2), PPCSTATE_SPR(SPR_GQR0 + i));
     LEA(64, RSCRATCH,
         M(w ? asm_routines.single_store_quantized : asm_routines.paired_store_quantized));
     // 8-bit operations do not zero upper 32-bits of 64-bit registers.
@@ -115,7 +113,7 @@ void Jit64::psq_lXX(UGeckoInstruction inst)
   JITDISABLE(bJITLoadStorePairedOff);
 
   // For performance, the AsmCommon routines assume address translation is on.
-  FALLBACK_IF(!MSR.DR);
+  FALLBACK_IF(!(m_ppc_state.feature_flags & FEATURE_FLAG_MSR_DR));
 
   s32 offset = inst.SIMM_12;
   bool indexed = inst.OPCD == 4;
@@ -127,9 +125,7 @@ void Jit64::psq_lXX(UGeckoInstruction inst)
   int w = indexed ? inst.Wx : inst.W;
   FALLBACK_IF(!a);
 
-  auto it = js.constantGqr.find(i);
-  bool gqrIsConstant = it != js.constantGqr.end();
-  u32 gqrValue = gqrIsConstant ? it->second >> 16 : 0;
+  FlushRegistersBeforeSlowAccess();
 
   RCX64Reg scratch_guard = gpr.Scratch(RSCRATCH_EXTRA);
   RCX64Reg Ra = gpr.Bind(a, update ? RCMode::ReadWrite : RCMode::Read);
@@ -143,16 +139,18 @@ void Jit64::psq_lXX(UGeckoInstruction inst)
   if (update && !jo.memcheck)
     MOV(32, Ra, R(RSCRATCH_EXTRA));
 
+  const bool gqrIsConstant = js.constantGqrValid[i];
   if (gqrIsConstant)
   {
+    const u32 gqrValue = js.constantGqr[i] >> 16;
     GenQuantizedLoad(w == 1, static_cast<EQuantizeType>(gqrValue & 0x7), (gqrValue & 0x3F00) >> 8);
   }
   else
   {
-    // Stash PC in case asm_routine causes exception
-    MOV(32, PPCSTATE(pc), Imm32(js.compilerPC));
+    FlushPCBeforeSlowAccess();
+
     // Get the high part of the GQR register
-    OpArg gqr = PPCSTATE(spr[SPR_GQR0 + i]);
+    OpArg gqr = PPCSTATE_SPR(SPR_GQR0 + i);
     gqr.AddMemOffset(2);
     MOV(32, R(RSCRATCH2), Imm32(0x3F07));
     AND(32, R(RSCRATCH2), gqr);

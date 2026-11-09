@@ -1,17 +1,20 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "InputCommon/ControllerInterface/DInput/DInputJoystick.h"
 
 #include <algorithm>
 #include <limits>
+#include <mutex>
 #include <set>
-#include <sstream>
 #include <type_traits>
 
+#include <fmt/format.h>
+
+#include "Common/HRWrap.h"
 #include "Common/Logging/Log.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 #include "InputCommon/ControllerInterface/DInput/DInput.h"
-#include "InputCommon/ControllerInterface/DInput/DInputJoystick.h"
 #include "InputCommon/ControllerInterface/DInput/XInputFilter.h"
 
 namespace ciface::DInput
@@ -29,6 +32,7 @@ struct GUIDComparator
 };
 
 static std::set<GUID, GUIDComparator> s_guids_in_use;
+static std::mutex s_guids_mutex;
 
 void InitJoystick(IDirectInput8* const idi8, HWND hwnd)
 {
@@ -40,57 +44,66 @@ void InitJoystick(IDirectInput8* const idi8, HWND hwnd)
   for (DIDEVICEINSTANCE& joystick : joysticks)
   {
     // Skip XInput Devices
-    if (xinput_guids.count(joystick.guidProduct.Data1))
+    if (xinput_guids.contains(joystick.guidProduct.Data1))
     {
       continue;
     }
 
     // Skip devices we are already using.
-    if (s_guids_in_use.count(joystick.guidInstance))
     {
-      continue;
+      std::lock_guard lk(s_guids_mutex);
+      if (s_guids_in_use.contains(joystick.guidInstance))
+      {
+        continue;
+      }
     }
 
     LPDIRECTINPUTDEVICE8 js_device;
+    // Don't print any warnings on failure
     if (SUCCEEDED(idi8->CreateDevice(joystick.guidInstance, &js_device, nullptr)))
     {
       if (SUCCEEDED(js_device->SetDataFormat(&c_dfDIJoystick)))
       {
-        if (FAILED(js_device->SetCooperativeLevel(GetAncestor(hwnd, GA_ROOT),
-                                                  DISCL_BACKGROUND | DISCL_EXCLUSIVE)))
+        HRESULT hr = js_device->SetCooperativeLevel(GetAncestor(hwnd, GA_ROOT),
+                                                    DISCL_BACKGROUND | DISCL_EXCLUSIVE);
+        if (FAILED(hr))
         {
-          WARN_LOG(
-              PAD,
-              "DInput: Failed to acquire device exclusively. Force feedback will be unavailable.");
+          WARN_LOG_FMT(CONTROLLERINTERFACE,
+                       "DInput: Failed to acquire device exclusively. Force feedback will be "
+                       "unavailable.  {}",
+                       Common::HRWrap(hr));
           // Fall back to non-exclusive mode, with no rumble
           if (FAILED(
                   js_device->SetCooperativeLevel(nullptr, DISCL_BACKGROUND | DISCL_NONEXCLUSIVE)))
           {
-            // PanicAlert("SetCooperativeLevel failed!");
             js_device->Release();
             continue;
           }
         }
 
-        s_guids_in_use.insert(joystick.guidInstance);
         auto js = std::make_shared<Joystick>(js_device);
-
-        // only add if it has some inputs/outputs
+        // only add if it has some inputs/outputs.
+        // Don't even add it to our static list in case we first created it without a window handle,
+        // failing to get exclusive mode, and then later managed to obtain it, which mean it
+        // could now have some outputs if it didn't before.
         if (js->Inputs().size() || js->Outputs().size())
-          g_controller_interface.AddDevice(std::move(js));
+        {
+          if (g_controller_interface.AddDevice(std::move(js)))
+          {
+            std::lock_guard lk(s_guids_mutex);
+            s_guids_in_use.insert(joystick.guidInstance);
+          }
+        }
       }
       else
       {
-        // PanicAlert("SetDataFormat failed!");
         js_device->Release();
       }
     }
   }
 }
 
-Joystick::Joystick(/*const LPCDIDEVICEINSTANCE lpddi, */ const LPDIRECTINPUTDEVICE8 device)
-    : m_device(device)
-//, m_name(TStringToString(lpddi->tszInstanceName))
+Joystick::Joystick(const LPDIRECTINPUTDEVICE8 device) : m_device(device)
 {
   // seems this needs to be done before GetCapabilities
   // polled or buffered data
@@ -154,8 +167,8 @@ Joystick::Joystick(/*const LPCDIDEVICEINSTANCE lpddi, */ const LPDIRECTINPUTDEVI
       const LONG& ax = (&m_state_in.lX)[offset];
 
       // each axis gets a negative and a positive input instance associated with it
-      AddAnalogInputs(new Axis(offset, ax, base, range.lMin - base),
-                      new Axis(offset, ax, base, range.lMax - base));
+      AddFullAnalogSurfaceInputs(new Axis(offset, ax, base, range.lMin - base),
+                                 new Axis(offset, ax, base, range.lMax - base));
     }
   }
 
@@ -163,18 +176,14 @@ Joystick::Joystick(/*const LPCDIDEVICEINSTANCE lpddi, */ const LPDIRECTINPUTDEVI
   std::list<DIDEVICEOBJECTINSTANCE> objects;
   if (SUCCEEDED(m_device->EnumObjects(DIEnumDeviceObjectsCallback, (LPVOID)&objects, DIDFT_AXIS)))
   {
-    const int num_ff_axes =
-        std::count_if(std::begin(objects), std::end(objects),
-                      [](const auto& pdidoi) { return (pdidoi.dwFlags & DIDOI_FFACTUATOR) != 0; });
+    const int num_ff_axes = std::ranges::count_if(
+        objects, [](const auto& pdidoi) { return (pdidoi.dwFlags & DIDOI_FFACTUATOR) != 0; });
     InitForceFeedback(m_device, num_ff_axes);
   }
 
-  // Zero inputs:
-  m_state_in = {};
-
   // Set hats to center:
   // "The center position is normally reported as -1" -MSDN
-  std::fill(std::begin(m_state_in.rgdwPOV), std::end(m_state_in.rgdwPOV), -1);
+  std::ranges::fill(m_state_in.rgdwPOV, -1);
 }
 
 Joystick::~Joystick()
@@ -183,11 +192,12 @@ Joystick::~Joystick()
   info.dwSize = sizeof(info);
   if (SUCCEEDED(m_device->GetDeviceInfo(&info)))
   {
+    std::lock_guard lk(s_guids_mutex);
     s_guids_in_use.erase(info.guidInstance);
   }
   else
   {
-    ERROR_LOG(PAD, "DInputJoystick: GetDeviceInfo failed.");
+    ERROR_LOG_FMT(CONTROLLERINTERFACE, "DInputJoystick: GetDeviceInfo failed.");
   }
 
   DeInitForceFeedback();
@@ -211,7 +221,7 @@ bool Joystick::IsValid() const
   return SUCCEEDED(m_device->Acquire());
 }
 
-void Joystick::UpdateInput()
+Core::DeviceRemoval Joystick::UpdateInput()
 {
   HRESULT hr = 0;
 
@@ -250,43 +260,29 @@ void Joystick::UpdateInput()
   // try reacquire if input lost
   if (DIERR_INPUTLOST == hr || DIERR_NOTACQUIRED == hr)
     m_device->Acquire();
+
+  return Core::DeviceRemoval::Keep;
 }
 
 // get name
 
 std::string Joystick::Button::GetName() const
 {
-  std::ostringstream ss;
-  ss << "Button " << (int)m_index;
-  return ss.str();
+  return fmt::format("Button {}", m_index);
 }
 
 std::string Joystick::Axis::GetName() const
 {
-  std::ostringstream ss;
-  // axis
-  if (m_index < 6)
-  {
-    ss << "Axis " << (char)('X' + (m_index % 3));
-    if (m_index > 2)
-      ss << 'r';
-  }
-  // slider
-  else
-  {
-    ss << "Slider " << (int)(m_index - 6);
-  }
-
-  ss << (m_range < 0 ? '-' : '+');
-  return ss.str();
+  const char sign = m_range < 0 ? '-' : '+';
+  if (m_index < 6)  // axis
+    return fmt::format("Axis {:c}{}{:c}", 'X' + m_index % 3, m_index > 2 ? "r" : "", sign);
+  else  // slider
+    return fmt::format("Slider {}{:c}", m_index - 6, sign);
 }
 
 std::string Joystick::Hat::GetName() const
 {
-  static char tmpstr[] = "Hat . .";
-  tmpstr[4] = (char)('0' + m_index);
-  tmpstr[6] = "NESW"[m_direction];
-  return tmpstr;
+  return fmt::format("Hat {} {:c}", m_index, "NESW"[m_direction]);
 }
 
 // get / set state
@@ -310,6 +306,6 @@ ControlState Joystick::Hat::GetState() const
   if (is_centered)
     return 0;
 
-  return (abs((int)(m_hat / 4500 - m_direction * 2 + 8) % 8 - 4) > 2);
+  return (std::abs(int(m_hat / 4500 - m_direction * 2 + 8) % 8 - 4) > 2);
 }
 }  // namespace ciface::DInput

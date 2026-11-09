@@ -1,12 +1,13 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/DSP/LabelMap.h"
 
 #include <algorithm>
 #include <string>
 #include <vector>
+
+#include <fmt/format.h>
 
 #include "Core/DSP/DSPTables.h"
 
@@ -42,22 +43,28 @@ void LabelMap::RegisterDefaults()
   }
 }
 
-void LabelMap::RegisterLabel(std::string label, u16 lval, LabelType type)
+bool LabelMap::RegisterLabel(std::string label, u16 lval, LabelType type)
 {
   const std::optional<u16> old_value = GetLabelValue(label);
-  if (old_value && old_value != lval)
+  if (old_value)
   {
-    printf("WARNING: Redefined label %s to %04x - old value %04x\n", label.c_str(), lval,
-           *old_value);
-    DeleteLabel(label);
+    if (old_value != lval)
+    {
+      fmt::print("Attempted to redefine label {} from {:04x} to {:04x}\n", label, lval, *old_value);
+      return false;
+    }
+    else
+    {
+      return true;
+    }
   }
   labels.emplace_back(std::move(label), lval, type);
+  return true;
 }
 
 void LabelMap::DeleteLabel(std::string_view label)
 {
-  const auto iter = std::find_if(labels.cbegin(), labels.cend(),
-                                 [&label](const auto& entry) { return entry.name == label; });
+  const auto iter = std::ranges::find(labels, label, &Label::name);
 
   if (iter == labels.cend())
     return;
@@ -65,7 +72,7 @@ void LabelMap::DeleteLabel(std::string_view label)
   labels.erase(iter);
 }
 
-std::optional<u16> LabelMap::GetLabelValue(const std::string& name, LabelType type) const
+std::optional<u16> LabelMap::GetLabelValue(std::string_view name, LabelType type) const
 {
   for (const auto& label : labels)
   {
@@ -77,7 +84,7 @@ std::optional<u16> LabelMap::GetLabelValue(const std::string& name, LabelType ty
       }
       else
       {
-        printf("WARNING: Wrong label type requested. %s\n", name.c_str());
+        fmt::print("Wrong label type requested. {}\n", name);
       }
     }
   }

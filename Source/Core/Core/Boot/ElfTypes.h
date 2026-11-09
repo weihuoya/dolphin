@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -240,8 +239,8 @@ struct Elf32_Sym
 };
 
 #define ELF32_ST_BIND(i) ((i) >> 4)
-#define ELF32_ST_TYPE(i) ((i)&0xf)
-#define ELF32_ST_INFO(b, t) (((b) << 4) + ((t)&0xf))
+#define ELF32_ST_TYPE(i) ((i) & 0xf)
+#define ELF32_ST_INFO(b, t) (((b) << 4) + ((t) & 0xf))
 
 // Relocation entries
 struct Elf32_Rel

@@ -1,9 +1,7 @@
 // Copyright 2012 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/GL/GLX11Window.h"
-#include "Common/GL/GLContext.h"
 
 GLX11Window::GLX11Window(Display* display, Window parent_window, Colormap color_map, Window window,
                          int width, int height)

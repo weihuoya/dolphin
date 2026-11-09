@@ -1,11 +1,14 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
-#include <string>
 #include "Common/CommonTypes.h"
+
+namespace Memory
+{
+class MemoryManager;
+}
 
 namespace IOS::HLE
 {
@@ -112,8 +115,8 @@ public:
   void WriteConfig(FS::FileSystem* fs) const;
   void ResetConfig(FS::FileSystem* fs);
 
-  void WriteToMem(u32 address) const;
-  void ReadFromMem(u32 address);
+  void WriteToMem(Memory::MemoryManager& memory, u32 address) const;
+  void ReadFromMem(const Memory::MemoryManager& memory, u32 address);
 
 private:
 // Data layout of the network configuration file (/shared2/sys/net/02/config.dat)
@@ -138,7 +141,7 @@ private:
   };
 #pragma pack(pop)
 
-  ConfigData m_data;
+  ConfigData m_data{};
 };
 }  // namespace Net
 }  // namespace IOS::HLE

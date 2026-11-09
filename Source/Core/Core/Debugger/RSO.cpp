@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/Debugger/RSO.h"
 
@@ -10,45 +9,50 @@
 #include <utility>
 #include <vector>
 
-#include "Common/CommonFuncs.h"
 #include "Common/Logging/Log.h"
 #include "Core/PowerPC/MMU.h"
 #include "Core/PowerPC/PPCSymbolDB.h"
 
-void RSOHeaderView::Load(u32 address)
+void RSOHeaderView::Load(const Core::CPUThreadGuard& guard, u32 address)
 {
   m_address = address;
-  m_header.entry.next_entry = PowerPC::HostRead_U32(address);
-  m_header.entry.prev_entry = PowerPC::HostRead_U32(address + 0x04);
-  m_header.entry.section_count = PowerPC::HostRead_U32(address + 0x08);
-  m_header.entry.section_table_offset = PowerPC::HostRead_U32(address + 0xC);
-  m_header.entry.name_offset = PowerPC::HostRead_U32(address + 0x10);
-  m_header.entry.name_size = PowerPC::HostRead_U32(address + 0x14);
-  m_header.entry.version = PowerPC::HostRead_U32(address + 0x18);
-  m_header.entry.bss_size = PowerPC::HostRead_U32(address + 0x1C);
-  m_header.section_info.prolog_section_index = PowerPC::HostRead_U8(address + 0x20);
-  m_header.section_info.epilog_section_index = PowerPC::HostRead_U8(address + 0x21);
-  m_header.section_info.unresolved_section_index = PowerPC::HostRead_U8(address + 0x22);
-  m_header.section_info.bss_section_index = PowerPC::HostRead_U8(address + 0x23);
-  m_header.section_info.prolog_offset = PowerPC::HostRead_U32(address + 0x24);
-  m_header.section_info.epilog_offset = PowerPC::HostRead_U32(address + 0x28);
-  m_header.section_info.unresolved_offset = PowerPC::HostRead_U32(address + 0x2C);
-  m_header.relocation_tables.internals_offset = PowerPC::HostRead_U32(address + 0x30);
-  m_header.relocation_tables.internals_size = PowerPC::HostRead_U32(address + 0x34);
-  m_header.relocation_tables.externals_offset = PowerPC::HostRead_U32(address + 0x38);
-  m_header.relocation_tables.externals_size = PowerPC::HostRead_U32(address + 0x3C);
-  m_header.symbol_tables.exports_offset = PowerPC::HostRead_U32(address + 0x40);
-  m_header.symbol_tables.exports_size = PowerPC::HostRead_U32(address + 0x44);
-  m_header.symbol_tables.exports_name_table = PowerPC::HostRead_U32(address + 0x48);
-  m_header.symbol_tables.imports_offset = PowerPC::HostRead_U32(address + 0x4C);
-  m_header.symbol_tables.imports_size = PowerPC::HostRead_U32(address + 0x50);
-  m_header.symbol_tables.imports_name_table = PowerPC::HostRead_U32(address + 0x54);
+  m_header.entry.next_entry = PowerPC::MMU::HostRead<u32>(guard, address);
+  m_header.entry.prev_entry = PowerPC::MMU::HostRead<u32>(guard, address + 0x04);
+  m_header.entry.section_count = PowerPC::MMU::HostRead<u32>(guard, address + 0x08);
+  m_header.entry.section_table_offset = PowerPC::MMU::HostRead<u32>(guard, address + 0xC);
+  m_header.entry.name_offset = PowerPC::MMU::HostRead<u32>(guard, address + 0x10);
+  m_header.entry.name_size = PowerPC::MMU::HostRead<u32>(guard, address + 0x14);
+  m_header.entry.version = PowerPC::MMU::HostRead<u32>(guard, address + 0x18);
+  m_header.entry.bss_size = PowerPC::MMU::HostRead<u32>(guard, address + 0x1C);
+  m_header.section_info.prolog_section_index = PowerPC::MMU::HostRead<u8>(guard, address + 0x20);
+  m_header.section_info.epilog_section_index = PowerPC::MMU::HostRead<u8>(guard, address + 0x21);
+  m_header.section_info.unresolved_section_index =
+      PowerPC::MMU::HostRead<u8>(guard, address + 0x22);
+  m_header.section_info.bss_section_index = PowerPC::MMU::HostRead<u8>(guard, address + 0x23);
+  m_header.section_info.prolog_offset = PowerPC::MMU::HostRead<u32>(guard, address + 0x24);
+  m_header.section_info.epilog_offset = PowerPC::MMU::HostRead<u32>(guard, address + 0x28);
+  m_header.section_info.unresolved_offset = PowerPC::MMU::HostRead<u32>(guard, address + 0x2C);
+  m_header.relocation_tables.internals_offset = PowerPC::MMU::HostRead<u32>(guard, address + 0x30);
+  m_header.relocation_tables.internals_size = PowerPC::MMU::HostRead<u32>(guard, address + 0x34);
+  m_header.relocation_tables.externals_offset = PowerPC::MMU::HostRead<u32>(guard, address + 0x38);
+  m_header.relocation_tables.externals_size = PowerPC::MMU::HostRead<u32>(guard, address + 0x3C);
+  m_header.symbol_tables.exports_offset = PowerPC::MMU::HostRead<u32>(guard, address + 0x40);
+  m_header.symbol_tables.exports_size = PowerPC::MMU::HostRead<u32>(guard, address + 0x44);
+  m_header.symbol_tables.exports_name_table = PowerPC::MMU::HostRead<u32>(guard, address + 0x48);
+  m_header.symbol_tables.imports_offset = PowerPC::MMU::HostRead<u32>(guard, address + 0x4C);
+  m_header.symbol_tables.imports_size = PowerPC::MMU::HostRead<u32>(guard, address + 0x50);
+  m_header.symbol_tables.imports_name_table = PowerPC::MMU::HostRead<u32>(guard, address + 0x54);
 
   // Prevent an invalid name going wild
   if (m_header.entry.name_size < 0x100)
-    m_name = PowerPC::HostGetString(m_header.entry.name_offset, m_header.entry.name_size);
+  {
+    m_name =
+        PowerPC::MMU::HostGetString(guard, m_header.entry.name_offset, m_header.entry.name_size);
+  }
   else
-    m_name = PowerPC::HostGetString(m_header.entry.name_offset, 0x100);
+  {
+    m_name = PowerPC::MMU::HostGetString(guard, m_header.entry.name_offset, 0x100);
+  }
 }
 
 u32 RSOHeaderView::GetNextEntry() const
@@ -171,15 +175,15 @@ u32 RSOHeaderView::GetImportsNameTable() const
   return m_header.symbol_tables.imports_name_table;
 }
 
-void RSOSectionsView::Load(u32 address, std::size_t count)
+void RSOSectionsView::Load(const Core::CPUThreadGuard& guard, u32 address, std::size_t count)
 {
   m_address = address;
   for (std::size_t i = 0; i < count; ++i)
   {
     RSOSection section;
-    section.offset = PowerPC::HostRead_U32(address);
-    section.size = PowerPC::HostRead_U32(address + 4);
-    m_sections.emplace_back(std::move(section));
+    section.offset = PowerPC::MMU::HostRead<u32>(guard, address);
+    section.size = PowerPC::MMU::HostRead<u32>(guard, address + 4);
+    m_sections.emplace_back(section);
     address += sizeof(RSOSection);
   }
 }
@@ -199,16 +203,16 @@ const std::vector<RSOSection>& RSOSectionsView::GetSections() const
   return m_sections;
 }
 
-void RSOImportsView::Load(u32 address, std::size_t count)
+void RSOImportsView::Load(const Core::CPUThreadGuard& guard, u32 address, std::size_t count)
 {
   m_address = address;
   for (std::size_t i = 0; i < count; ++i)
   {
     RSOImport rso_import;
-    rso_import.name_offset = PowerPC::HostRead_U32(address);
-    rso_import.code_offset = PowerPC::HostRead_U32(address + 4);
-    rso_import.entry_offset = PowerPC::HostRead_U32(address + 8);
-    m_imports.emplace_back(std::move(rso_import));
+    rso_import.name_offset = PowerPC::MMU::HostRead<u32>(guard, address);
+    rso_import.code_offset = PowerPC::MMU::HostRead<u32>(guard, address + 4);
+    rso_import.entry_offset = PowerPC::MMU::HostRead<u32>(guard, address + 8);
+    m_imports.emplace_back(rso_import);
     address += sizeof(RSOImport);
   }
 }
@@ -228,17 +232,17 @@ const std::vector<RSOImport>& RSOImportsView::GetImports() const
   return m_imports;
 }
 
-void RSOExportsView::Load(u32 address, std::size_t count)
+void RSOExportsView::Load(const Core::CPUThreadGuard& guard, u32 address, std::size_t count)
 {
   m_address = address;
   for (std::size_t i = 0; i < count; ++i)
   {
     RSOExport rso_export;
-    rso_export.name_offset = PowerPC::HostRead_U32(address);
-    rso_export.code_offset = PowerPC::HostRead_U32(address + 4);
-    rso_export.section_index = PowerPC::HostRead_U32(address + 8);
-    rso_export.hash = PowerPC::HostRead_U32(address + 12);
-    m_exports.emplace_back(std::move(rso_export));
+    rso_export.name_offset = PowerPC::MMU::HostRead<u32>(guard, address);
+    rso_export.code_offset = PowerPC::MMU::HostRead<u32>(guard, address + 4);
+    rso_export.section_index = PowerPC::MMU::HostRead<u32>(guard, address + 8);
+    rso_export.hash = PowerPC::MMU::HostRead<u32>(guard, address + 12);
+    m_exports.emplace_back(rso_export);
     address += sizeof(RSOExport);
   }
 }
@@ -258,16 +262,16 @@ const std::vector<RSOExport>& RSOExportsView::GetExports() const
   return m_exports;
 }
 
-void RSOInternalsView::Load(u32 address, std::size_t count)
+void RSOInternalsView::Load(const Core::CPUThreadGuard& guard, u32 address, std::size_t count)
 {
   m_address = address;
   for (std::size_t i = 0; i < count; ++i)
   {
     RSOInternalsEntry entry;
-    entry.r_offset = PowerPC::HostRead_U32(address);
-    entry.r_info = PowerPC::HostRead_U32(address + 4);
-    entry.r_addend = PowerPC::HostRead_U32(address + 8);
-    m_entries.emplace_back(std::move(entry));
+    entry.r_offset = PowerPC::MMU::HostRead<u32>(guard, address);
+    entry.r_info = PowerPC::MMU::HostRead<u32>(guard, address + 4);
+    entry.r_addend = PowerPC::MMU::HostRead<u32>(guard, address + 8);
+    m_entries.emplace_back(entry);
     address += sizeof(RSOInternalsEntry);
   }
 }
@@ -287,16 +291,16 @@ const std::vector<RSOInternalsEntry>& RSOInternalsView::GetEntries() const
   return m_entries;
 }
 
-void RSOExternalsView::Load(u32 address, std::size_t count)
+void RSOExternalsView::Load(const Core::CPUThreadGuard& guard, u32 address, std::size_t count)
 {
   m_address = address;
   for (std::size_t i = 0; i < count; ++i)
   {
     RSOExternalsEntry entry;
-    entry.r_offset = PowerPC::HostRead_U32(address);
-    entry.r_info = PowerPC::HostRead_U32(address + 4);
-    entry.r_addend = PowerPC::HostRead_U32(address + 8);
-    m_entries.emplace_back(std::move(entry));
+    entry.r_offset = PowerPC::MMU::HostRead<u32>(guard, address);
+    entry.r_info = PowerPC::MMU::HostRead<u32>(guard, address + 4);
+    entry.r_addend = PowerPC::MMU::HostRead<u32>(guard, address + 8);
+    m_entries.emplace_back(entry);
     address += sizeof(RSOExternalsEntry);
   }
 }
@@ -316,84 +320,86 @@ const std::vector<RSOExternalsEntry>& RSOExternalsView::GetEntries() const
   return m_entries;
 }
 
-void RSOView::LoadHeader(u32 address)
+void RSOView::LoadHeader(const Core::CPUThreadGuard& guard, u32 address)
 {
   m_address = address;
-  m_header.Load(address);
+  m_header.Load(guard, address);
 }
 
-void RSOView::LoadSections()
+void RSOView::LoadSections(const Core::CPUThreadGuard& guard)
 {
-  m_sections.Load(m_header.GetSectionTableOffset(), m_header.GetSectionCount());
+  m_sections.Load(guard, m_header.GetSectionTableOffset(), m_header.GetSectionCount());
 }
 
-void RSOView::LoadImports()
+void RSOView::LoadImports(const Core::CPUThreadGuard& guard)
 {
-  std::size_t size = m_header.GetImportsSize();
+  const std::size_t size = m_header.GetImportsSize();
   if (size % sizeof(RSOImport) != 0)
-    WARN_LOG(SYMBOLS, "RSO Imports Table has an incoherent size (%08zx)", size);
-  m_imports.Load(m_header.GetImportsOffset(), size / sizeof(RSOImport));
+    WARN_LOG_FMT(SYMBOLS, "RSO Imports Table has an incoherent size ({:08x})", size);
+  m_imports.Load(guard, m_header.GetImportsOffset(), size / sizeof(RSOImport));
 }
 
-void RSOView::LoadExports()
+void RSOView::LoadExports(const Core::CPUThreadGuard& guard)
 {
-  std::size_t size = m_header.GetExportsSize();
+  const std::size_t size = m_header.GetExportsSize();
   if (size % sizeof(RSOExport) != 0)
-    WARN_LOG(SYMBOLS, "RSO Exports Table has an incoherent size (%08zx)", size);
-  m_exports.Load(m_header.GetExportsOffset(), size / sizeof(RSOExport));
+    WARN_LOG_FMT(SYMBOLS, "RSO Exports Table has an incoherent size ({:08x})", size);
+  m_exports.Load(guard, m_header.GetExportsOffset(), size / sizeof(RSOExport));
 }
 
-void RSOView::LoadInternals()
+void RSOView::LoadInternals(const Core::CPUThreadGuard& guard)
 {
-  std::size_t size = m_header.GetInternalsSize();
+  const std::size_t size = m_header.GetInternalsSize();
   if (size % sizeof(RSOInternalsEntry) != 0)
-    WARN_LOG(SYMBOLS, "RSO Internals Relocation Table has an incoherent size (%08zx)", size);
-  m_imports.Load(m_header.GetInternalsOffset(), size / sizeof(RSOInternalsEntry));
+    WARN_LOG_FMT(SYMBOLS, "RSO Internals Relocation Table has an incoherent size ({:08x})", size);
+  m_imports.Load(guard, m_header.GetInternalsOffset(), size / sizeof(RSOInternalsEntry));
 }
 
-void RSOView::LoadExternals()
+void RSOView::LoadExternals(const Core::CPUThreadGuard& guard)
 {
-  std::size_t size = m_header.GetExternalsSize();
+  const std::size_t size = m_header.GetExternalsSize();
   if (size % sizeof(RSOExternalsEntry) != 0)
-    WARN_LOG(SYMBOLS, "RSO Externals Relocation Table has an incoherent size (%08zx)", size);
-  m_imports.Load(m_header.GetExternalsOffset(), size / sizeof(RSOExternalsEntry));
+    WARN_LOG_FMT(SYMBOLS, "RSO Externals Relocation Table has an incoherent size ({:08x})", size);
+  m_imports.Load(guard, m_header.GetExternalsOffset(), size / sizeof(RSOExternalsEntry));
 }
 
-void RSOView::LoadAll(u32 address)
+void RSOView::LoadAll(const Core::CPUThreadGuard& guard, u32 address)
 {
-  LoadHeader(address);
-  LoadSections();
-  LoadImports();
-  LoadExports();
-  LoadInternals();
-  LoadExternals();
+  LoadHeader(guard, address);
+  LoadSections(guard);
+  LoadImports(guard);
+  LoadExports(guard);
+  LoadInternals(guard);
+  LoadExternals(guard);
 }
 
-void RSOView::Apply(PPCSymbolDB* symbol_db) const
+void RSOView::Apply(const Core::CPUThreadGuard& guard, PPCSymbolDB* symbol_db) const
 {
+  const std::string rso_name = GetName();
   for (const RSOExport& rso_export : GetExports())
   {
     u32 address = GetExportAddress(rso_export);
     if (address != 0)
     {
-      Common::Symbol* symbol = symbol_db->AddFunction(address);
+      const Common::Symbol* symbol = symbol_db->AddFunction(guard, address);
       if (!symbol)
         symbol = symbol_db->GetSymbolFromAddr(address);
 
-      const std::string export_name = GetExportName(rso_export);
+      const std::string export_name = GetExportName(guard, rso_export);
       if (symbol)
       {
         // Function symbol
-        symbol->Rename(export_name);
+        symbol_db->RenameSymbol(*symbol, export_name, rso_name);
       }
       else
       {
         // Data symbol
-        symbol_db->AddKnownSymbol(address, 0, export_name, Common::Symbol::Type::Data);
+        symbol_db->AddKnownSymbol(guard, address, 0, export_name, rso_name,
+                                  Common::Symbol::Type::Data);
       }
     }
   }
-  DEBUG_LOG(SYMBOLS, "RSO(%s): %zu symbols applied", GetName().c_str(), GetExportsCount());
+  DEBUG_LOG_FMT(SYMBOLS, "RSO({}): {} symbols applied", rso_name, GetExportsCount());
 }
 
 u32 RSOView::GetNextEntry() const
@@ -441,9 +447,11 @@ const RSOImport& RSOView::GetImport(std::size_t index) const
   return m_imports.GetImport(index);
 }
 
-std::string RSOView::GetImportName(const RSOImport& rso_import) const
+std::string RSOView::GetImportName(const Core::CPUThreadGuard& guard,
+                                   const RSOImport& rso_import) const
 {
-  return PowerPC::HostGetString(m_header.GetImportsNameTable() + rso_import.name_offset);
+  return PowerPC::MMU::HostGetString(guard,
+                                     m_header.GetImportsNameTable() + rso_import.name_offset);
 }
 
 const std::vector<RSOImport>& RSOView::GetImports() const
@@ -461,9 +469,11 @@ const RSOExport& RSOView::GetExport(std::size_t index) const
   return m_exports.GetExport(index);
 }
 
-std::string RSOView::GetExportName(const RSOExport& rso_export) const
+std::string RSOView::GetExportName(const Core::CPUThreadGuard& guard,
+                                   const RSOExport& rso_export) const
 {
-  return PowerPC::HostGetString(m_header.GetExportsNameTable() + rso_export.name_offset);
+  return PowerPC::MMU::HostGetString(guard,
+                                     m_header.GetExportsNameTable() + rso_export.name_offset);
 }
 
 u32 RSOView::GetExportAddress(const RSOExport& rso_export) const
@@ -516,23 +526,23 @@ const std::string& RSOView::GetName() const
   return m_header.GetName();
 }
 
-std::string RSOView::GetName(const RSOImport& rso_import) const
+std::string RSOView::GetName(const Core::CPUThreadGuard& guard, const RSOImport& rso_import) const
 {
-  return GetImportName(rso_import);
+  return GetImportName(guard, rso_import);
 }
 
-std::string RSOView::GetName(const RSOExport& rso_export) const
+std::string RSOView::GetName(const Core::CPUThreadGuard& guard, const RSOExport& rso_export) const
 {
-  return GetExportName(rso_export);
+  return GetExportName(guard, rso_export);
 }
 
 u32 RSOView::GetProlog() const
 {
-  u32 section_index = m_header.GetPrologSectionIndex();
+  const u32 section_index = m_header.GetPrologSectionIndex();
   if (section_index == 0)
-    WARN_LOG(SYMBOLS, "RSO doesn't have a prolog function");
+    WARN_LOG_FMT(SYMBOLS, "RSO doesn't have a prolog function");
   else if (section_index >= m_sections.Count())
-    WARN_LOG(SYMBOLS, "RSO prolog section index out of bound");
+    WARN_LOG_FMT(SYMBOLS, "RSO prolog section index out of bound");
   else
     return GetSection(section_index).offset + m_header.GetPrologSectionOffset();
   return 0;
@@ -540,11 +550,11 @@ u32 RSOView::GetProlog() const
 
 u32 RSOView::GetEpilog() const
 {
-  u32 section_index = m_header.GetEpilogSectionIndex();
+  const u32 section_index = m_header.GetEpilogSectionIndex();
   if (section_index == 0)
-    WARN_LOG(SYMBOLS, "RSO doesn't have an epilog function");
+    WARN_LOG_FMT(SYMBOLS, "RSO doesn't have an epilog function");
   else if (section_index >= m_sections.Count())
-    WARN_LOG(SYMBOLS, "RSO epilog section index out of bound");
+    WARN_LOG_FMT(SYMBOLS, "RSO epilog section index out of bound");
   else
     return GetSection(section_index).offset + m_header.GetEpilogSectionOffset();
   return 0;
@@ -552,43 +562,43 @@ u32 RSOView::GetEpilog() const
 
 u32 RSOView::GetUnresolved() const
 {
-  u32 section_index = m_header.GetUnresolvedSectionIndex();
+  const u32 section_index = m_header.GetUnresolvedSectionIndex();
   if (section_index == 0)
-    WARN_LOG(SYMBOLS, "RSO doesn't have a unresolved function");
+    WARN_LOG_FMT(SYMBOLS, "RSO doesn't have a unresolved function");
   else if (section_index >= m_sections.Count())
-    WARN_LOG(SYMBOLS, "RSO unresolved section index out of bound");
+    WARN_LOG_FMT(SYMBOLS, "RSO unresolved section index out of bound");
   else
     return GetSection(section_index).offset + m_header.GetUnresolvedSectionOffset();
   return 0;
 }
 
-bool RSOChainView::Load(u32 address)
+bool RSOChainView::Load(const Core::CPUThreadGuard& guard, u32 address)
 {
   // Load node
   RSOView node;
-  node.LoadHeader(address);
-  DEBUG_LOG(SYMBOLS, "RSOChain node name: %s", node.GetName().c_str());
+  node.LoadHeader(guard, address);
+  DEBUG_LOG_FMT(SYMBOLS, "RSOChain node name: {}", node.GetName());
   m_chain.emplace_front(std::move(node));
 
-  if (LoadNextChain(m_chain.front()) && LoadPrevChain(m_chain.front()))
+  if (LoadNextChain(guard, m_chain.front()) && LoadPrevChain(guard, m_chain.front()))
   {
     for (RSOView& view : m_chain)
     {
-      view.LoadSections();
-      view.LoadExports();
-      view.LoadImports();
-      view.LoadExternals();
-      view.LoadInternals();
+      view.LoadSections(guard);
+      view.LoadExports(guard);
+      view.LoadImports(guard);
+      view.LoadExternals(guard);
+      view.LoadInternals(guard);
     }
     return true;
   }
   return false;
 }
 
-void RSOChainView::Apply(PPCSymbolDB* symbol_db) const
+void RSOChainView::Apply(const Core::CPUThreadGuard& guard, PPCSymbolDB* symbol_db) const
 {
   for (const RSOView& rso_view : m_chain)
-    rso_view.Apply(symbol_db);
+    rso_view.Apply(guard, symbol_db);
 }
 
 void RSOChainView::Clear()
@@ -601,7 +611,7 @@ const std::list<RSOView>& RSOChainView::GetChain() const
   return m_chain;
 }
 
-bool RSOChainView::LoadNextChain(const RSOView& view)
+bool RSOChainView::LoadNextChain(const Core::CPUThreadGuard& guard, const RSOView& view)
 {
   u32 prev_address = view.GetAddress();
   u32 next_address = view.GetNextEntry();
@@ -609,12 +619,12 @@ bool RSOChainView::LoadNextChain(const RSOView& view)
   while (next_address != 0)
   {
     RSOView next_node;
-    next_node.LoadHeader(next_address);
+    next_node.LoadHeader(guard, next_address);
 
     if (prev_address != next_node.GetPrevEntry())
     {
-      ERROR_LOG(SYMBOLS, "RSOChain has an incoherent previous link %08x != %08x in %s",
-                prev_address, next_node.GetPrevEntry(), next_node.GetName().c_str());
+      ERROR_LOG_FMT(SYMBOLS, "RSOChain has an incoherent previous link {:08x} != {:08x} in {}",
+                    prev_address, next_node.GetPrevEntry(), next_node.GetName());
       return false;
     }
 
@@ -626,7 +636,7 @@ bool RSOChainView::LoadNextChain(const RSOView& view)
   return true;
 }
 
-bool RSOChainView::LoadPrevChain(const RSOView& view)
+bool RSOChainView::LoadPrevChain(const Core::CPUThreadGuard& guard, const RSOView& view)
 {
   u32 prev_address = view.GetPrevEntry();
   u32 next_address = view.GetAddress();
@@ -634,12 +644,12 @@ bool RSOChainView::LoadPrevChain(const RSOView& view)
   while (prev_address != 0)
   {
     RSOView prev_node;
-    prev_node.LoadHeader(prev_address);
+    prev_node.LoadHeader(guard, prev_address);
 
     if (next_address != prev_node.GetNextEntry())
     {
-      ERROR_LOG(SYMBOLS, "RSOChain has an incoherent next link %08x != %08x in %s", next_address,
-                prev_node.GetNextEntry(), prev_node.GetName().c_str());
+      ERROR_LOG_FMT(SYMBOLS, "RSOChain has an incoherent next link {:08x} != {:08x} in {}",
+                    next_address, prev_node.GetNextEntry(), prev_node.GetName());
       return false;
     }
 

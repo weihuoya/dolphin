@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,12 +7,15 @@
 #include <functional>
 
 #include "Common/CommonTypes.h"
+#include "Common/EnumFormatter.h"
 #include "Common/MathUtil.h"
 
 enum class AbstractTextureFormat : u32
 {
   RGBA8,
   BGRA8,
+  RGB10_A2,
+  RGBA16F,
   DXT1,
   DXT3,
   DXT5,
@@ -40,18 +42,24 @@ enum AbstractTextureFlag : u32
   AbstractTextureFlag_ComputeImage = (1 << 1),  // Texture is used as a compute image.
 };
 
+enum class AbstractTextureType : u8
+{
+  Texture_2DArray = 0,  // Used as a 2D texture array
+  Texture_2D = 1,       // Used as a normal 2D texture
+  Texture_CubeMap = 2,  // Used as a cube map texture
+};
+
 struct TextureConfig
 {
   constexpr TextureConfig() = default;
   constexpr TextureConfig(u32 width_, u32 height_, u32 levels_, u32 layers_, u32 samples_,
-                          AbstractTextureFormat format_, u32 flags_)
+                          AbstractTextureFormat format_, u32 flags_, AbstractTextureType type_)
       : width(width_), height(height_), levels(levels_), layers(layers_), samples(samples_),
-        format(format_), flags(flags_)
+        format(format_), flags(flags_), type(type_)
   {
   }
 
   bool operator==(const TextureConfig& o) const;
-  bool operator!=(const TextureConfig& o) const;
   MathUtil::Rectangle<int> GetRect() const;
   MathUtil::Rectangle<int> GetMipRect(u32 level) const;
   size_t GetStride() const;
@@ -68,12 +76,11 @@ struct TextureConfig
   u32 samples = 1;
   AbstractTextureFormat format = AbstractTextureFormat::RGBA8;
   u32 flags = 0;
+  AbstractTextureType type = AbstractTextureType::Texture_2DArray;
 };
 
-namespace std
-{
 template <>
-struct hash<TextureConfig>
+struct std::hash<TextureConfig>
 {
   using argument_type = TextureConfig;
   using result_type = size_t;
@@ -86,4 +93,9 @@ struct hash<TextureConfig>
     return std::hash<u64>{}(id);
   }
 };
-}  // namespace std
+
+template <>
+struct fmt::formatter<AbstractTextureType> : EnumFormatter<AbstractTextureType::Texture_CubeMap>
+{
+  constexpr formatter() : EnumFormatter({"2D Array", "2D", "Cubemap"}) {}
+};

@@ -1,15 +1,25 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <atomic>
+
 #include "Common/CommonTypes.h"
+#include "Common/Flag.h"
 
 class PointerWrap;
 namespace MMIO
 {
 class Mapping;
+}
+namespace Core
+{
+class System;
+}
+namespace CoreTiming
+{
+struct EventType;
 }
 
 namespace CommandProcessor
@@ -17,34 +27,31 @@ namespace CommandProcessor
 struct SCPFifoStruct
 {
   // fifo registers
-  volatile u32 CPBase;
-  volatile u32 CPEnd;
-  u32 CPHiWatermark;
-  u32 CPLoWatermark;
-  volatile u32 CPReadWriteDistance;
-  volatile u32 CPWritePointer;
-  volatile u32 CPReadPointer;
-  volatile u32 CPBreakpoint;
-  volatile u32 SafeCPReadPointer;
+  std::atomic<u32> CPBase = 0;
+  std::atomic<u32> CPEnd = 0;
+  u32 CPHiWatermark = 0;
+  u32 CPLoWatermark = 0;
+  std::atomic<u32> CPReadWriteDistance = 0;
+  std::atomic<u32> CPWritePointer = 0;
+  std::atomic<u32> CPReadPointer = 0;
+  std::atomic<u32> CPBreakpoint = 0;
+  std::atomic<u32> SafeCPReadPointer = 0;
 
-  volatile u32 bFF_GPLinkEnable;
-  volatile u32 bFF_GPReadEnable;
-  volatile u32 bFF_BPEnable;
-  volatile u32 bFF_BPInt;
-  volatile u32 bFF_Breakpoint;
+  std::atomic<u32> bFF_GPLinkEnable = 0;
+  std::atomic<u32> bFF_GPReadEnable = 0;
+  std::atomic<u32> bFF_BPEnable = 0;
+  std::atomic<u32> bFF_BPInt = 0;
+  std::atomic<u32> bFF_Breakpoint = 0;
 
-  volatile u32 bFF_LoWatermarkInt;
-  volatile u32 bFF_HiWatermarkInt;
+  std::atomic<u32> bFF_LoWatermarkInt = 0;
+  std::atomic<u32> bFF_HiWatermarkInt = 0;
 
-  volatile u32 bFF_LoWatermark;
-  volatile u32 bFF_HiWatermark;
+  std::atomic<u32> bFF_LoWatermark = 0;
+  std::atomic<u32> bFF_HiWatermark = 0;
 
+  void Init();
   void DoState(PointerWrap& p);
 };
-
-// This one is shared between gfx thread and emulator thread.
-// It is only used by the Fifo and by the CommandProcessor.
-extern SCPFifoStruct fifo;
 
 // internal hardware addresses
 enum
@@ -53,11 +60,7 @@ enum
   CTRL_REGISTER = 0x02,
   CLEAR_REGISTER = 0x04,
   PERF_SELECT = 0x06,
-  FIFO_TOKEN_REGISTER = 0x0E,
-  FIFO_BOUNDING_BOX_LEFT = 0x10,
-  FIFO_BOUNDING_BOX_RIGHT = 0x12,
-  FIFO_BOUNDING_BOX_TOP = 0x14,
-  FIFO_BOUNDING_BOX_BOTTOM = 0x16,
+  UNK_0A_REGISTER = 0x0A,
   FIFO_BASE_LO = 0x20,
   FIFO_BASE_HI = 0x22,
   FIFO_END_LO = 0x24,
@@ -95,7 +98,6 @@ enum
 
 enum
 {
-  GATHER_PIPE_SIZE = 32,
   INT_CAUSE_CP = 0x800
 };
 
@@ -141,7 +143,8 @@ union UCPClearReg
   {
     u16 ClearFifoOverflow : 1;
     u16 ClearFifoUnderflow : 1;
-    u16 ClearMetrices : 1;
+    // set by GXClearGPMetric
+    u16 ClearMetrics : 1;
     u16 : 13;
   };
   u16 Hex;
@@ -149,26 +152,60 @@ union UCPClearReg
   UCPClearReg(u16 _hex) { Hex = _hex; }
 };
 
-// Init
-void Init();
-void DoState(PointerWrap& p);
+constexpr u32 GetPhysicalAddressMask(bool is_wii)
+{
+  // Physical addresses in CP seem to ignore some of the upper bits (depending on platform)
+  // This can be observed in CP MMIO registers by setting to 0xffffffff and then reading back.
+  return is_wii ? 0x1fffffff : 0x03ffffff;
+}
 
-void RegisterMMIO(MMIO::Mapping* mmio, u32 base);
+class CommandProcessorManager
+{
+public:
+  explicit CommandProcessorManager(Core::System& system);
 
-void SetCPStatusFromGPU();
-void SetCPStatusFromCPU();
-void GatherPipeBursted();
-void UpdateInterrupts(u64 userdata);
-void UpdateInterruptsFromVideoBackend(u64 userdata);
+  void Init();
+  void DoState(PointerWrap& p);
 
-bool IsInterruptWaiting();
+  void RegisterMMIO(MMIO::Mapping* mmio, u32 base);
 
-void SetCpClearRegister();
-void SetCpControlRegister();
-void SetCpStatusRegister();
+  void SetCPStatusFromGPU();
+  void SetCPStatusFromCPU();
+  void GatherPipeBursted();
+  void UpdateInterrupts(u64 userdata);
+  void UpdateInterruptsFromVideoBackend(u64 userdata);
 
-void HandleUnknownOpcode(u8 cmd_byte, void* buffer, bool preprocess);
+  bool IsInterruptWaiting() const;
 
-u32 GetPhysicalAddressMask();
+  void SetCpClearRegister();
+  void SetCpControlRegister();
+  void SetCpStatusRegister();
+  void ResetFifo();
+
+  void HandleUnknownOpcode(u8 cmd_byte, const u8* buffer, bool preprocess);
+
+  // This one is shared between gfx thread and emulator thread.
+  // It is only used by the Fifo and by the CommandProcessor.
+  SCPFifoStruct& GetFifo() { return m_fifo; }
+
+private:
+  SCPFifoStruct m_fifo;
+
+  CoreTiming::EventType* m_event_type_update_interrupts = nullptr;
+
+  // STATE_TO_SAVE
+  UCPStatusReg m_cp_status_reg;
+  UCPCtrlReg m_cp_ctrl_reg;
+  UCPClearReg m_cp_clear_reg;
+  u16 m_perf_select = 0;
+  u16 m_unk_0a_reg = 0;
+
+  Common::Flag m_interrupt_set;
+  Common::Flag m_interrupt_waiting;
+
+  bool m_is_fifo_error_seen = false;
+
+  Core::System& m_system;
+};
 
 }  // namespace CommandProcessor

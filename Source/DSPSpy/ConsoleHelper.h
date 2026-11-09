@@ -1,6 +1,5 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -61,7 +60,7 @@ inline void CON_BlankRow(const int y)
   int columns = 0, rows = 0;
   CON_GetMetrics(&columns, &rows);
   char blank[columns];
-  std::fill(blank, blank + columns, ' ');
+  std::fill_n(blank, columns, ' ');
   blank[columns - 1] = '\0';
   CON_Printf(0, y, "%s", blank);
 }

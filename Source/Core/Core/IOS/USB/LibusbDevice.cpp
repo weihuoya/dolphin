@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/IOS/USB/LibusbDevice.h"
 
@@ -17,27 +16,39 @@
 #include <libusb.h>
 
 #include "Common/Assert.h"
+#include "Common/Config/Config.h"
 #include "Common/Logging/Log.h"
-#include "Common/StringUtil.h"
+#include "Core/Config/MainSettings.h"
 #include "Core/HW/Memmap.h"
 #include "Core/IOS/Device.h"
 #include "Core/IOS/IOS.h"
+#include "Core/System.h"
 
 namespace IOS::HLE::USB
 {
-LibusbDevice::LibusbDevice(Kernel& ios, libusb_device* device,
-                           const libusb_device_descriptor& descriptor)
-    : m_ios(ios), m_device(device)
+LibusbDevice::LibusbDevice(libusb_device* device, const libusb_device_descriptor& descriptor)
+    : m_device(device)
 {
   libusb_ref_device(m_device);
-  m_vid = descriptor.idVendor;
-  m_pid = descriptor.idProduct;
+  m_vid = m_spoofed_vid = descriptor.idVendor;
+  m_pid = m_spoofed_pid = descriptor.idProduct;
   m_id = (static_cast<u64>(m_vid) << 32 | static_cast<u64>(m_pid) << 16 |
           static_cast<u64>(libusb_get_bus_number(device)) << 8 |
           static_cast<u64>(libusb_get_device_address(device)));
 
   for (u8 i = 0; i < descriptor.bNumConfigurations; ++i)
-    m_config_descriptors.emplace_back(LibusbUtils::MakeConfigDescriptor(m_device, i));
+  {
+    auto [ret, config_descriptor] = LibusbUtils::MakeConfigDescriptor(m_device, i);
+    if (ret != LIBUSB_SUCCESS || !config_descriptor)
+    {
+      WARN_LOG_FMT(IOS_USB, "Failed to make config descriptor {} for {:04x}:{:04x}: {}", i, m_vid,
+                   m_pid, LibusbUtils::ErrorWrap(ret));
+    }
+    m_config_descriptors.emplace_back(std::move(config_descriptor));
+  }
+
+  if (Config::Get(Config::MAIN_USB_PASSTHROUGH_DISGUISE_PLAYSTATION_AS_WII))
+    DisguisePlayStationDevice();
 }
 
 LibusbDevice::~LibusbDevice()
@@ -57,6 +68,8 @@ DeviceDescriptor LibusbDevice::GetDeviceDescriptor() const
   DeviceDescriptor descriptor;
   // The libusb_device_descriptor struct is the same as the IOS one, and it's not going to change.
   std::memcpy(&descriptor, &device_descriptor, sizeof(descriptor));
+  descriptor.idVendor = m_spoofed_vid;
+  descriptor.idProduct = m_spoofed_pid;
   return descriptor;
 }
 
@@ -67,7 +80,7 @@ std::vector<ConfigDescriptor> LibusbDevice::GetConfigurations() const
   {
     if (!config_descriptor)
     {
-      ERROR_LOG(IOS_USB, "Ignoring invalid config descriptor for %04x:%04x", m_vid, m_pid);
+      ERROR_LOG_FMT(IOS_USB, "Ignoring invalid config descriptor for {:04x}:{:04x}", m_vid, m_pid);
       continue;
     }
     ConfigDescriptor descriptor;
@@ -82,7 +95,7 @@ std::vector<InterfaceDescriptor> LibusbDevice::GetInterfaces(const u8 config) co
   std::vector<InterfaceDescriptor> descriptors;
   if (config >= m_config_descriptors.size() || !m_config_descriptors[config])
   {
-    ERROR_LOG(IOS_USB, "Invalid config descriptor %u for %04x:%04x", config, m_vid, m_pid);
+    ERROR_LOG_FMT(IOS_USB, "Invalid config descriptor {} for {:04x}:{:04x}", config, m_vid, m_pid);
     return descriptors;
   }
   for (u8 i = 0; i < m_config_descriptors[config]->bNumInterfaces; ++i)
@@ -104,7 +117,7 @@ LibusbDevice::GetEndpoints(const u8 config, const u8 interface_number, const u8 
   std::vector<EndpointDescriptor> descriptors;
   if (config >= m_config_descriptors.size() || !m_config_descriptors[config])
   {
-    ERROR_LOG(IOS_USB, "Invalid config descriptor %u for %04x:%04x", config, m_vid, m_pid);
+    ERROR_LOG_FMT(IOS_USB, "Invalid config descriptor {} for {:04x}:{:04x}", config, m_vid, m_pid);
     return descriptors;
   }
   ASSERT(interface_number < m_config_descriptors[config]->bNumInterfaces);
@@ -132,36 +145,37 @@ bool LibusbDevice::Attach()
 
   if (!m_handle)
   {
-    NOTICE_LOG(IOS_USB, "[%04x:%04x] Opening device", m_vid, m_pid);
+    NOTICE_LOG_FMT(IOS_USB, "[{:04x}:{:04x}] Opening device", m_vid, m_pid);
     const int ret = libusb_open(m_device, &m_handle);
-    if (ret != 0)
+    if (ret != LIBUSB_SUCCESS)
     {
-      ERROR_LOG(IOS_USB, "[%04x:%04x] Failed to open: %s", m_vid, m_pid, libusb_error_name(ret));
+      ERROR_LOG_FMT(IOS_USB, "[{:04x}:{:04x}] Failed to open: {}", m_vid, m_pid,
+                    LibusbUtils::ErrorWrap(ret));
       m_handle = nullptr;
       return false;
     }
   }
-  if (ClaimAllInterfaces(DEFAULT_CONFIG_NUM) < 0)
+  if (ClaimAllInterfaces(DEFAULT_CONFIG_NUM) < LIBUSB_SUCCESS)
     return false;
   m_device_attached = true;
   return true;
 }
 
-bool LibusbDevice::AttachAndChangeInterface(const u8 interface)
+bool LibusbDevice::AttachAndChangeInterface(const u8 iface)
 {
   if (!Attach())
     return false;
 
-  if (interface != m_active_interface)
-    return ChangeInterface(interface) == 0;
+  if (iface != m_active_interface)
+    return ChangeInterface(iface) == LIBUSB_SUCCESS;
 
   return true;
 }
 
 int LibusbDevice::CancelTransfer(const u8 endpoint)
 {
-  INFO_LOG(IOS_USB, "[%04x:%04x %d] Cancelling transfers (endpoint 0x%x)", m_vid, m_pid,
-           m_active_interface, endpoint);
+  INFO_LOG_FMT(IOS_USB, "[{:04x}:{:04x} {}] Cancelling transfers (endpoint {:#x})", m_vid, m_pid,
+               m_active_interface, endpoint);
   const auto iterator = m_transfer_endpoints.find(endpoint);
   if (iterator == m_transfer_endpoints.cend())
     return IPC_ENOENT;
@@ -169,12 +183,12 @@ int LibusbDevice::CancelTransfer(const u8 endpoint)
   return IPC_SUCCESS;
 }
 
-int LibusbDevice::ChangeInterface(const u8 interface)
+int LibusbDevice::ChangeInterface(const u8 iface)
 {
-  INFO_LOG(IOS_USB, "[%04x:%04x %d] Changing interface to %d", m_vid, m_pid, m_active_interface,
-           interface);
-  m_active_interface = interface;
-  return 0;
+  INFO_LOG_FMT(IOS_USB, "[{:04x}:{:04x} {}] Changing interface to {}", m_vid, m_pid,
+               m_active_interface, iface);
+  m_active_interface = iface;
+  return LIBUSB_SUCCESS;
 }
 
 int LibusbDevice::SetAltSetting(const u8 alt_setting)
@@ -182,9 +196,102 @@ int LibusbDevice::SetAltSetting(const u8 alt_setting)
   if (!m_device_attached)
     return LIBUSB_ERROR_NOT_FOUND;
 
-  INFO_LOG(IOS_USB, "[%04x:%04x %d] Setting alt setting %d", m_vid, m_pid, m_active_interface,
-           alt_setting);
+  INFO_LOG_FMT(IOS_USB, "[{:04x}:{:04x} {}] Setting alt setting {}", m_vid, m_pid,
+               m_active_interface, alt_setting);
   return libusb_set_interface_alt_setting(m_handle, m_active_interface, alt_setting);
+}
+
+void LibusbDevice::DisguisePlayStationDevice()
+{
+  // PS3 and Wii Rock Band controllers are very similar to each other, but the VIDs and PIDs differ.
+  // By reporting PS3 Rock Band controllers as having Wii VIDs and PIDs, we can get PS3 controllers
+  // working with Wii games.
+  //
+  // Microphones are already cross-platform and therefore work without us doing anything here.
+  //
+  // The PS3 versions of the controllers that are new for Rock Band 3 - keyboards and pro guitars -
+  // have a feature that isn't present on Wii equivalents. By default, the controller won't send any
+  // data for the keys or frets & strings respectively, presumably to avoid them triggering
+  // unintended actions in the XMB (PS3 system menu). The PS3 version of Rock Band 3 sends a control
+  // transfer to enable these inputs. Because Wii controllers always have these inputs enabled, the
+  // Wii version of Rock Band 3 doesn't send the necessary control transfer, so we have to send it
+  // ourselves. Whether we should do this is controlled by
+  // m_needs_playstation_rock_band_3_instrument_control_transfer.
+
+  if (m_vid != 0x12ba)  // Sony Computer Entertainment America
+    return;
+
+  switch (m_pid)
+  {
+  case 0x0200:  // Rock Band guitar
+    // Unlike the Wii, the PS3 uses the same PID (0x0200) for Rock Band 1 and Rock Band 2 guitars.
+    // The Wii VID here is set to the Rock Band 2 device (0x3010) rather than the Rock Band 1 device
+    // (0x0004) because the Rock Band 2 device has more functionality (automatic latency
+    // calibration).
+    m_spoofed_pid = 0x3010;
+    break;
+  case 0x0210:  // Rock Band drums
+    // Unlike the Wii, the PS3 uses the same PID (0x0210) for Rock Band 1 and Rock Band 2 drums.
+    // The Wii VID here is set to the Rock Band 2 device (0x3110) rather than the Rock Band 1 device
+    // (0x0005) because the Rock Band 2 device has more functionality (cymbals).
+    m_spoofed_pid = 0x3110;
+    break;
+  case 0x0218:  // Rock Band 3 MIDI Pro Adapter with drums
+    m_spoofed_pid = 0x3138;
+    break;
+  case 0x2330:  // Rock Band 3 keyboard
+    m_spoofed_pid = 0x3330;
+    m_needs_playstation_rock_band_3_instrument_control_transfer = true;
+    break;
+  case 0x2338:  // Rock Band 3 MIDI Pro Adapter with keyboard
+    m_spoofed_pid = 0x3338;
+    m_needs_playstation_rock_band_3_instrument_control_transfer = true;
+    break;
+  case 0x2430:  // Rock Band 3 Mustang pro guitar
+    m_spoofed_pid = 0x3430;
+    m_needs_playstation_rock_band_3_instrument_control_transfer = true;
+    break;
+  case 0x2438:  // Rock Band 3 MIDI Pro Adapter with Mustang pro guitar
+    m_spoofed_pid = 0x3438;
+    m_needs_playstation_rock_band_3_instrument_control_transfer = true;
+    break;
+  case 0x2530:  // Rock Band 3 Squier pro guitar (doesn't exist in reality, but game supports it)
+    m_spoofed_pid = 0x3530;
+    m_needs_playstation_rock_band_3_instrument_control_transfer = true;
+    break;
+  case 0x2538:  // Rock Band 3 MIDI Pro Adapter with Squier pro guitar
+    m_spoofed_pid = 0x3538;
+    m_needs_playstation_rock_band_3_instrument_control_transfer = true;
+    break;
+  default:
+    return;
+  }
+
+  m_spoofed_vid = 0x1bad;
+}
+
+int LibusbDevice::SubmitPlayStationRockBand3InstrumentControlTransfer()
+{
+  constexpr size_t length = 40;
+  constexpr std::array<u8, length> enable_instrument_inputs = {
+      0xe9, 0x00, 0x89, 0x1b, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x89, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0xe9, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  const size_t size = length + LIBUSB_CONTROL_SETUP_SIZE;
+  auto buffer = std::make_unique<u8[]>(size);
+  std::ranges::copy(enable_instrument_inputs, buffer.get() + LIBUSB_CONTROL_SETUP_SIZE);
+
+  libusb_fill_control_setup(buffer.get(), 0x21, 0x09, 0x0300, 0x00, length);
+
+  libusb_transfer* transfer = libusb_alloc_transfer(0);
+  transfer->flags |= LIBUSB_TRANSFER_FREE_TRANSFER;
+  libusb_fill_control_transfer(transfer, m_handle, buffer.release(), nullptr, this, 0);
+  return libusb_submit_transfer(transfer);
+}
+
+static bool IsRockBand3LEDControlTransfer(const CtrlMessage& cmd)
+{
+  return cmd.request_type == 0x21 && cmd.request == 0x9 && cmd.length == 8;
 }
 
 int LibusbDevice::SubmitTransfer(std::unique_ptr<CtrlMessage> cmd)
@@ -192,44 +299,44 @@ int LibusbDevice::SubmitTransfer(std::unique_ptr<CtrlMessage> cmd)
   if (!m_device_attached)
     return LIBUSB_ERROR_NOT_FOUND;
 
-  DEBUG_LOG(IOS_USB,
-            "[%04x:%04x %d] Control: bRequestType=%02x bRequest=%02x wValue=%04x"
-            " wIndex=%04x wLength=%04x",
-            m_vid, m_pid, m_active_interface, cmd->request_type, cmd->request, cmd->value,
-            cmd->index, cmd->length);
+  DEBUG_LOG_FMT(IOS_USB,
+                "[{:04x}:{:04x} {}] Control: bRequestType={:02x} bRequest={:02x} wValue={:04x}"
+                " wIndex={:04x} wLength={:04x}",
+                m_vid, m_pid, m_active_interface, cmd->request_type, cmd->request, cmd->value,
+                cmd->index, cmd->length);
 
   switch ((cmd->request_type << 8) | cmd->request)
   {
   // The following requests have to go through libusb and cannot be directly sent to the device.
   case USBHDR(DIR_HOST2DEVICE, TYPE_STANDARD, REC_INTERFACE, REQUEST_SET_INTERFACE):
   {
-    INFO_LOG(IOS_USB, "[%04x:%04x %d] REQUEST_SET_INTERFACE index=%04x value=%04x", m_vid, m_pid,
-             m_active_interface, cmd->index, cmd->value);
+    INFO_LOG_FMT(IOS_USB, "[{:04x}:{:04x} {}] REQUEST_SET_INTERFACE index={:04x} value={:04x}",
+                 m_vid, m_pid, m_active_interface, cmd->index, cmd->value);
     if (static_cast<u8>(cmd->index) != m_active_interface)
     {
       const int ret = ChangeInterface(static_cast<u8>(cmd->index));
-      if (ret < 0)
+      if (ret < LIBUSB_SUCCESS)
       {
-        ERROR_LOG(IOS_USB, "[%04x:%04x %d] Failed to change interface to %d: %s", m_vid, m_pid,
-                  m_active_interface, cmd->index, libusb_error_name(ret));
+        ERROR_LOG_FMT(IOS_USB, "[{:04x}:{:04x} {}] Failed to change interface to {}: {}", m_vid,
+                      m_pid, m_active_interface, cmd->index, LibusbUtils::ErrorWrap(ret));
         return ret;
       }
     }
     const int ret = SetAltSetting(static_cast<u8>(cmd->value));
-    if (ret == 0)
-      m_ios.EnqueueIPCReply(cmd->ios_request, cmd->length);
+    if (ret == LIBUSB_SUCCESS)
+      cmd->GetEmulationKernel().EnqueueIPCReply(cmd->ios_request, cmd->length);
     return ret;
   }
   case USBHDR(DIR_HOST2DEVICE, TYPE_STANDARD, REC_DEVICE, REQUEST_SET_CONFIGURATION):
   {
-    INFO_LOG(IOS_USB, "[%04x:%04x %d] REQUEST_SET_CONFIGURATION index=%04x value=%04x", m_vid,
-             m_pid, m_active_interface, cmd->index, cmd->value);
+    INFO_LOG_FMT(IOS_USB, "[{:04x}:{:04x} {}] REQUEST_SET_CONFIGURATION index={:04x} value={:04x}",
+                 m_vid, m_pid, m_active_interface, cmd->index, cmd->value);
     ReleaseAllInterfacesForCurrentConfig();
     const int ret = libusb_set_configuration(m_handle, cmd->value);
-    if (ret == 0)
+    if (ret == LIBUSB_SUCCESS)
     {
       ClaimAllInterfaces(cmd->value);
-      m_ios.EnqueueIPCReply(cmd->ios_request, cmd->length);
+      cmd->GetEmulationKernel().EnqueueIPCReply(cmd->ios_request, cmd->length);
     }
     return ret;
   }
@@ -239,12 +346,27 @@ int LibusbDevice::SubmitTransfer(std::unique_ptr<CtrlMessage> cmd)
   auto buffer = std::make_unique<u8[]>(size);
   libusb_fill_control_setup(buffer.get(), cmd->request_type, cmd->request, cmd->value, cmd->index,
                             cmd->length);
-  Memory::CopyFromEmu(buffer.get() + LIBUSB_CONTROL_SETUP_SIZE, cmd->data_address, cmd->length);
+
+  auto& system = cmd->GetEmulationKernel().GetSystem();
+  auto& memory = system.GetMemory();
+  memory.CopyFromEmu(buffer.get() + LIBUSB_CONTROL_SETUP_SIZE, cmd->data_address, cmd->length);
+
+  // If the game is telling a Rock Band 3 device what player LEDs to turn on, take the opportunity
+  // to also tell the device to enable instrument inputs if necessary
+  const bool submit_rock_band_3_instrument_control_transfer =
+      m_needs_playstation_rock_band_3_instrument_control_transfer &&
+      IsRockBand3LEDControlTransfer(*cmd);
+
   libusb_transfer* transfer = libusb_alloc_transfer(0);
   transfer->flags |= LIBUSB_TRANSFER_FREE_TRANSFER;
   libusb_fill_control_transfer(transfer, m_handle, buffer.release(), CtrlTransferCallback, this, 0);
   m_transfer_endpoints[0].AddTransfer(std::move(cmd), transfer);
-  return libusb_submit_transfer(transfer);
+  int ret = libusb_submit_transfer(transfer);
+
+  if (submit_rock_band_3_instrument_control_transfer)
+    SubmitPlayStationRockBand3InstrumentControlTransfer();
+
+  return ret;
 }
 
 int LibusbDevice::SubmitTransfer(std::unique_ptr<BulkMessage> cmd)
@@ -252,8 +374,8 @@ int LibusbDevice::SubmitTransfer(std::unique_ptr<BulkMessage> cmd)
   if (!m_device_attached)
     return LIBUSB_ERROR_NOT_FOUND;
 
-  DEBUG_LOG(IOS_USB, "[%04x:%04x %d] Bulk: length=%04x endpoint=%02x", m_vid, m_pid,
-            m_active_interface, cmd->length, cmd->endpoint);
+  DEBUG_LOG_FMT(IOS_USB, "[{:04x}:{:04x} {}] Bulk: length={:04x} endpoint={:02x}", m_vid, m_pid,
+                m_active_interface, cmd->length, cmd->endpoint);
 
   libusb_transfer* transfer = libusb_alloc_transfer(0);
   libusb_fill_bulk_transfer(transfer, m_handle, cmd->endpoint,
@@ -269,8 +391,8 @@ int LibusbDevice::SubmitTransfer(std::unique_ptr<IntrMessage> cmd)
   if (!m_device_attached)
     return LIBUSB_ERROR_NOT_FOUND;
 
-  DEBUG_LOG(IOS_USB, "[%04x:%04x %d] Interrupt: length=%04x endpoint=%02x", m_vid, m_pid,
-            m_active_interface, cmd->length, cmd->endpoint);
+  DEBUG_LOG_FMT(IOS_USB, "[{:04x}:{:04x} {}] Interrupt: length={:04x} endpoint={:02x}", m_vid,
+                m_pid, m_active_interface, cmd->length, cmd->endpoint);
 
   libusb_transfer* transfer = libusb_alloc_transfer(0);
   libusb_fill_interrupt_transfer(transfer, m_handle, cmd->endpoint,
@@ -286,8 +408,9 @@ int LibusbDevice::SubmitTransfer(std::unique_ptr<IsoMessage> cmd)
   if (!m_device_attached)
     return LIBUSB_ERROR_NOT_FOUND;
 
-  DEBUG_LOG(IOS_USB, "[%04x:%04x %d] Isochronous: length=%04x endpoint=%02x num_packets=%02x",
-            m_vid, m_pid, m_active_interface, cmd->length, cmd->endpoint, cmd->num_packets);
+  DEBUG_LOG_FMT(IOS_USB,
+                "[{:04x}:{:04x} {}] Isochronous: length={:04x} endpoint={:02x} num_packets={:02x}",
+                m_vid, m_pid, m_active_interface, cmd->length, cmd->endpoint, cmd->num_packets);
 
   libusb_transfer* transfer = libusb_alloc_transfer(cmd->num_packets);
   transfer->buffer = cmd->MakeBuffer(cmd->length).release();
@@ -349,25 +472,25 @@ static const std::map<u8, const char*> s_transfer_types = {
 void LibusbDevice::TransferEndpoint::AddTransfer(std::unique_ptr<TransferCommand> command,
                                                  libusb_transfer* transfer)
 {
-  std::lock_guard<std::mutex> lk{m_transfers_mutex};
+  std::lock_guard lk{m_transfers_mutex};
   m_transfers.emplace(transfer, std::move(command));
 }
 
-void LibusbDevice::TransferEndpoint::HandleTransfer(libusb_transfer* transfer,
-                                                    std::function<s32(const TransferCommand&)> fn)
+void LibusbDevice::TransferEndpoint::HandleTransfer(
+    libusb_transfer* transfer, const std::function<s32(const TransferCommand&)>& fn)
 {
-  std::lock_guard<std::mutex> lk{m_transfers_mutex};
+  std::lock_guard lk{m_transfers_mutex};
   const auto iterator = m_transfers.find(transfer);
   if (iterator == m_transfers.cend())
   {
-    ERROR_LOG(IOS_USB, "No such transfer");
+    ERROR_LOG_FMT(IOS_USB, "No such transfer");
     return;
   }
 
   const std::unique_ptr<u8[]> buffer(transfer->buffer);
   const auto& cmd = *iterator->second.get();
   const auto* device = static_cast<LibusbDevice*>(transfer->user_data);
-  s32 return_value = 0;
+  s32 return_value = LIBUSB_SUCCESS;
   switch (transfer->status)
   {
   case LIBUSB_TRANSFER_COMPLETED:
@@ -378,9 +501,10 @@ void LibusbDevice::TransferEndpoint::HandleTransfer(libusb_transfer* transfer,
   case LIBUSB_TRANSFER_TIMED_OUT:
   case LIBUSB_TRANSFER_OVERFLOW:
   case LIBUSB_TRANSFER_STALL:
-    ERROR_LOG(IOS_USB, "[%04x:%04x %d] %s transfer (endpoint 0x%02x) failed: %s", device->m_vid,
-              device->m_pid, device->m_active_interface, s_transfer_types.at(transfer->type),
-              transfer->endpoint, libusb_error_name(transfer->status));
+    ERROR_LOG_FMT(IOS_USB, "[{:04x}:{:04x} {}] {} transfer (endpoint {:#04x}) failed: {}",
+                  device->m_vid, device->m_pid, device->m_active_interface,
+                  s_transfer_types.at(transfer->type), transfer->endpoint,
+                  libusb_error_name(transfer->status));
     return_value = transfer->status == LIBUSB_TRANSFER_STALL ? -7004 : -5;
     break;
   case LIBUSB_TRANSFER_NO_DEVICE:
@@ -393,10 +517,10 @@ void LibusbDevice::TransferEndpoint::HandleTransfer(libusb_transfer* transfer,
 
 void LibusbDevice::TransferEndpoint::CancelTransfers()
 {
-  std::lock_guard<std::mutex> lk(m_transfers_mutex);
+  std::lock_guard lk(m_transfers_mutex);
   if (m_transfers.empty())
     return;
-  INFO_LOG(IOS_USB, "Cancelling %ld transfer(s)", m_transfers.size());
+  INFO_LOG_FMT(IOS_USB, "Cancelling {} transfer(s)", m_transfers.size());
   for (const auto& pending_transfer : m_transfers)
     libusb_cancel_transfer(pending_transfer.first);
 }
@@ -415,7 +539,7 @@ static int DoForEachInterface(const Configs& configs, u8 config_num, Function ac
   for (u8 i = 0; i < configs[config_num]->bNumInterfaces; ++i)
   {
     ret = action(i);
-    if (ret < 0)
+    if (ret < LIBUSB_SUCCESS)
       break;
   }
   return ret;
@@ -424,19 +548,24 @@ static int DoForEachInterface(const Configs& configs, u8 config_num, Function ac
 int LibusbDevice::ClaimAllInterfaces(u8 config_num) const
 {
   const int ret = DoForEachInterface(m_config_descriptors, config_num, [this](u8 i) {
+  // On macos detaching would fail without root or entitlement.
+  // We assume user is using GCAdapterDriver and therefore don't want to detach anything
+#if !defined(__APPLE__)
     const int ret2 = libusb_detach_kernel_driver(m_handle, i);
-    if (ret2 < 0 && ret2 != LIBUSB_ERROR_NOT_FOUND && ret2 != LIBUSB_ERROR_NOT_SUPPORTED)
+    if (ret2 < LIBUSB_SUCCESS && ret2 != LIBUSB_ERROR_NOT_FOUND &&
+        ret2 != LIBUSB_ERROR_NOT_SUPPORTED)
     {
-      ERROR_LOG(IOS_USB, "[%04x:%04x] Failed to detach kernel driver: %s", m_vid, m_pid,
-                libusb_error_name(ret2));
+      ERROR_LOG_FMT(IOS_USB, "[{:04x}:{:04x}] Failed to detach kernel driver: {}", m_vid, m_pid,
+                    LibusbUtils::ErrorWrap(ret2));
       return ret2;
     }
+#endif
     return libusb_claim_interface(m_handle, i);
   });
-  if (ret < 0)
+  if (ret < LIBUSB_SUCCESS)
   {
-    ERROR_LOG(IOS_USB, "[%04x:%04x] Failed to claim all interfaces (configuration %u)", m_vid,
-              m_pid, config_num);
+    ERROR_LOG_FMT(IOS_USB, "[{:04x}:{:04x}] Failed to claim all interfaces (configuration {})",
+                  m_vid, m_pid, config_num);
   }
   return ret;
 }
@@ -446,10 +575,10 @@ int LibusbDevice::ReleaseAllInterfaces(u8 config_num) const
   const int ret = DoForEachInterface(m_config_descriptors, config_num, [this](u8 i) {
     return libusb_release_interface(m_handle, i);
   });
-  if (ret < 0 && ret != LIBUSB_ERROR_NO_DEVICE && ret != LIBUSB_ERROR_NOT_FOUND)
+  if (ret < LIBUSB_SUCCESS && ret != LIBUSB_ERROR_NO_DEVICE && ret != LIBUSB_ERROR_NOT_FOUND)
   {
-    ERROR_LOG(IOS_USB, "[%04x:%04x] Failed to release all interfaces (configuration %u)", m_vid,
-              m_pid, config_num);
+    ERROR_LOG_FMT(IOS_USB, "[{:04x}:{:04x}] Failed to release all interfaces (configuration {})",
+                  m_vid, m_pid, config_num);
   }
   return ret;
 }
@@ -458,7 +587,7 @@ int LibusbDevice::ReleaseAllInterfacesForCurrentConfig() const
 {
   int config_num;
   const int get_config_ret = libusb_get_configuration(m_handle, &config_num);
-  if (get_config_ret < 0)
+  if (get_config_ret < LIBUSB_SUCCESS)
     return get_config_ret;
   return ReleaseAllInterfaces(config_num);
 }

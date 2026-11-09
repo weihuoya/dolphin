@@ -1,21 +1,22 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <expected>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifdef _WIN32
 // TODO: Horrible hack, remove ASAP!
-#include <Windows.h>
+#include <windows.h>
 #endif
 
 #include "Common/CommonTypes.h"
-#include "Common/Result.h"
+#include "Common/EnumFormatter.h"
 
 class PointerWrap;
 
@@ -49,7 +50,7 @@ enum class ResultCode
 };
 
 template <typename T>
-using Result = Common::Result<ResultCode, T>;
+using Result = std::expected<T, ResultCode>;
 
 using Uid = u32;
 using Gid = u16;
@@ -72,10 +73,24 @@ enum class SeekMode : u32
 
 using FileAttribute = u8;
 
+struct NandRedirect
+{
+  // A Wii FS path, eg. "/title/00010000/534d4e45/data".
+  std::string source_path;
+
+  // An absolute host filesystem path the above should be redirected to.
+  std::string target_path;
+};
+
 struct Modes
 {
   Mode owner, group, other;
 };
+inline bool operator==(const Modes& lhs, const Modes& rhs)
+{
+  const auto fields = [](const Modes& obj) { return std::tie(obj.owner, obj.group, obj.other); };
+  return fields(lhs) == fields(rhs);
+}
 
 struct Metadata
 {
@@ -87,6 +102,33 @@ struct Metadata
   u32 size;
   u16 fst_index;
 };
+
+// size of a single cluster in the NAND in bytes
+constexpr u16 CLUSTER_SIZE = 16384;
+
+// total number of clusters available in the NAND
+constexpr u16 TOTAL_CLUSTERS = 0x7ec0;
+
+// number of clusters reserved for bad blocks and similar, not accessible to normal writes
+constexpr u16 RESERVED_CLUSTERS = 0x0300;
+
+// number of clusters actually usable by the file system
+constexpr u16 USABLE_CLUSTERS = TOTAL_CLUSTERS - RESERVED_CLUSTERS;
+
+// size of a single 'block' as defined by the Wii System Menu in clusters
+constexpr u16 CLUSTERS_PER_BLOCK = 8;
+
+// total number of user-accessible blocks in the NAND
+constexpr u16 USER_BLOCKS = 2176;
+
+// total number of user-accessible clusters in the NAND
+constexpr u16 USER_CLUSTERS = USER_BLOCKS * CLUSTERS_PER_BLOCK;
+
+// the inverse of that, the amount of usable clusters reserved for system files
+constexpr u16 SYSTEM_CLUSTERS = USABLE_CLUSTERS - USER_CLUSTERS;
+
+// total number of inodes available in the NAND
+constexpr u16 TOTAL_INODES = 0x17ff;
 
 struct NandStats
 {
@@ -105,11 +147,49 @@ struct DirectoryStats
   u32 used_inodes;
 };
 
+// Not a real Wii data struct, but useful for calculating how full the user's NAND is even if it's
+// way larger than it should be.
+struct ExtendedDirectoryStats
+{
+  u64 used_clusters;
+  u64 used_inodes;
+};
+
 struct FileStatus
 {
   u32 offset;
   u32 size;
 };
+
+/// The maximum number of components a path can have.
+constexpr size_t MaxPathDepth = 8;
+/// The maximum number of characters a path can have.
+constexpr size_t MaxPathLength = 64;
+/// The maximum number of characters a filename can have.
+constexpr size_t MaxFilenameLength = 12;
+
+/// Returns whether a Wii path is valid.
+bool IsValidPath(std::string_view path);
+bool IsValidNonRootPath(std::string_view path);
+bool IsValidFilename(std::string_view filename);
+
+struct SplitPathResult
+{
+  std::string parent;
+  std::string file_name;
+};
+inline bool operator==(const SplitPathResult& lhs, const SplitPathResult& rhs)
+{
+  const auto fields = [](const SplitPathResult& obj) {
+    return std::tie(obj.parent, obj.file_name);
+  };
+  return fields(lhs) == fields(rhs);
+}
+
+/// Split a path into a parent path and the file name. Takes a *valid non-root* path.
+///
+/// Example: /shared2/sys/SYSCONF => {/shared2/sys, SYSCONF}
+SplitPathResult SplitPathAndBasename(std::string_view path);
 
 class FileSystem;
 class FileHandle final
@@ -162,6 +242,7 @@ public:
   /// Reposition the file offset for a file descriptor.
   virtual Result<u32> SeekFile(Fd fd, u32 offset, SeekMode mode) = 0;
   /// Get status for a file descriptor.
+  /// Guaranteed to succeed for a valid file descriptor.
   virtual Result<FileStatus> GetFileStatus(Fd fd) = 0;
 
   /// Create a file with the specified path and metadata.
@@ -197,8 +278,14 @@ public:
   /// Get usage information about a directory (used cluster and inode counts).
   virtual Result<DirectoryStats> GetDirectoryStats(const std::string& path) = 0;
 
+  /// Like GetDirectoryStats() but not limited to the actual 512 MB NAND limit.
+  virtual Result<ExtendedDirectoryStats> GetExtendedDirectoryStats(const std::string& path) = 0;
+
+  virtual void SetNandRedirects(std::vector<NandRedirect> nand_redirects) = 0;
+
 protected:
-  void Init();
+  void DoStateWriteOrMeasure(PointerWrap& p, const std::string& directory_path);
+  void DoStateRead(PointerWrap& p, const std::string& directory_path);
 };
 
 template <typename T>
@@ -207,9 +294,9 @@ Result<size_t> FileHandle::Read(T* ptr, size_t count) const
   const Result<u32> bytes = m_fs->ReadBytesFromFile(*m_fd, reinterpret_cast<u8*>(ptr),
                                                     static_cast<u32>(sizeof(T) * count));
   if (!bytes)
-    return bytes.Error();
+    return bytes;
   if (*bytes != sizeof(T) * count)
-    return ResultCode::ShortRead;
+    return std::unexpected{ResultCode::ShortRead};
   return count;
 }
 
@@ -219,7 +306,7 @@ Result<size_t> FileHandle::Write(const T* ptr, size_t count) const
   const auto result = m_fs->WriteBytesToFile(*m_fd, reinterpret_cast<const u8*>(ptr),
                                              static_cast<u32>(sizeof(T) * count));
   if (!result)
-    return result.Error();
+    return result;
   return count;
 }
 
@@ -229,10 +316,24 @@ enum class Location
   Session,
 };
 
-std::unique_ptr<FileSystem> MakeFileSystem(Location location = Location::Session);
+std::unique_ptr<FileSystem> MakeFileSystem(Location location = Location::Session,
+                                           std::vector<NandRedirect> nand_redirects = {});
 
 /// Convert a FS result code to an IOS error code.
 IOS::HLE::ReturnCode ConvertResult(ResultCode code);
 
 }  // namespace FS
 }  // namespace IOS::HLE
+
+template <>
+struct fmt::formatter<IOS::HLE::FS::ResultCode> : EnumFormatter<IOS::HLE::FS::ResultCode::ShortRead>
+{
+  constexpr formatter()
+      : EnumFormatter({"Success", "Invalid", "AccessDenied", "SuperblockWriteFailed",
+                       "SuperblockInitFailed", "AlreadyExists", "NotFound", "FstFull",
+                       "NoFreeSpace", "NoFreeHandle", "TooManyPathComponents", "InUse", "BadBlock",
+                       "EccError", "CriticalEccError", "FileNotEmpty", "CheckFailed",
+                       "UnknownError", "ShortRead"})
+  {
+  }
+};

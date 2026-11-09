@@ -1,124 +1,175 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/ProcessorInterface.h"
 
-#include <cstdio>
 #include <memory>
 
+#include "Common/Assert.h"
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
+#include "Common/Logging/Log.h"
 #include "Core/Core.h"
 #include "Core/CoreTiming.h"
+#include "Core/HW/DVD/DVDInterface.h"
 #include "Core/HW/MMIO.h"
 #include "Core/HW/SystemTimers.h"
 #include "Core/IOS/IOS.h"
 #include "Core/IOS/STM/STM.h"
 #include "Core/PowerPC/PowerPC.h"
+#include "Core/System.h"
+#include "VideoCommon/AsyncRequests.h"
+#include "VideoCommon/CommandProcessor.h"
+#include "VideoCommon/Fifo.h"
 
 namespace ProcessorInterface
 {
-// STATE_TO_SAVE
-u32 m_InterruptCause;
-u32 m_InterruptMask;
-// addresses for CPU fifo accesses
-u32 Fifo_CPUBase;
-u32 Fifo_CPUEnd;
-u32 Fifo_CPUWritePointer;
+constexpr u32 FLIPPER_REV_A [[maybe_unused]] = 0x046500B0;
+constexpr u32 FLIPPER_REV_B [[maybe_unused]] = 0x146500B1;
+constexpr u32 FLIPPER_REV_C = 0x246500B1;
 
-static u32 m_Fifo_Reset;
-static u32 m_ResetCode;
-static u32 m_FlipperRev;
-static u32 m_Unknown;
-
-// ID and callback for scheduling reset button presses/releases
-static CoreTiming::EventType* toggleResetButton;
-static void ToggleResetButtonCallback(u64 userdata, s64 cyclesLate);
-
-static CoreTiming::EventType* iosNotifyResetButton;
-static void IOSNotifyResetButtonCallback(u64 userdata, s64 cyclesLate);
-
-static CoreTiming::EventType* iosNotifyPowerButton;
-static void IOSNotifyPowerButtonCallback(u64 userdata, s64 cyclesLate);
-
-// Let the PPC know that an external exception is set/cleared
-void UpdateException();
-
-void DoState(PointerWrap& p)
+ProcessorInterfaceManager::ProcessorInterfaceManager(Core::System& system) : m_system(system)
 {
-  p.Do(m_InterruptMask);
-  p.Do(m_InterruptCause);
-  p.Do(Fifo_CPUBase);
-  p.Do(Fifo_CPUEnd);
-  p.Do(Fifo_CPUWritePointer);
-  p.Do(m_Fifo_Reset);
-  p.Do(m_ResetCode);
-  p.Do(m_FlipperRev);
-  p.Do(m_Unknown);
 }
 
-void Init()
+ProcessorInterfaceManager::~ProcessorInterfaceManager() = default;
+
+void ProcessorInterfaceManager::DoState(PointerWrap& p)
 {
-  m_InterruptMask = 0;
-  m_InterruptCause = 0;
-
-  Fifo_CPUBase = 0;
-  Fifo_CPUEnd = 0;
-  Fifo_CPUWritePointer = 0;
-  /*
-  Previous Flipper IDs:
-  0x046500B0 = A
-  0x146500B1 = B
-  */
-  m_FlipperRev = 0x246500B1;  // revision C
-  m_Unknown = 0;
-
-  m_ResetCode = 0;  // Cold reset
-  m_InterruptCause = INT_CAUSE_RST_BUTTON | INT_CAUSE_VI;
-
-  toggleResetButton = CoreTiming::RegisterEvent("ToggleResetButton", ToggleResetButtonCallback);
-  iosNotifyResetButton =
-      CoreTiming::RegisterEvent("IOSNotifyResetButton", IOSNotifyResetButtonCallback);
-  iosNotifyPowerButton =
-      CoreTiming::RegisterEvent("IOSNotifyPowerButton", IOSNotifyPowerButtonCallback);
+  p.Do(m_interrupt_mask);
+  p.Do(m_interrupt_cause);
+  p.Do(m_fifo_cpu_base);
+  p.Do(m_fifo_cpu_end);
+  p.Do(m_fifo_cpu_write_pointer);
+  p.Do(m_error_cause);
+  p.Do(m_error_address);
+  p.Do(m_reset_code);
+  p.Do(m_unknown);
+  p.Do(m_flipper_bus_strength);
 }
 
-void RegisterMMIO(MMIO::Mapping* mmio, u32 base)
+void ProcessorInterfaceManager::Init()
 {
-  mmio->Register(base | PI_INTERRUPT_CAUSE, MMIO::DirectRead<u32>(&m_InterruptCause),
-                 MMIO::ComplexWrite<u32>([](u32, u32 val) {
-                   m_InterruptCause &= ~val;
-                   UpdateException();
+  m_interrupt_mask = 0;
+  m_interrupt_cause = INT_CAUSE_RST_BUTTON | INT_CAUSE_VI;
+
+  m_fifo_cpu_base = 0;
+  m_fifo_cpu_end = 0;
+  m_fifo_cpu_write_pointer = 0;
+
+  m_error_cause = 0;
+  m_error_address = 0;
+  m_reset_code = 0;  // Cold reset
+  m_unknown = 0x000001FF;
+  m_flipper_bus_strength = 0x02492492;
+
+  auto& core_timing = m_system.GetCoreTiming();
+  m_event_type_toggle_reset_button =
+      core_timing.RegisterEvent("ToggleResetButton", ToggleResetButtonCallback);
+  m_event_type_ios_notify_reset_button =
+      core_timing.RegisterEvent("IOSNotifyResetButton", IOSNotifyResetButtonCallback);
+  m_event_type_ios_notify_power_button =
+      core_timing.RegisterEvent("IOSNotifyPowerButton", IOSNotifyPowerButtonCallback);
+}
+
+void ProcessorInterfaceManager::RegisterMMIO(MMIO::Mapping* mmio, u32 base)
+{
+  mmio->Register(base | PI_INTERRUPT_CAUSE, MMIO::DirectRead<u32>(&m_interrupt_cause),
+                 MMIO::ComplexWrite<u32>([](Core::System& system, u32, u32 val) {
+                   auto& processor_interface = system.GetProcessorInterface();
+                   processor_interface.m_interrupt_cause &= ~val;
+                   processor_interface.UpdateException();
                  }));
 
-  mmio->Register(base | PI_INTERRUPT_MASK, MMIO::DirectRead<u32>(&m_InterruptMask),
-                 MMIO::ComplexWrite<u32>([](u32, u32 val) {
-                   m_InterruptMask = val;
-                   UpdateException();
+  mmio->Register(base | PI_INTERRUPT_MASK, MMIO::DirectRead<u32>(&m_interrupt_mask),
+                 MMIO::ComplexWrite<u32>([](Core::System& system, u32, u32 val) {
+                   auto& processor_interface = system.GetProcessorInterface();
+                   processor_interface.m_interrupt_mask = val;
+                   processor_interface.UpdateException();
                  }));
 
-  mmio->Register(base | PI_FIFO_BASE, MMIO::DirectRead<u32>(&Fifo_CPUBase),
-                 MMIO::DirectWrite<u32>(&Fifo_CPUBase, 0xFFFFFFE0));
+  mmio->Register(base | PI_FIFO_BASE, MMIO::DirectRead<u32>(&m_fifo_cpu_base),
+                 MMIO::ComplexWrite<u32>([](Core::System& system, u32, u32 val) {
+                   u32 mask = CommandProcessor::GetPhysicalAddressMask(system.IsWii()) & 0xFFFFFFE0;
+                   auto& processor_interface = system.GetProcessorInterface();
+                   processor_interface.m_fifo_cpu_base = val & mask;
+                 }));
 
-  mmio->Register(base | PI_FIFO_END, MMIO::DirectRead<u32>(&Fifo_CPUEnd),
-                 MMIO::DirectWrite<u32>(&Fifo_CPUEnd, 0xFFFFFFE0));
+  mmio->Register(base | PI_FIFO_END, MMIO::DirectRead<u32>(&m_fifo_cpu_end),
+                 MMIO::ComplexWrite<u32>([](Core::System& system, u32, u32 val) {
+                   u32 mask = CommandProcessor::GetPhysicalAddressMask(system.IsWii()) & 0xFFFFFFE0;
+                   auto& processor_interface = system.GetProcessorInterface();
+                   processor_interface.m_fifo_cpu_end = val & mask;
+                 }));
 
-  mmio->Register(base | PI_FIFO_WPTR, MMIO::DirectRead<u32>(&Fifo_CPUWritePointer),
-                 MMIO::DirectWrite<u32>(&Fifo_CPUWritePointer, 0xFFFFFFE0));
+  mmio->Register(base | PI_FIFO_WPTR, MMIO::DirectRead<u32>(&m_fifo_cpu_write_pointer),
+                 MMIO::ComplexWrite<u32>([](Core::System& system, u32, u32 val) {
+                   u32 mask = CommandProcessor::GetPhysicalAddressMask(system.IsWii()) & 0xFFFFFFE0;
+                   auto& processor_interface = system.GetProcessorInterface();
+                   processor_interface.m_fifo_cpu_write_pointer = val & mask;
+                 }));
 
   mmio->Register(base | PI_FIFO_RESET, MMIO::InvalidRead<u32>(),
-                 MMIO::ComplexWrite<u32>(
-                     [](u32, u32 val) { WARN_LOG(PROCESSORINTERFACE, "Fifo reset (%08x)", val); }));
+                 MMIO::ComplexWrite<u32>([](Core::System& system, u32, u32 val) {
+                   // Used by GXAbortFrame
+                   INFO_LOG_FMT(PROCESSORINTERFACE, "Wrote PI_FIFO_RESET: {:08x}", val);
+                   if ((val & 1) != 0)
+                   {
+                     // TODO: Is this still necessary now that we reset the CP registers?
+                     system.GetGPFifo().ResetGatherPipe();
 
-  mmio->Register(base | PI_RESET_CODE, MMIO::DirectRead<u32>(&m_ResetCode),
-                 MMIO::DirectWrite<u32>(&m_ResetCode));
+                     // Reset some CP registers. This may trigger an ad-hoc GPU time slice.
+                     system.GetCommandProcessor().ResetFifo();
 
-  mmio->Register(base | PI_FLIPPER_REV, MMIO::DirectRead<u32>(&m_FlipperRev),
+                     // Call Fifo::ResetVideoBuffer() from the video thread. Since that function
+                     // resets various pointers used by the video thread, we can't call it directly
+                     // from the CPU thread, so queue a task to do it instead. In single-core mode,
+                     // AsyncRequests is in passthrough mode, so this will be safely and immediately
+                     // called on the CPU thread.
+
+                     // NOTE: GPFifo::ResetGatherPipe() only affects
+                     // CPU state, so we can call it directly
+
+                     AsyncRequests::GetInstance()->PushEvent(
+                         [] { Core::System::GetInstance().GetFifo().ResetVideoBuffer(); });
+                   }
+                 }));
+
+  // TODO: Use the ErrorCause enum instead.
+  mmio->Register(base | PI_ERROR_CAUSE, MMIO::DirectRead<u32>(&m_error_cause),
+                 MMIO::DirectWrite<u32>(&m_error_cause, 0x00000007));
+
+  mmio->Register(base | PI_ERROR_ADDRESS, MMIO::DirectRead<u32>(&m_error_address),
                  MMIO::InvalidWrite<u32>());
 
+  mmio->Register(base | PI_RESET_CODE, MMIO::ComplexRead<u32>([](Core::System& system, u32) {
+                   auto& processor_interface = system.GetProcessorInterface();
+                   DEBUG_LOG_FMT(PROCESSORINTERFACE, "Read PI_RESET_CODE: {:08x}",
+                                 processor_interface.m_reset_code);
+                   return processor_interface.m_reset_code;
+                 }),
+                 MMIO::ComplexWrite<u32>([](Core::System& system, u32, u32 val) {
+                   auto& processor_interface = system.GetProcessorInterface();
+                   processor_interface.m_reset_code = val;
+                   INFO_LOG_FMT(PROCESSORINTERFACE, "Wrote PI_RESET_CODE: {:08x}",
+                                processor_interface.m_reset_code);
+                   if (!system.IsWii() && (~processor_interface.m_reset_code & 0x4))
+                   {
+                     system.GetDVDInterface().ResetDrive(true);
+                   }
+                 }));
+
+  mmio->Register(base | PI_UNKNOWN, MMIO::DirectRead<u32>(&m_unknown),
+                 MMIO::DirectWrite<u32>(&m_unknown, 0x000003FF));
+
+  mmio->Register(base | PI_FLIPPER_REV, MMIO::Constant<u32>(FLIPPER_REV_C),
+                 MMIO::InvalidWrite<u32>());
+
+  mmio->Register(base | PI_FLIPPER_BUS_STRENGTH, MMIO::DirectRead<u32>(&m_flipper_bus_strength),
+                 MMIO::DirectWrite<u32>(&m_flipper_bus_strength, 0x07FFFFFF));
+
   // 16 bit reads are based on 32 bit reads.
-  for (int i = 0; i < 0x1000; i += 4)
+  for (u32 i = 0; i < 0x1000; i += 4)
   {
     mmio->Register(base | i, MMIO::ReadToLarger<u16>(mmio, base | i, 16),
                    MMIO::InvalidWrite<u16>());
@@ -127,12 +178,13 @@ void RegisterMMIO(MMIO::Mapping* mmio, u32 base)
   }
 }
 
-void UpdateException()
+void ProcessorInterfaceManager::UpdateException()
 {
-  if ((m_InterruptCause & m_InterruptMask) != 0)
-    PowerPC::ppcState.Exceptions |= EXCEPTION_EXTERNAL_INT;
+  auto& ppc_state = m_system.GetPPCState();
+  if ((m_interrupt_cause & m_interrupt_mask) != 0)
+    ppc_state.Exceptions |= EXCEPTION_EXTERNAL_INT;
   else
-    PowerPC::ppcState.Exceptions &= ~EXCEPTION_EXTERNAL_INT;
+    ppc_state.Exceptions &= ~EXCEPTION_EXTERNAL_INT;
 }
 
 static const char* Debug_GetInterruptName(u32 cause_mask)
@@ -176,77 +228,87 @@ static const char* Debug_GetInterruptName(u32 cause_mask)
   }
 }
 
-void SetInterrupt(u32 cause_mask, bool set)
+void ProcessorInterfaceManager::SetInterrupt(u32 cause_mask, bool set)
 {
   DEBUG_ASSERT_MSG(POWERPC, Core::IsCPUThread(), "SetInterrupt from wrong thread");
 
-  if (set && !(m_InterruptCause & cause_mask))
+  if (set && !(m_interrupt_cause & cause_mask))
   {
-    DEBUG_LOG(PROCESSORINTERFACE, "Setting Interrupt %s (set)", Debug_GetInterruptName(cause_mask));
+    DEBUG_LOG_FMT(PROCESSORINTERFACE, "Setting Interrupt {} (set)",
+                  Debug_GetInterruptName(cause_mask));
   }
 
-  if (!set && (m_InterruptCause & cause_mask))
+  if (!set && (m_interrupt_cause & cause_mask))
   {
-    DEBUG_LOG(PROCESSORINTERFACE, "Setting Interrupt %s (clear)",
-              Debug_GetInterruptName(cause_mask));
+    DEBUG_LOG_FMT(PROCESSORINTERFACE, "Setting Interrupt {} (clear)",
+                  Debug_GetInterruptName(cause_mask));
   }
 
   if (set)
-    m_InterruptCause |= cause_mask;
+    m_interrupt_cause |= cause_mask;
   else
-    m_InterruptCause &= ~cause_mask;  // is there any reason to have this possibility?
+    m_interrupt_cause &= ~cause_mask;  // is there any reason to have this possibility?
   // F|RES: i think the hw devices reset the interrupt in the PI to 0
   // if the interrupt cause is eliminated. that isn't done by software (afaik)
   UpdateException();
 }
 
-static void SetResetButton(bool set)
+void ProcessorInterfaceManager::SetResetButton(bool set)
 {
   SetInterrupt(INT_CAUSE_RST_BUTTON, !set);
 }
 
-static void ToggleResetButtonCallback(u64 userdata, s64 cyclesLate)
+void ProcessorInterfaceManager::ToggleResetButtonCallback(Core::System& system, u64 userdata,
+                                                          s64 cyclesLate)
 {
-  SetResetButton(!!userdata);
+  system.GetProcessorInterface().SetResetButton(!!userdata);
 }
 
-static void IOSNotifyResetButtonCallback(u64 userdata, s64 cyclesLate)
+void ProcessorInterfaceManager::IOSNotifyResetButtonCallback(Core::System& system, u64 userdata,
+                                                             s64 cyclesLate)
 {
-  const auto ios = IOS::HLE::GetIOS();
+  const auto ios = system.GetIOS();
   if (!ios)
     return;
 
   auto stm = ios->GetDeviceByName("/dev/stm/eventhook");
   if (stm)
-    std::static_pointer_cast<IOS::HLE::Device::STMEventHook>(stm)->ResetButton();
+    std::static_pointer_cast<IOS::HLE::STMEventHookDevice>(stm)->ResetButton();
 }
 
-static void IOSNotifyPowerButtonCallback(u64 userdata, s64 cyclesLate)
+void ProcessorInterfaceManager::IOSNotifyPowerButtonCallback(Core::System& system, u64 userdata,
+                                                             s64 cyclesLate)
 {
-  const auto ios = IOS::HLE::GetIOS();
+  const auto ios = system.GetIOS();
   if (!ios)
     return;
 
   auto stm = ios->GetDeviceByName("/dev/stm/eventhook");
   if (stm)
-    std::static_pointer_cast<IOS::HLE::Device::STMEventHook>(stm)->PowerButton();
+    std::static_pointer_cast<IOS::HLE::STMEventHookDevice>(stm)->PowerButton();
 }
 
-void ResetButton_Tap()
+void ProcessorInterfaceManager::ResetButton_Tap()
 {
-  if (!Core::IsRunning())
+  if (!Core::IsRunning(m_system))
     return;
-  CoreTiming::ScheduleEvent(0, toggleResetButton, true, CoreTiming::FromThread::ANY);
-  CoreTiming::ScheduleEvent(0, iosNotifyResetButton, 0, CoreTiming::FromThread::ANY);
-  CoreTiming::ScheduleEvent(SystemTimers::GetTicksPerSecond() / 2, toggleResetButton, false,
+
+  auto& core_timing = m_system.GetCoreTiming();
+  core_timing.ScheduleEvent(0, m_event_type_toggle_reset_button, true, CoreTiming::FromThread::ANY);
+  core_timing.ScheduleEvent(0, m_event_type_ios_notify_reset_button, 0,
                             CoreTiming::FromThread::ANY);
+  core_timing.ScheduleEvent(m_system.GetSystemTimers().GetTicksPerSecond() / 2,
+                            m_event_type_toggle_reset_button, false, CoreTiming::FromThread::ANY);
 }
 
-void PowerButton_Tap()
+void ProcessorInterfaceManager::PowerButton_Tap()
 {
-  if (!Core::IsRunning())
+  if (!Core::IsRunning(m_system))
     return;
-  CoreTiming::ScheduleEvent(0, iosNotifyPowerButton, 0, CoreTiming::FromThread::ANY);
+
+  auto& core_timing = m_system.GetCoreTiming();
+  core_timing.ScheduleEvent(0, m_event_type_ios_notify_power_button, 0,
+                            CoreTiming::FromThread::ANY);
 }
 
 }  // namespace ProcessorInterface

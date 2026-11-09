@@ -1,12 +1,20 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
-#include "Common/CommonTypes.h"
+#include <array>
+#include <memory>
 
+#include "Common/CommonTypes.h"
+#include "Common/Config/Config.h"
+
+enum class FieldType;
 class PointerWrap;
+namespace Core
+{
+class System;
+}
 namespace MMIO
 {
 class Mapping;
@@ -115,7 +123,7 @@ union UVIDisplayControlRegister
 
 union UVIHorizontalTiming0
 {
-  u32 Hex;
+  u32 Hex = 0;
   struct
   {
     u16 Lo, Hi;
@@ -133,7 +141,7 @@ union UVIHorizontalTiming0
 
 union UVIHorizontalTiming1
 {
-  u32 Hex;
+  u32 Hex = 0;
   struct
   {
     u16 Lo, Hi;
@@ -150,7 +158,7 @@ union UVIHorizontalTiming1
 // Exists for both odd and even fields
 union UVIVBlankTimingRegister
 {
-  u32 Hex;
+  u32 Hex = 0;
   struct
   {
     u16 Lo, Hi;
@@ -167,7 +175,7 @@ union UVIVBlankTimingRegister
 // Exists for both odd and even fields
 union UVIBurstBlankingRegister
 {
-  u32 Hex;
+  u32 Hex = 0;
   struct
   {
     u16 Lo, Hi;
@@ -183,7 +191,7 @@ union UVIBurstBlankingRegister
 
 union UVIFBInfoRegister
 {
-  u32 Hex;
+  u32 Hex = 0;
   struct
   {
     u16 Lo, Hi;
@@ -195,7 +203,7 @@ union UVIFBInfoRegister
     // POFF only seems to exist in the top reg. XOFF, unknown.
     u32 XOFF : 4;  // Horizontal Offset of the left-most pixel within the first word of the fetched
                    // picture
-    u32 POFF : 1;  // Page offest: 1: fb address is (address>>5)
+    u32 POFF : 1;  // Page offset: 1: fb address is (address>>5)
     u32 CLRPOFF : 3;  // ? setting bit 31 clears POFF
   };
 };
@@ -203,7 +211,7 @@ union UVIFBInfoRegister
 // VI Interrupt Register
 union UVIInterruptRegister
 {
-  u32 Hex;
+  u32 Hex = 0;
   struct
   {
     u16 Lo, Hi;
@@ -222,7 +230,7 @@ union UVIInterruptRegister
 
 union UVILatchRegister
 {
-  u32 Hex;
+  u32 Hex = 0;
   struct
   {
     u16 Lo, Hi;
@@ -239,7 +247,7 @@ union UVILatchRegister
 
 union PictureConfigurationRegister
 {
-  u16 Hex;
+  u16 Hex = 0;
   struct
   {
     u16 STD : 8;
@@ -266,7 +274,7 @@ union UVIHorizontalScaling
 // Used for tables 0-2
 union UVIFilterCoefTable3
 {
-  u32 Hex;
+  u32 Hex = 0;
   struct
   {
     u16 Lo, Hi;
@@ -283,7 +291,7 @@ union UVIFilterCoefTable3
 // Used for tables 3-6
 union UVIFilterCoefTable4
 {
-  u32 Hex;
+  u32 Hex = 0;
   struct
   {
     u16 Lo, Hi;
@@ -306,7 +314,7 @@ struct SVIFilterCoefTables
 // Debug video mode only, probably never used in Dolphin...
 union UVIBorderBlankRegister
 {
-  u32 Hex;
+  u32 Hex = 0;
   struct
   {
     u16 Lo, Hi;
@@ -323,7 +331,7 @@ union UVIBorderBlankRegister
 // ntsc-j and component cable bits
 union UVIDTVStatus
 {
-  u16 Hex;
+  u16 Hex = 0;
   struct
   {
     u16 component_plugged : 1;
@@ -334,7 +342,7 @@ union UVIDTVStatus
 
 union UVIHorizontalStepping
 {
-  u16 Hex;
+  u16 Hex = 0;
   struct
   {
     u16 srcwidth : 10;
@@ -342,38 +350,113 @@ union UVIHorizontalStepping
   };
 };
 
-// For BS2 HLE
-void Preset(bool _bNTSC);
+class VideoInterfaceManager
+{
+public:
+  explicit VideoInterfaceManager(Core::System& system);
+  VideoInterfaceManager(const VideoInterfaceManager&) = delete;
+  VideoInterfaceManager(VideoInterfaceManager&&) = delete;
+  VideoInterfaceManager& operator=(const VideoInterfaceManager&) = delete;
+  VideoInterfaceManager& operator=(VideoInterfaceManager&&) = delete;
+  ~VideoInterfaceManager();
 
-void Init();
-void DoState(PointerWrap& p);
+  // For BS2 HLE
+  void Preset(bool _bNTSC);
 
-void RegisterMMIO(MMIO::Mapping* mmio, u32 base);
+  void Init();
+  void DoState(PointerWrap& p);
 
-// returns a pointer to the current visible xfb
-u32 GetXFBAddressTop();
-u32 GetXFBAddressBottom();
+  void RegisterMMIO(MMIO::Mapping* mmio, u32 base);
 
-// Update and draw framebuffer
-void Update(u64 ticks);
+  // returns a pointer to the current visible xfb
+  u32 GetXFBAddressTop() const;
+  u32 GetXFBAddressBottom() const;
 
-// UpdateInterrupts: check if we have to generate a new VI Interrupt
-void UpdateInterrupts();
+  // Update and draw framebuffer
+  void Update(u64 ticks);
 
-// Change values pertaining to video mode
-void UpdateParameters();
+  // UpdateInterrupts: check if we have to generate a new VI Interrupt
+  void UpdateInterrupts();
 
-u32 GetTargetRefreshRate();
-u32 GetTicksPerSample();
-u32 GetTicksPerHalfLine();
-u32 GetTicksPerField();
+  // Change values pertaining to video mode
+  void UpdateParameters();
 
-// Get the aspect ratio of VI's active area.
-// This function only deals with standard aspect ratios. For widescreen aspect ratios, multiply the
-// result by 1.33333..
-float GetAspectRatio();
+  double GetTargetRefreshRate() const;
+  u32 GetTargetRefreshRateNumerator() const;
+  u32 GetTargetRefreshRateDenominator() const;
 
-// Create a fake VI mode for a fifolog
-void FakeVIUpdate(u32 xfb_address, u32 fb_width, u32 fb_stride, u32 fb_height);
+  u32 GetTicksPerSample() const;
+  u32 GetTicksPerHalfLine() const;
+  u32 GetTicksPerField() const;
 
+  // Not adjusted by VBI Clock Override.
+  u32 GetNominalTicksPerHalfLine() const;
+
+  // Get the aspect ratio of VI's active area (rarely matching pure 4:3).
+  // This function only deals with standard aspect ratios. For widescreen aspect ratios, multiply
+  // the result by 1.33333... (the ratio between 16:9 and 4:3)
+  float GetAspectRatio() const;
+
+  // Create a fake VI mode for a fifolog
+  void FakeVIUpdate(u32 xfb_address, u32 fb_width, u32 fb_stride, u32 fb_height);
+
+private:
+  u32 GetHalfLinesPerEvenField() const;
+  u32 GetHalfLinesPerOddField() const;
+  u32 GetTicksPerEvenField() const;
+  u32 GetTicksPerOddField() const;
+
+  void LogField(FieldType field, u32 xfb_address) const;
+  void OutputField(FieldType field, u64 ticks);
+  void BeginField(FieldType field, u64 ticks);
+  void EndField(FieldType field, u64 ticks);
+
+  void RefreshConfig();
+  void UpdateRefreshRate();
+
+  // Registers listed in order:
+  UVIVerticalTimingRegister m_vertical_timing_register;
+  UVIDisplayControlRegister m_display_control_register;
+  UVIHorizontalTiming0 m_h_timing_0;
+  UVIHorizontalTiming1 m_h_timing_1;
+  UVIVBlankTimingRegister m_vblank_timing_odd;
+  UVIVBlankTimingRegister m_vblank_timing_even;
+  UVIBurstBlankingRegister m_burst_blanking_odd;
+  UVIBurstBlankingRegister m_burst_blanking_even;
+  UVIFBInfoRegister m_xfb_info_top;
+  UVIFBInfoRegister m_xfb_info_bottom;
+  UVIFBInfoRegister m_xfb_3d_info_top;  // Start making your stereoscopic demos! :p
+  UVIFBInfoRegister m_xfb_3d_info_bottom;
+  std::array<UVIInterruptRegister, 4> m_interrupt_register{};
+  std::array<UVILatchRegister, 2> m_latch_register{};
+  PictureConfigurationRegister m_picture_configuration;
+  UVIHorizontalScaling m_horizontal_scaling;
+  SVIFilterCoefTables m_filter_coef_tables;
+  u32 m_unknown_aa_register = 0;  // ??? 0x00FF0000
+  u16 m_clock = 0;                // 0: 27MHz, 1: 54MHz
+  UVIDTVStatus m_dtv_status;
+  UVIHorizontalStepping m_fb_width;  // Only correct when scaling is enabled?
+  UVIBorderBlankRegister m_border_hblank;
+  // 0xcc002076 - 0xcc00207f is full of 0x00FF: unknown
+  // 0xcc002080 - 0xcc002100 even more unknown
+
+  double m_target_refresh_rate = 0;
+  u32 m_target_refresh_rate_numerator = 0;
+  u32 m_target_refresh_rate_denominator = 1;
+
+  u64 m_ticks_last_line_start = 0;  // number of ticks when the current full scanline started
+  u32 m_half_line_count = 0;        // number of halflines that have occurred for this full frame
+  u32 m_half_line_of_next_si_poll = 0;  // halfline when next SI poll results should be available
+
+  // below indexes are 0-based
+  u32 m_even_field_first_hl = 0;  // index first halfline of the even field
+  u32 m_odd_field_first_hl = 0;   // index first halfline of the odd field
+  u32 m_even_field_last_hl = 0;   // index last halfline of the even field
+  u32 m_odd_field_last_hl = 0;    // index last halfline of the odd field
+
+  float m_config_vi_oc_factor = 1.0f;
+
+  Config::ConfigChangedCallbackID m_config_changed_callback_id;
+  Core::System& m_system;
+};
 }  // namespace VideoInterface

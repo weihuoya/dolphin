@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // Dolphin notes:
 //  Added some info from bluetooth.h
@@ -400,8 +399,8 @@ constexpr bdaddr_t BDADDR_ANY{};
  * and OCF (OpCode Command Field) from OpCode.
  */
 
-#define HCI_OPCODE(gf, cf) ((((gf)&0x3f) << 10) | ((cf)&0x3ff))
-#define HCI_OCF(op) ((op)&0x3ff)
+#define HCI_OPCODE(gf, cf) ((((gf) & 0x3f) << 10) | ((cf) & 0x3ff))
+#define HCI_OCF(op) ((op) & 0x3ff)
 #define HCI_OGF(op) (((op) >> 10) & 0x3f)
 
 /*
@@ -409,10 +408,10 @@ constexpr bdaddr_t BDADDR_ANY{};
  * PB (Packet boundary) flags.
  */
 
-#define HCI_CON_HANDLE(h) ((h)&0x0fff)
-#define HCI_PB_FLAG(h) (((h)&0x3000) >> 12)
-#define HCI_BC_FLAG(h) (((h)&0xc000) >> 14)
-#define HCI_MK_CON_HANDLE(h, pb, bc) (((h)&0x0fff) | (((pb)&3) << 12) | (((bc)&3) << 14))
+#define HCI_CON_HANDLE(h) ((h) & 0x0fff)
+#define HCI_PB_FLAG(h) (((h) & 0x3000) >> 12)
+#define HCI_BC_FLAG(h) (((h) & 0xc000) >> 14)
+#define HCI_MK_CON_HANDLE(h, pb, bc) (((h) & 0x0fff) | (((pb) & 3) << 12) | (((bc) & 3) << 14))
 
 /* PB flag values */
 /* 00 - reserved for future use */
@@ -2506,7 +2505,7 @@ struct hci_filter
   uint32_t mask[8]; /* 256 bits */
 };
 
-static __inline void hci_filter_set(uint8_t bit, struct hci_filter* filter)
+static __inline void hci_filter_set(uint8_t bit, hci_filter* filter)
 {
   uint8_t off = bit - 1;
 
@@ -2514,7 +2513,7 @@ static __inline void hci_filter_set(uint8_t bit, struct hci_filter* filter)
   filter->mask[off] |= (1 << ((bit - 1) & 0x1f));
 }
 
-static __inline void hci_filter_clr(uint8_t bit, struct hci_filter* filter)
+static __inline void hci_filter_clr(uint8_t bit, hci_filter* filter)
 {
   uint8_t off = bit - 1;
 
@@ -2582,7 +2581,7 @@ struct btreq
       uint16_t btri_link_policy; /* Link Policy */
       uint16_t btri_packet_type; /* Packet Type */
     } btri;
-    struct bt_stats btrs; /* unit stats */
+    bt_stats btrs; /* unit stats */
   } btru;
 };
 
@@ -2652,6 +2651,7 @@ struct SHCIEventInquiryComplete
   u8 EventType;
   u8 PayloadLength;
   u8 EventStatus;
+  u8 num_responses;
 };
 
 struct SHCIEventReadClockOffsetComplete

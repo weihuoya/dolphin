@@ -1,15 +1,16 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <cstdio>
 #include <thread>
+
 #include "Core/Core.h"
+#include "Core/System.h"
 #include "DolphinNoGUI/Platform.h"
 
 namespace
 {
-class PlatformHeadless : public Platform
+class PlatformHeadless final : public Platform
 {
 public:
   void SetTitle(const std::string& title) override;
@@ -28,7 +29,7 @@ void PlatformHeadless::MainLoop()
   while (m_running.IsSet())
   {
     UpdateRunningFlag();
-    Core::HostDispatchJobs();
+    Core::HostDispatchJobs(Core::System::GetInstance());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 }
@@ -38,6 +39,7 @@ WindowSystemInfo PlatformHeadless::GetWindowSystemInfo() const
   WindowSystemInfo wsi;
   wsi.type = WindowSystemType::Headless;
   wsi.display_connection = nullptr;
+  wsi.render_window = nullptr;
   wsi.render_surface = nullptr;
   return wsi;
 }

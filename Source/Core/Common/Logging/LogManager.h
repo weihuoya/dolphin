@@ -1,21 +1,34 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdarg>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "Common/BitSet.h"
+#include "Common/Config/Config.h"
+#include "Common/EnumMap.h"
 #include "Common/Logging/Log.h"
+
+namespace Common::Log
+{
+// This variable should only be read to update the effective log level, and its base layer should
+// only be set when the user selects a new verbosity. Everything else should use the effective log
+// level instead. When running a release build this prevents overwriting the LDEBUG config value
+// with the clamped LINFO level.
+extern const Config::Info<LogLevel> LOGGER_VERBOSITY;
 
 // pure virtual interface
 class LogListener
 {
 public:
-  virtual ~LogListener() {}
-  virtual void Log(LogTypes::LOG_LEVELS, const char* msg) = 0;
+  virtual ~LogListener() = default;
+  virtual void Log(LogLevel level, const char* msg) = 0;
 
   enum LISTENER
   {
@@ -27,34 +40,9 @@ public:
   };
 };
 
-class LogManager
+class LogManager final
 {
 public:
-  static LogManager* GetInstance();
-  static void Init();
-  static void Shutdown();
-
-  void Log(LogTypes::LOG_LEVELS level, LogTypes::LOG_TYPE type, const char* file, int line,
-           const char* fmt, va_list args);
-  void LogWithFullPath(LogTypes::LOG_LEVELS level, LogTypes::LOG_TYPE type, const char* file,
-                       int line, const char* fmt, va_list args);
-
-  LogTypes::LOG_LEVELS GetLogLevel() const;
-  void SetLogLevel(LogTypes::LOG_LEVELS level);
-
-  void SetEnable(LogTypes::LOG_TYPE type, bool enable);
-  bool IsEnabled(LogTypes::LOG_TYPE type, LogTypes::LOG_LEVELS level = LogTypes::LNOTICE) const;
-
-  const char* GetShortName(LogTypes::LOG_TYPE type) const;
-  const char* GetFullName(LogTypes::LOG_TYPE type) const;
-
-  void RegisterListener(LogListener::LISTENER id, LogListener* listener);
-  void EnableListener(LogListener::LISTENER id, bool enable);
-  bool IsListenerEnabled(LogListener::LISTENER id) const;
-
-  void SaveSettings();
-
-private:
   struct LogContainer
   {
     const char* m_short_name;
@@ -62,17 +50,50 @@ private:
     bool m_enable = false;
   };
 
-  LogManager();
   ~LogManager();
+
+  static LogManager* GetInstance();
+  static void Init();
+  static void Shutdown();
+
+  void Log(LogLevel level, LogType type, const char* file, int line, const char* message);
+  void LogWithFullPath(LogLevel level, LogType type, const char* file, int line,
+                       const char* message);
+
+  // Use this function instead of LOGGER_VERBOSITY to determine which logs should be printed.
+  LogLevel GetEffectiveLogLevel() const;
+  void SetConfigLogLevel(LogLevel level);
+
+  void SetEnable(LogType type, bool enable);
+  bool IsEnabled(LogType type, LogLevel level = LogLevel::LNOTICE) const;
+
+  std::vector<LogContainer> GetLogTypes();
+
+  const char* GetShortName(LogType type) const;
+  const char* GetFullName(LogType type) const;
+
+  void RegisterListener(LogListener::LISTENER id, std::unique_ptr<LogListener> listener);
+  void EnableListener(LogListener::LISTENER id, bool enable);
+  bool IsListenerEnabled(LogListener::LISTENER id) const;
+
+  void SaveSettings();
+
+private:
+  LogManager();
 
   LogManager(const LogManager&) = delete;
   LogManager& operator=(const LogManager&) = delete;
   LogManager(LogManager&&) = delete;
   LogManager& operator=(LogManager&&) = delete;
 
-  LogTypes::LOG_LEVELS m_level;
-  std::array<LogContainer, LogTypes::NUMBER_OF_LOGS> m_log{};
-  std::array<LogListener*, LogListener::NUMBER_OF_LISTENERS> m_listeners{};
+  static std::string GetTimestamp();
+  void SetEffectiveLogLevel();
+
+  std::atomic<LogLevel> m_effective_level;
+  Config::ConfigChangedCallbackID m_config_changed_callback_id;
+  EnumMap<LogContainer, LAST_LOG_TYPE> m_log{};
+  std::array<std::unique_ptr<LogListener>, LogListener::NUMBER_OF_LISTENERS> m_listeners{};
   BitSet32 m_listener_ids;
   size_t m_path_cutoff_point = 0;
 };
+}  // namespace Common::Log

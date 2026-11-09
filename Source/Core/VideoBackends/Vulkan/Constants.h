@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -12,9 +11,11 @@
 
 namespace Vulkan
 {
-// Number of command buffers. Having two allows one buffer to be
-// executed whilst another is being built.
-constexpr size_t NUM_COMMAND_BUFFERS = 2;
+// Number of command buffers.
+constexpr size_t NUM_COMMAND_BUFFERS = 8;
+
+// Number of frames in flight, will be used to decide how many descriptor pools are used
+constexpr size_t NUM_FRAMES_IN_FLIGHT = 2;
 
 // Staging buffer usage - optimize for uploads or readbacks
 enum STAGING_BUFFER_TYPE
@@ -37,18 +38,20 @@ enum DESCRIPTOR_SET_LAYOUT
 
 // We use four pipeline layouts:
 //   - Standard
-//       - Per-stage UBO (VS/GS/PS, VS constants accessible from PS) [set=0, binding=0-2]
+//       - Per-stage UBO (VS/GS/PS, VS constants accessible from PS) [set=0, binding=0-3]
 //       - 8 combined image samplers (accessible from PS) [set=1, binding=0-7]
 //       - 1 SSBO accessible from PS if supported [set=2, binding=0]
+//   - Uber
+//       - Like standard, plus 1 SSBO accessible from VS if supported [set=2, binding=1]
 //   - Utility
 //       - 1 combined UBO, accessible from VS/GS/PS [set=0, binding=0]
 //       - 8 combined image samplers (accessible from PS) [set=1, binding=0-7]
 //       - 1 texel buffer (accessible from PS) [set=1, binding=8]
 //   - Compute
 //       - 1 uniform buffer [set=0, binding=0]
-//       - 2 combined image samplers [set=0, binding=1-2]
-//       - 2 texel buffers [set=0, binding=3-4]
-//       - 1 storage image [set=0, binding=5]
+//       - 8 combined image samplers [set=0, binding=1-8]
+//       - 2 texel buffers [set=0, binding=9-10]
+//       - 8 storage image [set=0, binding=11-18]
 //
 // All four pipeline layout share the first two descriptor sets (uniform buffers, PS samplers).
 // The third descriptor set (see bind points above) is used for storage or texel buffers.
@@ -56,6 +59,7 @@ enum DESCRIPTOR_SET_LAYOUT
 enum PIPELINE_LAYOUT
 {
   PIPELINE_LAYOUT_STANDARD,
+  PIPELINE_LAYOUT_UBER,
   PIPELINE_LAYOUT_UTILITY,
   PIPELINE_LAYOUT_COMPUTE,
   NUM_PIPELINE_LAYOUTS
@@ -66,6 +70,7 @@ enum UNIFORM_BUFFER_DESCRIPTOR_SET_BINDING
 {
   UBO_DESCRIPTOR_SET_BINDING_PS,
   UBO_DESCRIPTOR_SET_BINDING_VS,
+  UBO_DESCRIPTOR_SET_BINDING_CUST,
   UBO_DESCRIPTOR_SET_BINDING_GS,
   NUM_UBO_DESCRIPTOR_SET_BINDINGS
 };
@@ -74,8 +79,7 @@ enum UNIFORM_BUFFER_DESCRIPTOR_SET_BINDING
 constexpr u32 MAX_VERTEX_ATTRIBUTES = 16;
 
 // Number of pixel shader texture slots
-constexpr u32 NUM_PIXEL_SHADER_SAMPLERS = 8;
-constexpr u32 NUM_COMPUTE_SHADER_SAMPLERS = 2;
+constexpr u32 NUM_UTILITY_PIXEL_SAMPLERS = 8;
 
 // Number of texel buffer binding points.
 constexpr u32 NUM_COMPUTE_TEXEL_BUFFERS = 2;

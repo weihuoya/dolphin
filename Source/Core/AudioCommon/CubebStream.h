@@ -1,34 +1,77 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
-#include <cstddef>
+#include <array>
 #include <memory>
 #include <vector>
 
 #include "AudioCommon/SoundStream.h"
+#ifdef _WIN32
+#include "Common/WorkQueueThread.h"
+#endif
 
+#ifdef HAVE_CUBEB
 #include <cubeb/cubeb.h>
+#endif
+
+#include "Core/Config/MainSettings.h"
 
 class CubebStream final : public SoundStream
 {
+#ifdef HAVE_CUBEB
 public:
+  CubebStream();
+  CubebStream(const CubebStream& other) = delete;
+  CubebStream(CubebStream&& other) = delete;
+  CubebStream& operator=(const CubebStream& other) = delete;
+  CubebStream& operator=(CubebStream&& other) = delete;
   ~CubebStream() override;
   bool Init() override;
   bool SetRunning(bool running) override;
   void SetVolume(int) override;
+  static bool IsValid() { return true; }
 
 private:
+  struct WiimoteStreamData
+  {
+    CubebStream* self;
+    std::size_t wiimote_index;
+  };
+
+  struct GBAStreamData
+  {
+    CubebStream* self;
+    std::size_t gba_index;
+  };
+
   bool m_stereo = false;
   std::shared_ptr<cubeb> m_ctx;
   cubeb_stream* m_stream = nullptr;
+  std::array<WiimoteStreamData, 4> m_wiimote_stream_data{};
+  std::array<cubeb_stream*, 4> m_wiimote_streams{};
+  std::array<GBAStreamData, Config::GBA_SPEAKER_COUNT> m_gba_stream_data{};
+  std::array<cubeb_stream*, Config::GBA_SPEAKER_COUNT> m_gba_streams{};
 
   std::vector<short> m_short_buffer;
   std::vector<float> m_floatstereo_buffer;
 
+#ifdef _WIN32
+  Common::AsyncWorkThread m_work_queue;
+  bool m_coinit_success = false;
+  bool m_should_couninit = false;
+#endif
+
   static long DataCallback(cubeb_stream* stream, void* user_data, const void* /*input_buffer*/,
                            void* output_buffer, long num_frames);
   static void StateCallback(cubeb_stream* stream, void* user_data, cubeb_state state);
+  static long WiimoteDataCallback(cubeb_stream* stream, void* user_data,
+                                  const void* /*input_buffer*/, void* output_buffer,
+                                  long num_frames);
+  static void WiimoteStateCallback(cubeb_stream* stream, void* user_data, cubeb_state state);
+  static long GBADataCallback(cubeb_stream* stream, void* user_data, const void* /*input_buffer*/,
+                              void* output_buffer, long num_frames);
+  static void GBAStateCallback(cubeb_stream* stream, void* user_data, cubeb_state state);
+#endif
 };

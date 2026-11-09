@@ -1,11 +1,9 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/Debug/MemoryPatches.h"
 
 #include <algorithm>
-#include <sstream>
 #include <utility>
 
 namespace Common::Debug
@@ -24,18 +22,37 @@ MemoryPatch::MemoryPatch(u32 address_, u32 value_)
 MemoryPatches::MemoryPatches() = default;
 MemoryPatches::~MemoryPatches() = default;
 
-void MemoryPatches::SetPatch(u32 address, u32 value)
+void MemoryPatches::SetPatch(const Core::CPUThreadGuard& guard, u32 address, u32 value)
 {
   const std::size_t index = m_patches.size();
   m_patches.emplace_back(address, value);
-  Patch(index);
+  Patch(guard, index);
 }
 
-void MemoryPatches::SetPatch(u32 address, std::vector<u8> value)
+void MemoryPatches::SetPatch(const Core::CPUThreadGuard& guard, u32 address, std::vector<u8> value)
 {
+  UnsetPatch(guard, address);
   const std::size_t index = m_patches.size();
   m_patches.emplace_back(address, std::move(value));
-  Patch(index);
+  Patch(guard, index);
+}
+
+void MemoryPatches::SetFramePatch(const Core::CPUThreadGuard& guard, u32 address, u32 value)
+{
+  const std::size_t index = m_patches.size();
+  m_patches.emplace_back(address, value);
+  m_patches.back().type = MemoryPatch::ApplyType::EachFrame;
+  Patch(guard, index);
+}
+
+void MemoryPatches::SetFramePatch(const Core::CPUThreadGuard& guard, u32 address,
+                                  std::vector<u8> value)
+{
+  UnsetPatch(guard, address);
+  const std::size_t index = m_patches.size();
+  m_patches.emplace_back(address, std::move(value));
+  m_patches.back().type = MemoryPatch::ApplyType::EachFrame;
+  Patch(guard, index);
 }
 
 const std::vector<MemoryPatch>& MemoryPatches::GetPatches() const
@@ -43,58 +60,55 @@ const std::vector<MemoryPatch>& MemoryPatches::GetPatches() const
   return m_patches;
 }
 
-void MemoryPatches::UnsetPatch(u32 address)
+void MemoryPatches::UnsetPatch(const Core::CPUThreadGuard& guard, u32 address)
 {
-  const auto it = std::remove_if(m_patches.begin(), m_patches.end(),
-                                 [address](const auto& patch) { return patch.address == address; });
+  const auto it = std::ranges::find(m_patches, address, &MemoryPatch::address);
 
   if (it == m_patches.end())
     return;
 
-  const std::size_t size = m_patches.size();
-  std::size_t index = size - std::distance(it, m_patches.end());
-  while (index < size)
-  {
-    DisablePatch(index);
-    ++index;
-  }
-  m_patches.erase(it, m_patches.end());
+  const std::size_t index = std::distance(m_patches.begin(), it);
+  RemovePatch(guard, index);
 }
 
-void MemoryPatches::EnablePatch(std::size_t index)
+void MemoryPatches::EnablePatch(const Core::CPUThreadGuard& guard, std::size_t index)
 {
   if (m_patches[index].is_enabled == MemoryPatch::State::Enabled)
     return;
   m_patches[index].is_enabled = MemoryPatch::State::Enabled;
-  Patch(index);
+  Patch(guard, index);
 }
 
-void MemoryPatches::DisablePatch(std::size_t index)
+void MemoryPatches::DisablePatch(const Core::CPUThreadGuard& guard, std::size_t index)
 {
   if (m_patches[index].is_enabled == MemoryPatch::State::Disabled)
     return;
   m_patches[index].is_enabled = MemoryPatch::State::Disabled;
-  Patch(index);
+  Patch(guard, index);
 }
 
 bool MemoryPatches::HasEnabledPatch(u32 address) const
 {
-  return std::any_of(m_patches.begin(), m_patches.end(), [address](const MemoryPatch& patch) {
+  return std::ranges::any_of(m_patches, [address](const MemoryPatch& patch) {
     return patch.address == address && patch.is_enabled == MemoryPatch::State::Enabled;
   });
 }
 
-void MemoryPatches::RemovePatch(std::size_t index)
+void MemoryPatches::RemovePatch(const Core::CPUThreadGuard& guard, std::size_t index)
 {
-  DisablePatch(index);
+  DisablePatch(guard, index);
+  UnPatch(index);
   m_patches.erase(m_patches.begin() + index);
 }
 
-void MemoryPatches::ClearPatches()
+void MemoryPatches::ClearPatches(const Core::CPUThreadGuard& guard)
 {
   const std::size_t size = m_patches.size();
   for (std::size_t index = 0; index < size; ++index)
-    DisablePatch(index);
+  {
+    DisablePatch(guard, index);
+    UnPatch(index);
+  }
   m_patches.clear();
 }
 }  // namespace Common::Debug

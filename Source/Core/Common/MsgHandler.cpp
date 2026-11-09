@@ -1,23 +1,21 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/MsgHandler.h"
 
-#include <cstdarg>
+#include <cstdlib>
 #include <string>
 
 #ifdef _WIN32
 #include <windows.h>
 #else
-#include <cstdio>
 #include <fmt/format.h>
 #endif
 
-#include "Common/Common.h"
-#include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
+#ifdef _WIN32
 #include "Common/StringUtil.h"
+#endif
 
 namespace Common
 {
@@ -52,6 +50,42 @@ std::string DefaultStringTranslator(const char* text)
 MsgAlertHandler s_msg_handler = DefaultMsgHandler;
 StringTranslator s_str_translator = DefaultStringTranslator;
 bool s_alert_enabled = true;
+bool s_abort_on_panic_alert = false;
+
+const char* GetCaption(MsgType style)
+{
+  static const std::string info_caption = GetStringT("Information");
+  static const std::string ques_caption = GetStringT("Question");
+  static const std::string warn_caption = GetStringT("Warning");
+  static const std::string crit_caption = GetStringT("Critical");
+
+  switch (style)
+  {
+  case MsgType::Information:
+    return info_caption.c_str();
+  case MsgType::Question:
+    return ques_caption.c_str();
+  case MsgType::Warning:
+    return warn_caption.c_str();
+  case MsgType::Critical:
+    return crit_caption.c_str();
+  default:
+    return "Unhandled caption";
+  }
+}
+
+Log::LogLevel GetMessageAlertLogLevel(const MsgType style)
+{
+  switch (style)
+  {
+  case MsgType::Critical:
+    return Log::LogLevel::LERROR;
+  case MsgType::Warning:
+    return Log::LogLevel::LWARNING;
+  default:
+    return Log::LogLevel::LINFO;
+  }
+}
 }  // Anonymous namespace
 
 // Select which of these functions that are used for message boxes. If
@@ -73,54 +107,48 @@ void SetEnableAlert(bool enable)
   s_alert_enabled = enable;
 }
 
+void SetAbortOnPanicAlert(bool should_abort)
+{
+  s_abort_on_panic_alert = should_abort;
+}
+
 std::string GetStringT(const char* string)
 {
   return s_str_translator(string);
 }
 
-// This is the first stop for gui alerts where the log is updated and the
-// correct window is shown
-bool MsgAlert(bool yes_no, MsgType style, const char* format, ...)
+static bool ShowMessageAlert(std::string_view text, bool yes_no, Common::Log::LogType log_type,
+                             MsgType style, const char* file, int line)
 {
-  // Read message and write it to the log
-  const char* caption = "";
-  char buffer[2048];
+  const char* caption = GetCaption(style);
+  const Log::LogLevel level = GetMessageAlertLogLevel(style);
+  // Directly call GenericLogFmt rather than using the normal log macros so that we can use the
+  // caller's line file and line number
+  Common::Log::GenericLogFmt<2>(level, log_type, file, line, FMT_STRING("{}: {}"), caption, text);
 
-  static const std::string info_caption = s_str_translator(_trans("Information"));
-  static const std::string warn_caption = s_str_translator(_trans("Question"));
-  static const std::string ques_caption = s_str_translator(_trans("Warning"));
-  static const std::string crit_caption = s_str_translator(_trans("Critical"));
-
-  switch (style)
+  // Panic alerts.
+  if (style == MsgType::Warning && s_abort_on_panic_alert)
   {
-  case MsgType::Information:
-    caption = info_caption.c_str();
-    break;
-  case MsgType::Question:
-    caption = ques_caption.c_str();
-    break;
-  case MsgType::Warning:
-    caption = warn_caption.c_str();
-    break;
-  case MsgType::Critical:
-    caption = crit_caption.c_str();
-    break;
+    std::abort();
   }
-
-  va_list args;
-  va_start(args, format);
-  CharArrayFromFormatV(buffer, sizeof(buffer) - 1, s_str_translator(format).c_str(), args);
-  va_end(args);
-
-  ERROR_LOG(MASTER_LOG, "%s: %s", caption, buffer);
 
   // Don't ignore questions, especially AskYesNo, PanicYesNo could be ignored
   if (s_msg_handler != nullptr &&
       (s_alert_enabled || style == MsgType::Question || style == MsgType::Critical))
   {
-    return s_msg_handler(caption, buffer, yes_no, style);
+    return s_msg_handler(caption, text.data(), yes_no, style);
   }
 
   return true;
+}
+
+// This is the first stop for gui alerts where the log is updated and the
+// correct window is shown, when using fmt
+bool MsgAlertFmtImpl(bool yes_no, MsgType style, Common::Log::LogType log_type, const char* file,
+                     int line, fmt::string_view format, const fmt::format_args& args)
+{
+  const auto message = fmt::vformat(format, args);
+
+  return ShowMessageAlert(message, yes_no, log_type, style, file, line);
 }
 }  // namespace Common

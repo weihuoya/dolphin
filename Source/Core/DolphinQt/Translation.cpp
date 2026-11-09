@@ -1,23 +1,25 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Translation.h"
+
+#include <algorithm>
+#include <cstring>
+#include <iterator>
+#include <string>
+
+#include <fmt/format.h>
 
 #include <QApplication>
 #include <QLocale>
 #include <QTranslator>
-#include <algorithm>
-#include <cstring>
-#include <iterator>
 
-#include "Common/File.h"
 #include "Common/FileUtil.h"
+#include "Common/IOFile.h"
 #include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
-#include "Common/StringUtil.h"
 
-#include "Core/ConfigManager.h"
+#include "Core/Config/MainSettings.h"
 
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
 
@@ -77,7 +79,6 @@ public:
 
   // Needed for InputIterator concept
   bool operator==(const MoIterator& other) const { return distance_to(other) == 0; }
-  bool operator!=(const MoIterator& other) const { return !(*this == other); }
   pointer operator->() const { return dereference(); }
   MoIterator operator++(int)
   {
@@ -149,24 +150,24 @@ public:
 
     if (!file)
     {
-      WARN_LOG(COMMON, "Error reading MO file '%s'", filename.c_str());
+      WARN_LOG_FMT(COMMON, "Error reading MO file '{}'", filename);
       m_data = {};
       return;
     }
 
-    u32 magic = ReadU32(&m_data[0]);
+    const u32 magic = ReadU32(&m_data[0]);
     if (magic != MO_MAGIC_NUMBER)
     {
-      ERROR_LOG(COMMON, "MO file '%s' has bad magic number %x\n", filename.c_str(), magic);
+      ERROR_LOG_FMT(COMMON, "MO file '{}' has bad magic number {:x}\n", filename, magic);
       m_data = {};
       return;
     }
 
-    u16 version_major = ReadU16(&m_data[4]);
+    const u16 version_major = ReadU16(&m_data[4]);
     if (version_major > 1)
     {
-      ERROR_LOG(COMMON, "MO file '%s' has unsupported version number %i", filename.c_str(),
-                version_major);
+      ERROR_LOG_FMT(COMMON, "MO file '{}' has unsupported version number {}", filename,
+                    version_major);
       m_data = {};
       return;
     }
@@ -185,7 +186,7 @@ public:
                                  [](const char* a, const char* b) { return strcmp(a, b) < 0; });
 
     if (iter == end || strcmp(*iter, original_string) != 0)
-      return original_string;
+      return nullptr;
 
     u32 offset = ReadU32(&m_data[m_offset_translation_table + std::distance(begin, iter) * 8 + 4]);
     return &m_data[offset];
@@ -213,7 +214,21 @@ public:
   QString translate(const char* context, const char* source_text,
                     const char* disambiguation = nullptr, int n = -1) const override
   {
-    return QString::fromUtf8(m_mo_file.Translate(source_text));
+    const char* translated_text;
+
+    if (disambiguation)
+    {
+      std::string combined_string = disambiguation;
+      combined_string += '\4';
+      combined_string += source_text;
+      translated_text = m_mo_file.Translate(combined_string.c_str());
+    }
+    else
+    {
+      translated_text = m_mo_file.Translate(source_text);
+    }
+
+    return QString::fromUtf8(translated_text ? translated_text : source_text);
   }
 
 private:
@@ -259,19 +274,17 @@ static bool TryInstallTranslator(const QString& exact_language_code)
   for (const auto& qlang : FindPossibleLanguageCodes(exact_language_code))
   {
     std::string lang = qlang.toStdString();
-    auto filename =
-#if defined _WIN32
-        File::GetExeDirectory() + StringFromFormat("/Languages/%s/dolphin-emu.mo", lang.c_str())
-#elif defined __APPLE__
-        File::GetBundleDirectory() +
-        StringFromFormat("/Contents/Resources/%s.lproj/dolphin-emu.mo", lang.c_str())
-#elif defined LINUX_LOCAL_DEV
-        File::GetExeDirectory() +
-        StringFromFormat("/../Source/Core/DolphinQt/%s/dolphin-emu.mo", lang.c_str())
+    std::string filename;
+#if defined __APPLE__
+    filename = fmt::format("{}/Contents/Resources/{}.lproj/dolphin-emu.mo",
+                           File::GetBundleDirectory(), lang);
 #else
-        StringFromFormat(DATA_DIR "/../locale/%s/LC_MESSAGES/dolphin-emu.mo", lang.c_str())
+    filename = fmt::format("{}/Languages/{}/dolphin-emu.mo", File::GetExeDirectory(), lang);
+#ifndef _WIN32
+    if (!File::Exists(filename))
+      filename = fmt::format("{}/../locale/{}/LC_MESSAGES/dolphin-emu.mo", DATA_DIR, lang);
 #endif
-        ;
+#endif
 
     auto* translator = new MoTranslator(QApplication::instance());
     if (translator->load(filename))
@@ -285,7 +298,7 @@ static bool TryInstallTranslator(const QString& exact_language_code)
     }
     translator->deleteLater();
   }
-  ERROR_LOG(COMMON, "No suitable translation file found");
+  ERROR_LOG_FMT(COMMON, "No suitable translation file found");
   return false;
 }
 
@@ -296,7 +309,7 @@ void Translation::Initialize()
       [](const char* text) { return QObject::tr(text).toStdString(); });
 
   // Hook up Qt translations
-  auto& configured_language = SConfig::GetInstance().m_InterfaceLanguage;
+  std::string configured_language = Config::Get(Config::MAIN_INTERFACE_LANGUAGE);
   if (!configured_language.empty())
   {
     if (TryInstallTranslator(QString::fromStdString(configured_language)))
@@ -305,7 +318,7 @@ void Translation::Initialize()
     ModalMessageBox::warning(
         nullptr, QObject::tr("Error"),
         QObject::tr("Error loading selected language. Falling back to system default."));
-    configured_language.clear();
+    Config::SetBase(Config::MAIN_INTERFACE_LANGUAGE, "");
   }
 
   for (const auto& lang : QLocale::system().uiLanguages())

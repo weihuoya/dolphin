@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -10,7 +9,7 @@
 
 #include "Common/CommonTypes.h"
 #include "VideoBackends/Vulkan/Constants.h"
-#include "VideoCommon/RenderBase.h"
+#include "VideoCommon/Constants.h"
 
 namespace Vulkan
 {
@@ -33,7 +32,7 @@ public:
 
   VKFramebuffer* GetFramebuffer() const { return m_framebuffer; }
   const VKPipeline* GetPipeline() const { return m_pipeline; }
-  void SetVertexBuffer(VkBuffer buffer, VkDeviceSize offset);
+  void SetVertexBuffer(VkBuffer buffer, VkDeviceSize offset, u32 size);
   void SetIndexBuffer(VkBuffer buffer, VkDeviceSize offset, VkIndexType type);
   void SetFramebuffer(VKFramebuffer* framebuffer);
   void SetPipeline(const VKPipeline* pipeline);
@@ -44,7 +43,7 @@ public:
   void SetSampler(u32 index, VkSampler sampler);
   void SetSSBO(VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range);
   void SetTexelBuffer(u32 index, VkBufferView view);
-  void SetImageTexture(VkImageView view);
+  void SetImageTexture(u32 index, VkImageView view);
 
   void UnbindTexture(VkImageView view);
 
@@ -67,7 +66,7 @@ public:
   void SetViewport(const VkViewport& viewport);
   void SetScissor(const VkRect2D& scissor);
 
-  // Binds all dirty state to the commmand buffer.
+  // Binds all dirty state to the command buffer.
   // If this returns false, you should not issue the draw.
   bool Bind();
 
@@ -117,10 +116,10 @@ private:
   // If not, ends the render pass if it is a clear render pass.
   bool IsViewportWithinRenderArea() const;
 
-  bool UpdateDescriptorSet();
-  bool UpdateGXDescriptorSet();
-  bool UpdateUtilityDescriptorSet();
-  bool UpdateComputeDescriptorSet();
+  void UpdateDescriptorSet();
+  void UpdateGXDescriptorSet();
+  void UpdateUtilityDescriptorSet();
+  void UpdateComputeDescriptorSet();
 
   // Which bindings/state has to be updated before the next draw.
   u32 m_dirty_flags = 0;
@@ -143,10 +142,11 @@ private:
     std::array<u32, NUM_UBO_DESCRIPTOR_SET_BINDINGS> gx_ubo_offsets;
     VkDescriptorBufferInfo utility_ubo_binding;
     u32 utility_ubo_offset;
-    std::array<VkDescriptorImageInfo, NUM_PIXEL_SHADER_SAMPLERS> samplers;
+    std::array<VkDescriptorImageInfo, VideoCommon::MAX_PIXEL_SHADER_SAMPLERS> samplers;
     std::array<VkBufferView, NUM_COMPUTE_TEXEL_BUFFERS> texel_buffers;
     VkDescriptorBufferInfo ssbo;
-    VkDescriptorImageInfo image_texture;
+    VkDescriptorBufferInfo gx_uber_vertex_ssbo;
+    std::array<VkDescriptorImageInfo, VideoCommon::MAX_COMPUTE_SHADER_SAMPLERS> image_textures;
   } m_bindings = {};
   std::array<VkDescriptorSet, NUM_GX_DESCRIPTOR_SETS> m_gx_descriptor_sets = {};
   std::array<VkDescriptorSet, NUM_UTILITY_DESCRIPTOR_SETS> m_utility_descriptor_sets = {};
@@ -158,6 +158,7 @@ private:
 
   // uniform buffers
   std::unique_ptr<VKTexture> m_dummy_texture;
+  std::unique_ptr<VKTexture> m_dummy_compute_texture;
 
   VKFramebuffer* m_framebuffer = nullptr;
   VkRenderPass m_current_render_pass = VK_NULL_HANDLE;

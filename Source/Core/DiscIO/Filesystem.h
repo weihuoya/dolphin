@@ -1,15 +1,12 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "Common/CommonTypes.h"
 #include "DiscIO/Volume.h"
@@ -61,7 +58,6 @@ public:
     {
       return m_file_info ? (it.m_file_info && *m_file_info == *it.m_file_info) : (!it.m_file_info);
     }
-    bool operator!=(const const_iterator& it) const { return !operator==(it); }
     // Incrementing or destroying an iterator will invalidate its returned references and
     // pointers, but will not invalidate copies of the iterator or file info object.
     const FileInfo& operator*() const { return *m_file_info.get(); }
@@ -74,7 +70,6 @@ public:
   virtual ~FileInfo();
 
   bool operator==(const FileInfo& other) const { return GetAddress() == other.GetAddress(); }
-  bool operator!=(const FileInfo& other) const { return !operator==(other); }
   virtual std::unique_ptr<FileInfo> clone() const = 0;
   virtual const_iterator cbegin() const { return begin(); }
   virtual const_iterator cend() const { return end(); }
@@ -89,6 +84,7 @@ public:
   virtual u32 GetSize() const = 0;
   // For a file, returns its size. For a directory, returns the total size of its contents.
   u64 GetTotalSize() const;
+  virtual bool IsRoot() const = 0;
   virtual bool IsDirectory() const = 0;
   // The number of files and directories in a directory, including those in subdirectories.
   // Not guaranteed to return a meaningful value for files.

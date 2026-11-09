@@ -1,18 +1,24 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <array>
+#include <atomic>
+#include <bit>
 #include <string>
 #include <tuple>
 #include <type_traits>
 
 #include "Common/Assert.h"
 #include "Common/CommonTypes.h"
-#include "Core/ConfigManager.h"
+#include "Core/HW/GPFifo.h"
 #include "Core/HW/MMIOHandlers.h"
+
+namespace Core
+{
+class System;
+}
 
 namespace MMIO
 {
@@ -40,14 +46,14 @@ const u32 NUM_MMIOS = NUM_BLOCKS * BLOCK_SIZE;
 // We have a special exception here for FIFO writes: these are handled via a
 // different mechanism and should not go through the normal MMIO access
 // interface.
-inline bool IsMMIOAddress(u32 address)
+inline bool IsMMIOAddress(u32 address, bool is_wii)
 {
-  if (address == 0x0C008000)
+  if (address == GPFifo::GATHER_PIPE_PHYSICAL_ADDRESS)
     return false;  // WG Pipe
   if ((address & 0xFFFF0000) == 0x0C000000)
     return true;  // GameCube MMIOs
 
-  if (SConfig::GetInstance().bWii)
+  if (is_wii)
   {
     return ((address & 0xFFFF0000) == 0x0D000000) ||  // Wii MMIOs
            ((address & 0xFFFF0000) == 0x0D800000);    // Mirror of Wii MMIOs
@@ -79,17 +85,19 @@ inline u16* LowPart(u32* ptr)
 {
   return (u16*)ptr;
 }
-inline u16* LowPart(volatile u32* ptr)
+inline u16* LowPart(std::atomic<u32>* ptr)
 {
-  return (u16*)ptr;
+  static_assert(std::atomic<u32>::is_always_lock_free && sizeof(std::atomic<u32>) == sizeof(u32));
+  return LowPart(std::bit_cast<u32*>(ptr));
 }
 inline u16* HighPart(u32* ptr)
 {
   return LowPart(ptr) + 1;
 }
-inline u16* HighPart(volatile u32* ptr)
+inline u16* HighPart(std::atomic<u32>* ptr)
 {
-  return LowPart(ptr) + 1;
+  static_assert(std::atomic<u32>::is_always_lock_free && sizeof(std::atomic<u32>) == sizeof(u32));
+  return HighPart(std::bit_cast<u32*>(ptr));
 }
 }  // namespace Utils
 
@@ -126,15 +134,15 @@ public:
   // called in interpreter mode, from Dolphin's own code, or from JIT'd code
   // where the access address could not be predicted.
   template <typename Unit>
-  Unit Read(u32 addr)
+  Unit Read(Core::System& system, u32 addr)
   {
-    return GetHandlerForRead<Unit>(addr).Read(addr);
+    return GetHandlerForRead<Unit>(addr).Read(system, addr);
   }
 
   template <typename Unit>
-  void Write(u32 addr, Unit val)
+  void Write(Core::System& system, u32 addr, Unit val)
   {
-    GetHandlerForWrite<Unit>(addr).Write(addr, val);
+    GetHandlerForWrite<Unit>(addr).Write(system, addr, val);
   }
 
   // Handlers access interface.
@@ -161,7 +169,7 @@ private:
   // MMIO block ID.
   //
   // Each array contains NUM_MMIOS / sizeof (AccessType) because larger
-  // access types mean less possible adresses (assuming aligned only
+  // access types mean less possible addresses (assuming aligned only
   // accesses).
   template <typename Unit>
   struct HandlerArray
@@ -209,15 +217,15 @@ private:
 // Dummy 64 bits variants of these functions. While 64 bits MMIO access is
 // not supported, we need these in order to make the code compile.
 template <>
-inline u64 Mapping::Read<u64>(u32 addr)
+inline u64 Mapping::Read<u64>(Core::System& system, u32 addr)
 {
-  DEBUG_ASSERT(0);
+  DEBUG_ASSERT(false);
   return 0;
 }
 
 template <>
-inline void Mapping::Write(u32 addr, u64 val)
+inline void Mapping::Write(Core::System& system, u32 addr, u64 val)
 {
-  DEBUG_ASSERT(0);
+  DEBUG_ASSERT(false);
 }
 }  // namespace MMIO

@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -32,13 +31,13 @@ enum class RegisterType
   int_mask,    // ???
   int_cause,   // ???
   dsisr,       // Defines the cause of data / alignment exceptions
-  dar,         // Data adress register
+  dar,         // Data address register
   pt_hashmask  // ???
 };
 
-enum class RegisterDisplay
+enum class RegisterDisplay : int
 {
-  Hex,
+  Hex = 0,
   SInt32,
   UInt32,
   Float,

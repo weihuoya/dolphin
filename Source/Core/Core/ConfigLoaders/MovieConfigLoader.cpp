@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/ConfigLoaders/MovieConfigLoader.h"
 
@@ -14,9 +13,12 @@
 #include "Core/Config/GraphicsSettings.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Config/SYSCONFSettings.h"
-#include "Core/ConfigManager.h"
+#include "Core/Config/SessionSettings.h"
+#include "Core/Config/WiimoteSettings.h"
+#include "Core/HW/SI/SI.h"
+#include "Core/HW/SI/SI_Device.h"
+#include "Core/HW/Wiimote.h"
 #include "Core/Movie.h"
-#include "VideoCommon/VideoConfig.h"
 
 namespace PowerPC
 {
@@ -40,12 +42,52 @@ static void LoadFromDTM(Config::Layer* config_layer, Movie::DTMHeader* dtm)
     config_layer->Set(Config::SYSCONF_LANGUAGE, static_cast<u32>(dtm->language));
   else
     config_layer->Set(Config::MAIN_GC_LANGUAGE, static_cast<int>(dtm->language));
+  config_layer->Set(Config::SYSCONF_WIDESCREEN, dtm->bWidescreen);
+  config_layer->Set(Config::SYSCONF_COUNTRY, dtm->countryCode);
 
   config_layer->Set(Config::GFX_HACK_EFB_ACCESS_ENABLE, dtm->bEFBAccessEnable);
   config_layer->Set(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM, dtm->bSkipEFBCopyToRam);
+  config_layer->Set(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM_CLEAR_BYTE,
+                    dtm->uSkipEFBCopyToRamClearByte);
   config_layer->Set(Config::GFX_HACK_EFB_EMULATE_FORMAT_CHANGES, dtm->bEFBEmulateFormatChanges);
   config_layer->Set(Config::GFX_HACK_IMMEDIATE_XFB, dtm->bImmediateXFB);
   config_layer->Set(Config::GFX_HACK_SKIP_XFB_COPY_TO_RAM, dtm->bSkipXFBCopyToRam);
+
+  config_layer->Set(Config::SESSION_USE_FMA, dtm->bUseFMA);
+
+  config_layer->Set(Config::MAIN_JIT_FOLLOW_BRANCH, dtm->bFollowBranch);
+
+  for (int i = 0; i < SerialInterface::MAX_SI_CHANNELS; ++i)
+  {
+    SerialInterface::SIDevices device = SerialInterface::SIDEVICE_NONE;
+    const auto config_info = Config::GetInfoForSIDevice(i);
+    if (dtm->GBAControllers & (1 << i))
+    {
+      device = SerialInterface::SIDEVICE_GC_GBA_EMULATED;
+    }
+    else if (dtm->controllers & (1 << i))
+    {
+      const SerialInterface::SIDevices si_device = Config::Get(config_info);
+      if (SerialInterface::SIDevice_IsGCController(si_device))
+      {
+        device = si_device;
+      }
+      else
+      {
+        device = (dtm->bongos & (1 << i)) != 0 ? SerialInterface::SIDEVICE_GC_TARUKONGA :
+                                                 SerialInterface::SIDEVICE_GC_CONTROLLER;
+      }
+    }
+
+    config_layer->Set(config_info, device);
+  }
+
+  for (int i = 0; i < MAX_WIIMOTES; ++i)
+  {
+    const bool is_using_wiimote = (dtm->controllers & (1 << (i + 4))) != 0;
+    config_layer->Set(Config::GetInfoForWiimoteSource(i),
+                      is_using_wiimote ? WiimoteSource::Emulated : WiimoteSource::None);
+  }
 }
 
 void SaveToDTM(Movie::DTMHeader* dtm)
@@ -63,14 +105,44 @@ void SaveToDTM(Movie::DTMHeader* dtm)
     dtm->language = Config::Get(Config::SYSCONF_LANGUAGE);
   else
     dtm->language = Config::Get(Config::MAIN_GC_LANGUAGE);
+  dtm->bWidescreen = Config::Get(Config::SYSCONF_WIDESCREEN);
+  dtm->countryCode = Config::Get(Config::SYSCONF_COUNTRY);
 
   dtm->bEFBAccessEnable = Config::Get(Config::GFX_HACK_EFB_ACCESS_ENABLE);
   dtm->bSkipEFBCopyToRam = Config::Get(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM);
+  dtm->uSkipEFBCopyToRamClearByte = Config::Get(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM_CLEAR_BYTE);
   dtm->bEFBEmulateFormatChanges = Config::Get(Config::GFX_HACK_EFB_EMULATE_FORMAT_CHANGES);
   dtm->bImmediateXFB = Config::Get(Config::GFX_HACK_IMMEDIATE_XFB);
   dtm->bSkipXFBCopyToRam = Config::Get(Config::GFX_HACK_SKIP_XFB_COPY_TO_RAM);
 
-  // This never used the regular config
+  dtm->bUseFMA = Config::Get(Config::SESSION_USE_FMA);
+
+  dtm->bFollowBranch = Config::Get(Config::MAIN_JIT_FOLLOW_BRANCH);
+
+  dtm->controllers = 0;
+  dtm->bongos = 0;
+  dtm->GBAControllers = 0;
+  for (int i = 0; i < SerialInterface::MAX_SI_CHANNELS; ++i)
+  {
+    const SerialInterface::SIDevices si_device = Config::Get(Config::GetInfoForSIDevice(i));
+    if (si_device != SerialInterface::SIDEVICE_NONE)
+      dtm->controllers |= 1 << i;
+
+    if (si_device == SerialInterface::SIDEVICE_GC_GBA_EMULATED)
+      dtm->GBAControllers |= 1 << i;
+    else if (si_device == SerialInterface::SIDEVICE_GC_TARUKONGA)
+      dtm->bongos |= 1 << i;
+  }
+  if (dtm->bWii)
+  {
+    for (int i = 0; i < MAX_WIIMOTES; ++i)
+    {
+      if (Config::Get(Config::GetInfoForWiimoteSource(i)) != WiimoteSource::None)
+        dtm->controllers |= 1 << (i + 4);
+    }
+  }
+
+  // Settings which only existed in old Dolphin versions
   dtm->bSkipIdle = true;
   dtm->bEFBCopyEnable = true;
   dtm->bEFBCopyCacheEnable = false;

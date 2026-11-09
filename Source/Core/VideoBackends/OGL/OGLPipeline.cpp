@@ -1,14 +1,13 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
-
-#include "Common/Assert.h"
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoBackends/OGL/OGLPipeline.h"
+
+#include <utility>
+
 #include "VideoBackends/OGL/OGLShader.h"
+#include "VideoBackends/OGL/OGLVertexManager.h"
 #include "VideoBackends/OGL/ProgramShaderCache.h"
-#include "VideoBackends/OGL/Render.h"
-#include "VideoBackends/OGL/VertexManager.h"
 #include "VideoCommon/VideoConfig.h"
 
 namespace OGL
@@ -29,13 +28,13 @@ static GLenum MapToGLPrimitive(PrimitiveType primitive_type)
     return 0;
   }
 }
-OGLPipeline::OGLPipeline(const GLVertexFormat* vertex_format,
-                         const RasterizationState& rasterization_state,
-                         const DepthState& depth_state, const BlendingState& blending_state,
-                         PipelineProgram* program, GLuint gl_primitive)
-    : m_vertex_format(vertex_format), m_rasterization_state(rasterization_state),
-      m_depth_state(depth_state), m_blending_state(blending_state), m_program(program),
-      m_gl_primitive(gl_primitive)
+OGLPipeline::OGLPipeline(const AbstractPipelineConfig& config, const GLVertexFormat* vertex_format,
+                         RasterizationState rasterization_state, DepthState depth_state,
+                         BlendingState blending_state, PipelineProgram* program,
+                         GLuint gl_primitive)
+    : AbstractPipeline(config), m_vertex_format(vertex_format),
+      m_rasterization_state(std::move(rasterization_state)), m_depth_state(std::move(depth_state)),
+      m_blending_state(std::move(blending_state)), m_program(program), m_gl_primitive(gl_primitive)
 {
 }
 
@@ -51,7 +50,7 @@ AbstractPipeline::CacheData OGLPipeline::GetCacheData() const
   // copies of the same program combination, we set a flag on the program object so that it can't
   // be retrieved again. When booting, the pipeline cache is loaded in-order, so the additional
   // pipelines which use the program combination will re-use the already-created object.
-  if (!g_ActiveConfig.backend_info.bSupportsPipelineCacheData || m_program->binary_retrieved)
+  if (!g_backend_info.bSupportsPipelineCacheData || m_program->binary_retrieved)
     return {};
 
   GLint program_size = 0;
@@ -91,7 +90,7 @@ std::unique_ptr<OGLPipeline> OGLPipeline::Create(const AbstractPipelineConfig& c
 
   const GLVertexFormat* vertex_format = static_cast<const GLVertexFormat*>(config.vertex_format);
   GLenum gl_primitive = MapToGLPrimitive(config.rasterization_state.primitive);
-  return std::make_unique<OGLPipeline>(vertex_format, config.rasterization_state,
+  return std::make_unique<OGLPipeline>(config, vertex_format, config.rasterization_state,
                                        config.depth_state, config.blending_state, program,
                                        gl_primitive);
 }

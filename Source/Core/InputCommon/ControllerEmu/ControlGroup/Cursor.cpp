@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "InputCommon/ControllerEmu/ControlGroup/Cursor.h"
 
@@ -15,26 +14,24 @@
 
 #include "InputCommon/ControlReference/ControlReference.h"
 #include "InputCommon/ControllerEmu/Control/Control.h"
-#include "InputCommon/ControllerEmu/Control/Input.h"
 #include "InputCommon/ControllerEmu/ControllerEmu.h"
 #include "InputCommon/ControllerEmu/Setting/NumericSetting.h"
 
 namespace ControllerEmu
 {
-Cursor::Cursor(std::string name, std::string ui_name)
-    : ReshapableInput(std::move(name), std::move(ui_name), GroupType::Cursor),
+Cursor::Cursor(std::string name_, std::string ui_name_)
+    : ReshapableInput(std::move(name_), std::move(ui_name_), GroupType::Cursor),
       m_last_update(Clock::now())
 {
   for (auto& named_direction : named_directions)
-    controls.emplace_back(std::make_unique<Input>(Translate, named_direction));
+    AddInput(Translatability::Translate, named_direction);
 
-  controls.emplace_back(std::make_unique<Input>(Translate, _trans("Hide")));
-  controls.emplace_back(std::make_unique<Input>(Translate, _trans("Recenter")));
+  AddInput(Translatability::Translate, _trans("Hide"));
+  AddInput(Translatability::Translate, _trans("Recenter"));
 
-  controls.emplace_back(std::make_unique<Input>(Translate, _trans("Relative Input Hold")));
+  AddInput(Translatability::Translate, _trans("Relative Input Hold"));
 
-  // Default values are optimized for "Super Mario Galaxy 2".
-  // This seems to be acceptable for a good number of games.
+  // Default values chosen to reach screen edges in most games including the Wii Menu.
 
   AddSetting(&m_vertical_offset_setting,
              // i18n: Refers to a positional offset applied to an emulated wiimote.
@@ -50,7 +47,7 @@ Cursor::Cursor(std::string name, std::string ui_name)
               _trans("°"),
               // i18n: Refers to emulated wii remote movements.
               _trans("Total rotation about the yaw axis.")},
-             15, 0, 180);
+             25, 0, 360);
 
   AddSetting(&m_pitch_setting,
              // i18n: Refers to an amount of rotational movement about the "pitch" axis.
@@ -59,16 +56,16 @@ Cursor::Cursor(std::string name, std::string ui_name)
               _trans("°"),
               // i18n: Refers to emulated wii remote movements.
               _trans("Total rotation about the pitch axis.")},
-             15, 0, 180);
+             20, 0, 360);
 
   AddSetting(&m_relative_setting, {_trans("Relative Input")}, false);
   AddSetting(&m_autohide_setting, {_trans("Auto-Hide")}, false);
 }
 
-Cursor::ReshapeData Cursor::GetReshapableState(bool adjusted)
+Cursor::ReshapeData Cursor::GetReshapableState(bool adjusted) const
 {
-  const ControlState y = controls[0]->control_ref->State() - controls[1]->control_ref->State();
-  const ControlState x = controls[3]->control_ref->State() - controls[2]->control_ref->State();
+  const ControlState y = controls[0]->GetState() - controls[1]->GetState();
+  const ControlState x = controls[3]->GetState() - controls[2]->GetState();
 
   // Return raw values. (used in UI)
   if (!adjusted)
@@ -84,15 +81,28 @@ ControlState Cursor::GetGateRadiusAtAngle(double ang) const
 
 Cursor::StateData Cursor::GetState(const bool adjusted)
 {
-  if (!adjusted)
-  {
-    const auto raw_input = GetReshapableState(false);
+  const ReshapeData input = GetReshapableState(adjusted);
+  const StateData state = adjusted ? UpdateState(input) : StateData{input.x, input.y};
+  return state;
+}
 
-    return {raw_input.x, raw_input.y};
-  }
+Cursor::StateData Cursor::GetState(const bool adjusted,
+                                   const ControllerEmu::InputOverrideFunction& override_func)
+{
+  StateData state = GetState(adjusted);
+  if (!override_func)
+    return state;
 
-  const auto input = GetReshapableState(true);
+  if (const std::optional<ControlState> x_override = override_func(name, X_INPUT_OVERRIDE, state.x))
+    state.x = *x_override;
+  if (const std::optional<ControlState> y_override = override_func(name, Y_INPUT_OVERRIDE, state.y))
+    state.y = *y_override;
 
+  return state;
+}
+
+Cursor::StateData Cursor::UpdateState(Cursor::ReshapeData input)
+{
   // TODO: Using system time is ugly.
   // Kill this after state is moved into wiimote rather than this class.
   const auto now = Clock::now();
@@ -103,10 +113,10 @@ Cursor::StateData Cursor::GetState(const bool adjusted)
   const double max_step = STEP_PER_SEC / 1000.0 * ms_since_update;
 
   // Relative input:
-  if (m_relative_setting.GetValue() ^ (controls[6]->control_ref->State() > BUTTON_THRESHOLD))
+  if (m_relative_setting.GetValue() ^ (controls[6]->GetState<bool>()))
   {
     // Recenter:
-    if (controls[5]->control_ref->State() > BUTTON_THRESHOLD)
+    if (controls[5]->GetState<bool>())
     {
       m_state.x = 0.0;
       m_state.y = 0.0;
@@ -142,8 +152,11 @@ Cursor::StateData Cursor::GetState(const bool adjusted)
 
   m_prev_result = result;
 
-  // If auto-hide time is up or hide button is held:
-  if (!m_auto_hide_timer || controls[4]->control_ref->State() > BUTTON_THRESHOLD)
+  // If auto-hide time is up, the hide button is held, or the input gate is disabled, hide the
+  // cursor.  We need to check the input gate explicitly as the hide button check always returns
+  // false if the input gate is disabled (e.g. the window is not focused with background input
+  // disabled)
+  if (!m_auto_hide_timer || !ControlReference::GetInputGate() || controls[4]->GetState<bool>())
   {
     result.x = std::numeric_limits<ControlState>::quiet_NaN();
     result.y = 0;
@@ -154,17 +167,22 @@ Cursor::StateData Cursor::GetState(const bool adjusted)
 
 ControlState Cursor::GetTotalYaw() const
 {
-  return m_yaw_setting.GetValue() * MathUtil::TAU / 360;
+  return MathUtil::DegreesToRadians(m_yaw_setting.GetValue());
 }
 
 ControlState Cursor::GetTotalPitch() const
 {
-  return m_pitch_setting.GetValue() * MathUtil::TAU / 360;
+  return MathUtil::DegreesToRadians(m_pitch_setting.GetValue());
 }
 
 ControlState Cursor::GetVerticalOffset() const
 {
   return m_vertical_offset_setting.GetValue() / 100;
+}
+
+void Cursor::SetRelativeInput(bool value)
+{
+  m_relative_setting.SetValue(value);
 }
 
 bool Cursor::StateData::IsVisible() const

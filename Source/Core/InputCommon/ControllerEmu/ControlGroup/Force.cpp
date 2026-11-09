@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "InputCommon/ControllerEmu/ControlGroup/Force.h"
 
@@ -9,8 +8,6 @@
 #include "Common/Common.h"
 #include "Common/MathUtil.h"
 
-#include "InputCommon/ControlReference/ControlReference.h"
-#include "InputCommon/ControllerEmu/Control/Input.h"
 #include "InputCommon/ControllerEmu/ControllerEmu.h"
 #include "InputCommon/ControllerEmu/Setting/NumericSetting.h"
 
@@ -18,18 +15,18 @@ namespace ControllerEmu
 {
 Force::Force(const std::string& name_) : ReshapableInput(name_, name_, GroupType::Force)
 {
-  controls.emplace_back(std::make_unique<Input>(Translate, _trans("Up")));
-  controls.emplace_back(std::make_unique<Input>(Translate, _trans("Down")));
-  controls.emplace_back(std::make_unique<Input>(Translate, _trans("Left")));
-  controls.emplace_back(std::make_unique<Input>(Translate, _trans("Right")));
-  controls.emplace_back(std::make_unique<Input>(Translate, _trans("Forward")));
-  controls.emplace_back(std::make_unique<Input>(Translate, _trans("Backward")));
+  AddInput(Translatability::Translate, _trans("Up"));
+  AddInput(Translatability::Translate, _trans("Down"));
+  AddInput(Translatability::Translate, _trans("Left"));
+  AddInput(Translatability::Translate, _trans("Right"));
+  AddInput(Translatability::Translate, _trans("Forward"));
+  AddInput(Translatability::Translate, _trans("Backward"));
 
   AddSetting(&m_distance_setting,
              {_trans("Distance"),
               // i18n: The symbol/abbreviation for centimeters.
               _trans("cm"),
-              // i18n: Refering to emulated wii remote swing movement.
+              // i18n: Referring to emulated wii remote swing movement.
               _trans("Distance of travel from neutral position.")},
              50, 1, 100);
 
@@ -43,7 +40,7 @@ Force::Force(const std::string& name_) : ReshapableInput(name_, name_, GroupType
              {_trans("Speed"),
               // i18n: The symbol/abbreviation for meters per second.
               _trans("m/s"),
-              // i18n: Refering to emulated wii remote swing movement.
+              // i18n: Referring to emulated wii remote swing movement.
               _trans("Peak velocity of outward swing movements.")},
              16, 1, 40);
 
@@ -52,7 +49,7 @@ Force::Force(const std::string& name_) : ReshapableInput(name_, name_, GroupType
              {_trans("Return Speed"),
               // i18n: The symbol/abbreviation for meters per second.
               _trans("m/s"),
-              // i18n: Refering to emulated wii remote swing movement.
+              // i18n: Referring to emulated wii remote swing movement.
               _trans("Peak velocity of movements to neutral position.")},
              2, 1, 40);
 
@@ -60,15 +57,15 @@ Force::Force(const std::string& name_) : ReshapableInput(name_, name_, GroupType
              {_trans("Angle"),
               // i18n: The symbol/abbreviation for degrees (unit of angular measure).
               _trans("°"),
-              // i18n: Refering to emulated wii remote swing movement.
+              // i18n: Referring to emulated wii remote swing movement.
               _trans("Rotation applied at extremities of swing.")},
              90, 1, 180);
 }
 
-Force::ReshapeData Force::GetReshapableState(bool adjusted)
+Force::ReshapeData Force::GetReshapableState(bool adjusted) const
 {
-  const ControlState y = controls[0]->control_ref->State() - controls[1]->control_ref->State();
-  const ControlState x = controls[3]->control_ref->State() - controls[2]->control_ref->State();
+  const ControlState y = controls[0]->GetState() - controls[1]->GetState();
+  const ControlState x = controls[3]->GetState() - controls[2]->GetState();
 
   // Return raw values. (used in UI)
   if (!adjusted)
@@ -77,10 +74,10 @@ Force::ReshapeData Force::GetReshapableState(bool adjusted)
   return Reshape(x, y);
 }
 
-Force::StateData Force::GetState(bool adjusted)
+Force::StateData Force::GetState(bool adjusted) const
 {
   const auto state = GetReshapableState(adjusted);
-  ControlState z = controls[4]->control_ref->State() - controls[5]->control_ref->State();
+  ControlState z = controls[4]->GetState() - controls[5]->GetState();
 
   if (adjusted)
   {
@@ -109,7 +106,7 @@ ControlState Force::GetReturnSpeed() const
 
 ControlState Force::GetTwistAngle() const
 {
-  return m_angle_setting.GetValue() * MathUtil::TAU / 360;
+  return MathUtil::DegreesToRadians(m_angle_setting.GetValue());
 }
 
 ControlState Force::GetMaxDistance() const
@@ -127,11 +124,11 @@ Shake::Shake(const std::string& name_, ControlState default_intensity_scale)
     : ControlGroup(name_, name_, GroupType::Shake)
 {
   // i18n: Refers to a 3D axis (used when mapping motion controls)
-  controls.emplace_back(new ControllerEmu::Input(ControllerEmu::Translate, _trans("X")));
+  AddInput(Translatability::Translate, _trans("X"));
   // i18n: Refers to a 3D axis (used when mapping motion controls)
-  controls.emplace_back(new ControllerEmu::Input(ControllerEmu::Translate, _trans("Y")));
+  AddInput(Translatability::Translate, _trans("Y"));
   // i18n: Refers to a 3D axis (used when mapping motion controls)
-  controls.emplace_back(new ControllerEmu::Input(ControllerEmu::Translate, _trans("Z")));
+  AddInput(Translatability::Translate, _trans("Z"));
 
   AddDeadzoneSetting(&m_deadzone_setting, 50);
 
@@ -142,7 +139,7 @@ Shake::Shake(const std::string& name_, ControlState default_intensity_scale)
              {_trans("Intensity"),
               // i18n: The symbol/abbreviation for centimeters.
               _trans("cm"),
-              // i18n: Refering to emulated wii remote movement.
+              // i18n: Referring to emulated wii remote movement.
               _trans("Total travel distance.")},
              10 * default_intensity_scale, -50, 50);
 
@@ -152,16 +149,16 @@ Shake::Shake(const std::string& name_, ControlState default_intensity_scale)
              {_trans("Frequency"),
               // i18n: The symbol/abbreviation for hertz (cycles per second).
               _trans("Hz"),
-              // i18n: Refering to emulated wii remote movement.
+              // i18n: Referring to emulated wii remote movement.
               _trans("Number of shakes per second.")},
              6, 1, 20);
 }
 
 Shake::StateData Shake::GetState(bool adjusted) const
 {
-  const float x = controls[0]->control_ref->State();
-  const float y = controls[1]->control_ref->State();
-  const float z = controls[2]->control_ref->State();
+  const float x = controls[0]->GetState();
+  const float y = controls[1]->GetState();
+  const float z = controls[2]->GetState();
 
   StateData result = {x, y, z};
 

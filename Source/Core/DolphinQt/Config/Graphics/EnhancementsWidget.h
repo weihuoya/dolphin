@@ -1,54 +1,71 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
-#include "DolphinQt/Config/Graphics/GraphicsWidget.h"
+#include <QWidget>
 
-class GraphicsWindow;
-class QCheckBox;
-class QComboBox;
+class ConfigBool;
+class ConfigChoice;
+class ConfigComplexChoice;
+class ConfigStringChoice;
+class ConfigFloatSlider;
+class GraphicsPane;
 class QPushButton;
-class QSlider;
+class QLabel;
+class ToolTipPushButton;
 
-class EnhancementsWidget final : public GraphicsWidget
+namespace Config
+{
+template <typename T>
+class Info;
+class Layer;
+}  // namespace Config
+
+class EnhancementsWidget final : public QWidget
 {
   Q_OBJECT
 public:
-  explicit EnhancementsWidget(GraphicsWindow* parent);
+  explicit EnhancementsWidget(GraphicsPane* gfx_pane);
 
 private:
-  void LoadSettings() override;
-  void SaveSettings() override;
-
   void CreateWidgets();
   void ConnectWidgets();
   void AddDescriptions();
+
+  void OnBackendChanged();
+  void UpdateAntialiasingOptions();
+  void LoadPostProcessingShaders();
+  void ShaderChanged();
+
+  void ConfigureColorCorrection();
   void ConfigurePostProcessingShader();
-  void LoadPPShaders();
 
   // Enhancements
-  QComboBox* m_ir_combo;
-  QComboBox* m_aa_combo;
-  QComboBox* m_af_combo;
-  QComboBox* m_pp_effect;
-  QPushButton* m_configure_pp_effect;
-  QCheckBox* m_scaled_efb_copy;
-  QCheckBox* m_per_pixel_lighting;
-  QCheckBox* m_force_texture_filtering;
-  QCheckBox* m_widescreen_hack;
-  QCheckBox* m_disable_fog;
-  QCheckBox* m_force_24bit_color;
-  QCheckBox* m_disable_copy_filter;
-  QCheckBox* m_arbitrary_mipmap_detection;
+  ConfigChoice* m_ir_combo;
+  ConfigComplexChoice* m_antialiasing_combo;
+  ConfigComplexChoice* m_texture_filtering_combo;
+  ConfigChoice* m_output_resampling_combo;
+  ConfigStringChoice* m_post_processing_effect;
+  ToolTipPushButton* m_configure_color_correction;
+  QPushButton* m_configure_post_processing_effect;
+  ConfigBool* m_scaled_efb_copy;
+  ConfigBool* m_per_pixel_lighting;
+  ConfigBool* m_widescreen_hack;
+  ConfigBool* m_disable_fog;
+  ConfigBool* m_force_24bit_color;
+  ConfigBool* m_disable_copy_filter;
+  ConfigBool* m_arbitrary_mipmap_detection;
+  ConfigBool* m_hdr;
 
   // Stereoscopy
-  QComboBox* m_3d_mode;
-  QSlider* m_3d_depth;
-  QSlider* m_3d_convergence;
-  QCheckBox* m_3d_swap_eyes;
+  ConfigChoice* m_3d_mode;
+  ConfigFloatSlider* m_3d_depth;
+  QLabel* m_3d_depth_value;
+  ConfigFloatSlider* m_3d_convergence;
+  QLabel* m_3d_convergence_value;
+  ConfigBool* m_3d_swap_eyes;
+  ConfigBool* m_3d_per_eye_resolution;
 
-  int m_msaa_modes;
-  bool m_block_save;
+  Config::Layer* m_game_layer = nullptr;
 };

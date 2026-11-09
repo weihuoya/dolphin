@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/GameList/GridProxyModel.h"
 
@@ -19,8 +18,7 @@ const QSize LARGE_BANNER_SIZE(144, 48);
 
 GridProxyModel::GridProxyModel(QObject* parent) : QSortFilterProxyModel(parent)
 {
-  setSortCaseSensitivity(Qt::CaseInsensitive);
-  sort(GameListModel::COL_TITLE);
+  setDynamicSortFilter(true);
 }
 
 QVariant GridProxyModel::data(const QModelIndex& i, int role) const
@@ -28,8 +26,9 @@ QVariant GridProxyModel::data(const QModelIndex& i, int role) const
   QModelIndex source_index = mapToSource(i);
   if (role == Qt::DisplayRole)
   {
-    return sourceModel()->data(sourceModel()->index(source_index.row(), GameListModel::COL_TITLE),
-                               Qt::DisplayRole);
+    return sourceModel()->data(
+        sourceModel()->index(source_index.row(), static_cast<int>(GameListModel::Column::Title)),
+        Qt::DisplayRole);
   }
   else if (role == Qt::DecorationRole)
   {
@@ -43,7 +42,8 @@ QVariant GridProxyModel::data(const QModelIndex& i, int role) const
     if (buffer.empty() || !Config::Get(Config::MAIN_USE_GAME_COVERS))
     {
       QPixmap banner = model
-                           ->data(model->index(source_index.row(), GameListModel::COL_BANNER),
+                           ->data(model->index(source_index.row(),
+                                               static_cast<int>(GameListModel::Column::Banner)),
                                   Qt::DecorationRole)
                            .value<QPixmap>();
 
@@ -74,4 +74,25 @@ bool GridProxyModel::filterAcceptsRow(int source_row, const QModelIndex& source_
 {
   GameListModel* glm = qobject_cast<GameListModel*>(sourceModel());
   return glm->ShouldDisplayGameListItem(source_row);
+}
+
+bool GridProxyModel::lessThan(const QModelIndex& left, const QModelIndex& right) const
+{
+  if (left.data(GameListModel::SORT_ROLE) != right.data(GameListModel::SORT_ROLE))
+    return QSortFilterProxyModel::lessThan(left, right);
+
+  // If two items are otherwise equal, compare them by their title
+  const auto right_title = sourceModel()
+                               ->index(right.row(), static_cast<int>(GameListModel::Column::Title))
+                               .data()
+                               .toString();
+  const auto left_title = sourceModel()
+                              ->index(left.row(), static_cast<int>(GameListModel::Column::Title))
+                              .data()
+                              .toString();
+
+  if (sortOrder() == Qt::AscendingOrder)
+    return left_title < right_title;
+
+  return right_title < left_title;
 }

@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -10,6 +9,11 @@
 #include "Common/CommonTypes.h"
 #include "Core/HW/DSPHLE/UCodes/UCodes.h"
 
+namespace Core
+{
+class System;
+}
+
 namespace DSP::HLE
 {
 class DSPHLE;
@@ -17,6 +21,13 @@ class DSPHLE;
 class ZeldaAudioRenderer
 {
 public:
+  explicit ZeldaAudioRenderer(Core::System& system);
+  ZeldaAudioRenderer(const ZeldaAudioRenderer&) = delete;
+  ZeldaAudioRenderer(ZeldaAudioRenderer&&) = delete;
+  ZeldaAudioRenderer& operator=(const ZeldaAudioRenderer&) = delete;
+  ZeldaAudioRenderer& operator=(ZeldaAudioRenderer&&) = delete;
+  ~ZeldaAudioRenderer();
+
   void PrepareFrame();
   void AddVoice(u16 voice_id);
   void FinalizeFrame();
@@ -45,7 +56,7 @@ private:
   // Apply volume to a buffer. The volume is a fixed point integer, usually
   // 1.15 or 4.12 in the DAC UCode.
   template <size_t N, size_t B>
-  void ApplyVolumeInPlace(std::array<s16, N>* buf, u16 vol)
+  static void ApplyVolumeInPlace(std::array<s16, N>* buf, u16 vol)
   {
     for (size_t i = 0; i < N; ++i)
     {
@@ -72,8 +83,8 @@ private:
   // Note: On a real GC, the stepping happens in 32 steps instead. But hey,
   // we can do better here with very low risk. Why not? :)
   template <size_t N>
-  s32 AddBuffersWithVolumeRamp(std::array<s16, N>* dst, const std::array<s16, N>& src, s32 vol,
-                               s32 step)
+  static s32 AddBuffersWithVolumeRamp(std::array<s16, N>* dst, const std::array<s16, N>& src,
+                                      s32 vol, s32 step)
   {
     if (!vol && !step)
       return vol;
@@ -89,7 +100,7 @@ private:
 
   // Does not use std::array because it needs to be able to process partial
   // buffers. Volume is in 1.15 format.
-  void AddBuffersWithVolume(s16* dst, const s16* src, size_t count, u16 vol)
+  static void AddBuffersWithVolume(s16* dst, const s16* src, size_t count, u16 vol)
   {
     while (count--)
     {
@@ -146,7 +157,7 @@ private:
 
   // Raw samples (pre-resampling) that need to be generated to result in 0x50
   // post-resampling input samples.
-  u16 NeededRawSamplesCount(const VPB& vpb);
+  static u16 NeededRawSamplesCount(const VPB& vpb);
 
   // Resamples raw samples to 0x50 input samples, using the resampling ratio
   // and current position information from the VPB.
@@ -155,11 +166,8 @@ private:
   // Coefficients used for resampling.
   std::array<s16, 0x100> m_resampling_coeffs{};
 
-  // If non zero, base MRAM address for sound data transfers from ARAM. On
-  // the Wii, this points to some MRAM location since there is no ARAM to be
-  // used. If zero, use the top of ARAM.
+  // On the Wii, base address of the MRAM or ExRAM region replacing ARAM.
   u32 m_aram_base_addr = 0;
-  void* GetARAMPtr() const;
 
   // Downloads PCM encoded samples from ARAM. Handles looping and other
   // parameters appropriately.
@@ -176,6 +184,9 @@ private:
   // behavior.
   void DownloadRawSamplesFromMRAM(s16* dst, VPB* vpb, u16 requested_samples_count);
 
+  static void ApplyLowPassFilter(MixingBuffer* buf, VPB* vpb);
+  static void ApplyBiquadFilter(MixingBuffer* buf, VPB* vpb);
+
   // Applies the reverb effect to Dolby mixed voices based on a set of
   // per-buffer parameters. Is called twice: once before frame rendering and
   // once after.
@@ -186,13 +197,14 @@ private:
   std::array<s16, 8> m_buf_front_left_reverb_last8{};
   std::array<s16, 8> m_buf_front_right_reverb_last8{};
   u32 m_reverb_pb_base_addr = 0;
+
+  Core::System& m_system;
 };
 
-class ZeldaUCode : public UCodeInterface
+class ZeldaUCode final : public UCodeInterface
 {
 public:
   ZeldaUCode(DSPHLE* dsphle, u32 crc);
-  ~ZeldaUCode() override;
 
   void Initialize() override;
   void HandleMail(u32 mail) override;

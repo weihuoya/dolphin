@@ -1,14 +1,13 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <QWidget>
 
+class ConfigText;
 class QGridLayout;
 class QGroupBox;
-class QLineEdit;
 class QListWidget;
 class QPushButton;
 
@@ -23,19 +22,20 @@ private:
   void BrowseDefaultGame();
   void BrowseWiiNAND();
   void BrowseDump();
-  void BrowseSDCard();
+  void BrowseLoad();
+  void BrowseResourcePack();
+  void BrowseWFS();
   QGroupBox* MakeGameFolderBox();
   QGridLayout* MakePathsLayout();
   void RemovePath();
 
-  void OnSDCardPathChanged();
-  void OnNANDPathChanged();
-
   QListWidget* m_path_list;
-  QLineEdit* m_game_edit;
-  QLineEdit* m_nand_edit;
-  QLineEdit* m_dump_edit;
-  QLineEdit* m_sdcard_edit;
+  ConfigText* m_game_edit;
+  ConfigText* m_nand_edit;
+  ConfigText* m_dump_edit;
+  ConfigText* m_load_edit;
+  ConfigText* m_resource_pack_edit;
+  ConfigText* m_wfs_edit;
 
   QPushButton* m_remove_path;
 };

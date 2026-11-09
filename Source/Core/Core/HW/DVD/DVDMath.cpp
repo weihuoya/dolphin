@@ -1,10 +1,8 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/DVD/DVDMath.h"
 
-#include <cinttypes>
 #include <cmath>
 
 #include "Common/CommonTypes.h"
@@ -54,7 +52,7 @@ constexpr double LONG_SEEK_VELOCITY_INVERSE = 4.5;  // inverse: s/m
 // In practice this yields good-enough numbers as a more exact formula
 // involving the integral over a polar equation (too complex to describe here)
 // or the approximation of a DVD as a set of concentric circles (which is a
-// better approximation, but makes futher derivations more complicated than
+// better approximation, but makes further derivations more complicated than
 // they need to be).
 //
 // From the area approximation, we end up with this formula:
@@ -151,7 +149,7 @@ double CalculateRotationalLatency(u64 offset, double time, bool wii_disc)
 
   const double result = angle_diff / MAX_ANGLE / rotations_per_second;
 
-  DEBUG_LOG(DVDINTERFACE, "Rotational latency: %lf ms", result * 1000);
+  DEBUG_LOG_FMT(DVDINTERFACE, "Rotational latency: {} ms", result * 1000);
 
   return result;
 }
@@ -183,8 +181,8 @@ double CalculateRawDiscReadTime(u64 offset, u64 length, bool wii_disc)
             GC_DISC_INNER_READ_SPEED;
   }
 
-  DEBUG_LOG(DVDINTERFACE, "Read 0x%" PRIx64 " @ 0x%" PRIx64 " @%lf mm: %lf us, %lf MiB/s", length,
-            offset, physical_offset * 1000, length / speed * 1000 * 1000, speed / 1024 / 1024);
+  DEBUG_LOG_FMT(DVDINTERFACE, "Read {:#x} @ {:#x} @{} mm: {} us, {} MiB/s", length, offset,
+                physical_offset * 1000, length / speed * 1000 * 1000, speed / 1024 / 1024);
 
   return length / speed;
 }

@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,87 +7,45 @@
 
 namespace DSP::HLE
 {
+struct VolumeData
+{
+  u16 volume;
+  u16 volume_delta;
+};
+
 struct PBMixer
 {
-  u16 left;
-  u16 left_delta;
-  u16 right;
-  u16 right_delta;
-
-  u16 auxA_left;
-  u16 auxA_left_delta;
-  u16 auxA_right;
-  u16 auxA_right_delta;
-
-  u16 auxB_left;
-  u16 auxB_left_delta;
-  u16 auxB_right;
-  u16 auxB_right_delta;
-
-  u16 auxB_surround;
-  u16 auxB_surround_delta;
-  u16 surround;
-  u16 surround_delta;
-  u16 auxA_surround;
-  u16 auxA_surround_delta;
+  VolumeData main_left, main_right;
+  VolumeData auxA_left, auxA_right;
+  VolumeData auxB_left, auxB_right;
+  // This somewhat strange-looking order of surround channels
+  // allows the ucode to use the 2-channel IROM function mix_two_add()
+  // when mixing (auxb_s and main_s) or (main_s and auxa_s).
+  VolumeData auxB_surround;
+  VolumeData main_surround;
+  VolumeData auxA_surround;
 };
 
 struct PBMixerWii
 {
-  // volume mixing values in .15, 0x8000 = ca. 1.0
-  u16 left;
-  u16 left_delta;
-  u16 right;
-  u16 right_delta;
-
-  u16 auxA_left;
-  u16 auxA_left_delta;
-  u16 auxA_right;
-  u16 auxA_right_delta;
-
-  u16 auxB_left;
-  u16 auxB_left_delta;
-  u16 auxB_right;
-  u16 auxB_right_delta;
-
+  VolumeData main_left, main_right;
+  VolumeData auxA_left, auxA_right;
+  VolumeData auxB_left, auxB_right;
   // Note: the following elements usage changes a little in DPL2 mode
   // TODO: implement and comment it in the mixer
-  u16 auxC_left;
-  u16 auxC_left_delta;
-  u16 auxC_right;
-  u16 auxC_right_delta;
-
-  u16 surround;
-  u16 surround_delta;
-  u16 auxA_surround;
-  u16 auxA_surround_delta;
-  u16 auxB_surround;
-  u16 auxB_surround_delta;
-  u16 auxC_surround;
-  u16 auxC_surround_delta;
+  VolumeData auxC_left, auxC_right;
+  VolumeData main_surround;
+  VolumeData auxA_surround;
+  VolumeData auxB_surround;
+  VolumeData auxC_surround;
 };
 
 struct PBMixerWM
 {
-  u16 main0;
-  u16 main0_delta;
-  u16 aux0;
-  u16 aux0_delta;
-
-  u16 main1;
-  u16 main1_delta;
-  u16 aux1;
-  u16 aux1_delta;
-
-  u16 main2;
-  u16 main2_delta;
-  u16 aux2;
-  u16 aux2_delta;
-
-  u16 main3;
-  u16 main3_delta;
-  u16 aux3;
-  u16 aux3_delta;
+  VolumeData main0, aux0;
+  VolumeData main1, aux1;
+  VolumeData main2, aux2;
+  VolumeData main3, aux3;
 };
 
 struct PBInitialTimeDelay
@@ -102,6 +59,13 @@ struct PBInitialTimeDelay
   u16 targetRight;
 };
 
+struct PBUpdate
+{
+  u16 pb_offset;
+  u16 new_value;
+};
+using PBUpdateData = std::array<PBUpdate, 32>;
+
 // Update data - read these each 1ms subframe and use them!
 // It seems that to provide higher time precisions for MIDI events, some games
 // use this thing to update the parameter blocks per 1ms sub-block (a block is 5ms).
@@ -109,7 +73,15 @@ struct PBInitialTimeDelay
 struct PBUpdates
 {
   u16 num_updates[5];
-  u16 data_hi;  // These point to main RAM. Not sure about the structure of the data.
+  u16 data_hi;  // These point to main RAM.
+  u16 data_lo;
+};
+
+// Same for Wii, where frames are only 3 ms.
+struct PBUpdatesWii
+{
+  u16 num_updates[3];
+  u16 data_hi;
   u16 data_lo;
 };
 
@@ -118,32 +90,32 @@ struct PBUpdates
 // and ramped down on a per-sample basis to provide a gentle "roll off."
 struct PBDpop
 {
-  s16 left;
+  s16 main_left;
   s16 auxA_left;
   s16 auxB_left;
 
-  s16 right;
+  s16 main_right;
   s16 auxA_right;
   s16 auxB_right;
 
-  s16 surround;
+  s16 main_surround;
   s16 auxA_surround;
   s16 auxB_surround;
 };
 
 struct PBDpopWii
 {
-  s16 left;
+  s16 main_left;
   s16 auxA_left;
   s16 auxB_left;
   s16 auxC_left;
 
-  s16 right;
+  s16 main_right;
   s16 auxA_right;
   s16 auxB_right;
   s16 auxC_right;
 
-  s16 surround;
+  s16 main_surround;
   s16 auxA_surround;
   s16 auxB_surround;
   s16 auxC_surround;
@@ -164,7 +136,7 @@ struct PBDpopWM
 
 struct PBVolumeEnvelope
 {
-  u16 cur_volume;        // Volume at start of frame
+  s16 cur_volume;        // Volume at start of frame
   s16 cur_volume_delta;  // Signed per sample delta (96 samples per frame)
 };
 
@@ -220,10 +192,10 @@ struct PBADPCMLoopInfo
 
 struct PBLowPassFilter
 {
-  u16 enabled;
+  u16 on;
   s16 yn1;
   u16 a0;
-  u16 b0;
+  s16 b0;
 };
 
 struct AXPB
@@ -237,8 +209,8 @@ struct AXPB
   u16 coef_select;
   u16 mixer_control;
 
-  u16 running;    // 1=RUN 0=STOP
-  u16 is_stream;  // 1 = stream, 0 = one shot
+  u16 running;    // 1 = playing, anything else = stopped
+  u16 is_stream;  // 1 = stream, anything else = one shot
 
   PBMixer mixer;
   PBInitialTimeDelay initial_time_delay;
@@ -256,22 +228,29 @@ struct AXPB
   u16 padding[24];
 };
 
+struct PBHighPassFilter
+{
+  u16 on;
+  u16 unk[3];
+};
+
 struct PBBiquadFilter
 {
-  u16 on;   // on = 2, off = 0
-  u16 xn1;  // History data
-  u16 xn2;
-  u16 yn1;
-  u16 yn2;
-  u16 b0;  // Filter coefficients
-  u16 b1;
-  u16 b2;
-  u16 a1;
-  u16 a2;
+  u16 on;
+  s16 xn1;  // History data
+  s16 xn2;
+  s16 yn1;
+  s16 yn2;
+  s16 b0;  // Filter coefficients
+  s16 b1;
+  s16 b2;
+  s16 a1;
+  s16 a2;
 };
 
 union PBInfImpulseResponseWM
 {
+  u16 on;  // 0: off, 2: biquad, other: low-pass
   PBLowPassFilter lpf;
   PBBiquadFilter biquad;
 };
@@ -294,13 +273,18 @@ struct AXPBWii
   PBMixerWii mixer;
   PBInitialTimeDelay initial_time_delay;
   PBDpopWii dpop;
+  PBUpdatesWii updates;  // Not present in all versions of the struct.
   PBVolumeEnvelope vol_env;
   PBAudioAddr audio_addr;
   PBADPCMInfo adpcm;
   PBSampleRateConverter src;
   PBADPCMLoopInfo adpcm_loop_info;
   PBLowPassFilter lpf;
-  PBBiquadFilter biquad;
+  union
+  {
+    PBHighPassFilter hpf;
+    PBBiquadFilter biquad;
+  };
 
   // WIIMOTE :D
   u16 remote;
@@ -311,7 +295,7 @@ struct AXPBWii
   PBSampleRateConverterWM remote_src;
   PBInfImpulseResponseWM remote_iir;
 
-  u16 pad[12];  // align us, captain! (32B)
+  u16 pad[2];  // align us, captain! (32B)
 };
 
 // TODO: All these enums have changed a lot for Wii

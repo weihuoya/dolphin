@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DiscIO/VolumeFileBlobReader.h"
 
@@ -34,6 +33,17 @@ VolumeFileBlobReader::VolumeFileBlobReader(const Volume& volume, const Partition
 {
 }
 
+// This is defined here instead of the header so that the definition of FileInfo is visible when
+// m_file_info is destroyed, preventing a compile error caused by calling unique_ptr's destructor
+// with an incomplete type.
+VolumeFileBlobReader::~VolumeFileBlobReader() = default;
+
+std::unique_ptr<BlobReader> VolumeFileBlobReader::CopyReader() const
+{
+  ASSERT_MSG(DISCIO, false, "Unimplemented");
+  return nullptr;
+}
+
 u64 VolumeFileBlobReader::GetDataSize() const
 {
   return m_file_info->GetSize();
@@ -42,6 +52,26 @@ u64 VolumeFileBlobReader::GetDataSize() const
 u64 VolumeFileBlobReader::GetRawSize() const
 {
   return GetDataSize();
+}
+
+u64 VolumeFileBlobReader::GetBlockSize() const
+{
+  return m_volume.GetBlobReader().GetBlockSize();
+}
+
+bool VolumeFileBlobReader::HasFastRandomAccessInBlock() const
+{
+  return m_volume.GetBlobReader().HasFastRandomAccessInBlock();
+}
+
+std::string VolumeFileBlobReader::GetCompressionMethod() const
+{
+  return m_volume.GetBlobReader().GetCompressionMethod();
+}
+
+std::optional<int> VolumeFileBlobReader::GetCompressionLevel() const
+{
+  return m_volume.GetBlobReader().GetCompressionLevel();
 }
 
 bool VolumeFileBlobReader::Read(u64 offset, u64 length, u8* out_ptr)

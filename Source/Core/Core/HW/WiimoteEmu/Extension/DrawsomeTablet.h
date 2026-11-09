@@ -1,6 +1,5 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -28,8 +27,8 @@ class DrawsomeTablet : public Extension3rdParty
 public:
   DrawsomeTablet();
 
-  void Update() override;
-  bool IsButtonPressed() const override;
+  void BuildDesiredExtensionState(DesiredExtensionState* target_state) override;
+  void Update(const DesiredExtensionState& target_state) override;
   void Reset() override;
 
   ControllerEmu::ControlGroup* GetGroup(DrawsomeTabletGroup group);
@@ -51,8 +50,9 @@ public:
       BitField<3, 5, u8> status;
     };
   };
-
   static_assert(6 == sizeof(DataFormat), "Wrong size.");
+
+  using DesiredState = DataFormat;
 
 private:
   ControllerEmu::AnalogStick* m_stylus;

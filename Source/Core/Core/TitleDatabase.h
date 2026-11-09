@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -34,11 +33,15 @@ public:
   // Get a description for a GameTDB ID (title name if available + GameTDB ID).
   std::string Describe(const std::string& gametdb_id, DiscIO::Language language) const;
 
+  const std::unordered_map<std::string, std::string>& GetUserTitleMap() const;
+
 private:
   void AddLazyMap(DiscIO::Language language, const std::string& language_code);
 
   std::unordered_map<DiscIO::Language, Common::Lazy<std::unordered_map<std::string, std::string>>>
       m_title_maps;
+  std::unordered_map<DiscIO::Language, Common::Lazy<std::unordered_map<std::string, std::string>>>
+      m_triforce_title_maps;
   std::unordered_map<std::string, std::string> m_base_map;
   std::unordered_map<std::string, std::string> m_user_title_map;
 };

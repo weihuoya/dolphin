@@ -1,17 +1,18 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/IOS/USB/USBV4.h"
 
 #include <algorithm>
-#include <locale>
+#include <functional>
 #include <string>
 
 #include "Common/CommonTypes.h"
+#include "Common/StringUtil.h"
 #include "Common/Swap.h"
 #include "Core/HW/Memmap.h"
 #include "Core/IOS/Device.h"
+#include "Core/System.h"
 
 namespace IOS::HLE::USB
 {
@@ -45,10 +46,14 @@ struct HIDRequest
 };
 #pragma pack(pop)
 
-V4CtrlMessage::V4CtrlMessage(Kernel& ios, const IOCtlRequest& ioctl) : CtrlMessage(ios, ioctl, 0)
+V4CtrlMessage::V4CtrlMessage(EmulationKernel& ios, const IOCtlRequest& ioctl)
+    : CtrlMessage(ios, ioctl, 0)
 {
+  auto& system = ios.GetSystem();
+  auto& memory = system.GetMemory();
+
   HIDRequest hid_request;
-  Memory::CopyFromEmu(&hid_request, ioctl.buffer_in, sizeof(hid_request));
+  memory.CopyFromEmu(&hid_request, ioctl.buffer_in, sizeof(hid_request));
   request_type = hid_request.control.bmRequestType;
   request = hid_request.control.bmRequest;
   value = Common::swap16(hid_request.control.wValue);
@@ -60,11 +65,14 @@ V4CtrlMessage::V4CtrlMessage(Kernel& ios, const IOCtlRequest& ioctl) : CtrlMessa
 // Since this is just a standard control request, but with additional requirements
 // (US for the language and replacing non-ASCII characters with '?'),
 // we can simply submit it as a usual control request.
-V4GetUSStringMessage::V4GetUSStringMessage(Kernel& ios, const IOCtlRequest& ioctl)
+V4GetUSStringMessage::V4GetUSStringMessage(EmulationKernel& ios, const IOCtlRequest& ioctl)
     : CtrlMessage(ios, ioctl, 0)
 {
+  auto& system = ios.GetSystem();
+  auto& memory = system.GetMemory();
+
   HIDRequest hid_request;
-  Memory::CopyFromEmu(&hid_request, ioctl.buffer_in, sizeof(hid_request));
+  memory.CopyFromEmu(&hid_request, ioctl.buffer_in, sizeof(hid_request));
   request_type = 0x80;
   request = REQUEST_GET_DESCRIPTOR;
   value = (0x03 << 8) | hid_request.string.bIndex;
@@ -75,18 +83,23 @@ V4GetUSStringMessage::V4GetUSStringMessage(Kernel& ios, const IOCtlRequest& ioct
 
 void V4GetUSStringMessage::OnTransferComplete(s32 return_value) const
 {
-  const std::locale& c_locale = std::locale::classic();
-  std::string message = Memory::GetString(data_address);
-  std::replace_if(message.begin(), message.end(),
-                  [&c_locale](char c) { return !std::isprint(c, c_locale); }, '?');
-  Memory::CopyToEmu(data_address, message.c_str(), message.size());
+  auto& system = m_ios.GetSystem();
+  auto& memory = system.GetMemory();
+
+  std::string message = memory.GetString(data_address);
+  std::ranges::replace_if(message, std::not_fn(Common::IsPrintableCharacter), '?');
+  memory.CopyToEmu(data_address, message.c_str(), message.size());
   TransferCommand::OnTransferComplete(return_value);
 }
 
-V4IntrMessage::V4IntrMessage(Kernel& ios, const IOCtlRequest& ioctl) : IntrMessage(ios, ioctl, 0)
+V4IntrMessage::V4IntrMessage(EmulationKernel& ios, const IOCtlRequest& ioctl)
+    : IntrMessage(ios, ioctl, 0)
 {
+  auto& system = ios.GetSystem();
+  auto& memory = system.GetMemory();
+
   HIDRequest hid_request;
-  Memory::CopyFromEmu(&hid_request, ioctl.buffer_in, sizeof(hid_request));
+  memory.CopyFromEmu(&hid_request, ioctl.buffer_in, sizeof(hid_request));
   length = Common::swap32(hid_request.interrupt.length);
   endpoint = static_cast<u8>(Common::swap32(hid_request.interrupt.endpoint));
   data_address = Common::swap32(hid_request.data_addr);

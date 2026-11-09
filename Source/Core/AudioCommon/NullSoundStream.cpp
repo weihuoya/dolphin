@@ -1,15 +1,13 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "AudioCommon/NullSoundStream.h"
 
-void NullSound::SoundLoop()
-{
-}
-
 bool NullSound::Init()
 {
+  // Make Mixer aware that audio output is disabled.
+  GetMixer()->SetSampleRate(0);
+
   return true;
 }
 
@@ -19,9 +17,5 @@ bool NullSound::SetRunning(bool running)
 }
 
 void NullSound::SetVolume(int volume)
-{
-}
-
-void NullSound::Update()
 {
 }

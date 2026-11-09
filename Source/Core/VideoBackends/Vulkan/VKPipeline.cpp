@@ -1,25 +1,26 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoBackends/Vulkan/VKPipeline.h"
 
 #include <array>
 
 #include "Common/Assert.h"
+#include "Common/EnumMap.h"
 #include "Common/MsgHandler.h"
 
 #include "VideoBackends/Vulkan/ObjectCache.h"
 #include "VideoBackends/Vulkan/VKShader.h"
 #include "VideoBackends/Vulkan/VKTexture.h"
-#include "VideoBackends/Vulkan/VertexFormat.h"
+#include "VideoBackends/Vulkan/VKVertexFormat.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
 
 namespace Vulkan
 {
-VKPipeline::VKPipeline(VkPipeline pipeline, VkPipelineLayout pipeline_layout,
-                       AbstractPipelineUsage usage)
-    : m_pipeline(pipeline), m_pipeline_layout(pipeline_layout), m_usage(usage)
+VKPipeline::VKPipeline(const AbstractPipelineConfig& config, VkPipeline pipeline,
+                       VkPipelineLayout pipeline_layout, AbstractPipelineUsage usage)
+    : AbstractPipeline(config), m_pipeline(pipeline), m_pipeline_layout(pipeline_layout),
+      m_usage(usage)
 {
 }
 
@@ -43,7 +44,7 @@ GetVulkanRasterizationState(const RasterizationState& state)
       {VK_CULL_MODE_NONE, VK_CULL_MODE_BACK_BIT, VK_CULL_MODE_FRONT_BIT,
        VK_CULL_MODE_FRONT_AND_BACK}};
 
-  bool depth_clamp = g_ActiveConfig.backend_info.bSupportsDepthClamp;
+  bool depth_clamp = g_backend_info.bSupportsDepthClamp;
 
   return {
       VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,  // VkStructureType sType
@@ -52,13 +53,13 @@ GetVulkanRasterizationState(const RasterizationState& state)
       depth_clamp,           // VkBool32                                  depthClampEnable
       VK_FALSE,              // VkBool32                                  rasterizerDiscardEnable
       VK_POLYGON_MODE_FILL,  // VkPolygonMode                             polygonMode
-      cull_modes[state.cullmode],  // VkCullModeFlags                           cullMode
-      VK_FRONT_FACE_CLOCKWISE,     // VkFrontFace                               frontFace
-      VK_FALSE,                    // VkBool32                                  depthBiasEnable
-      0.0f,  // float                                     depthBiasConstantFactor
-      0.0f,  // float                                     depthBiasClamp
-      0.0f,  // float                                     depthBiasSlopeFactor
-      1.0f   // float                                     lineWidth
+      cull_modes[u32(state.cull_mode.Value())],  // VkCullModeFlags        cullMode
+      VK_FRONT_FACE_CLOCKWISE,                   // VkFrontFace            frontFace
+      VK_FALSE,  // VkBool32                                              depthBiasEnable
+      0.0f,      // float                                                 depthBiasConstantFactor
+      0.0f,      // float                                                 depthBiasClamp
+      0.0f,      // float                                                 depthBiasSlopeFactor
+      1.0f       // float                                                 lineWidth
   };
 }
 
@@ -70,11 +71,11 @@ static VkPipelineMultisampleStateCreateInfo GetVulkanMultisampleState(const Fram
       0,        // VkPipelineMultisampleStateCreateFlags    flags
       static_cast<VkSampleCountFlagBits>(
           state.samples.Value()),  // VkSampleCountFlagBits                    rasterizationSamples
-      state.per_sample_shading,    // VkBool32                                 sampleShadingEnable
-      1.0f,                        // float                                    minSampleShading
-      nullptr,                     // const VkSampleMask*                      pSampleMask;
-      VK_FALSE,                    // VkBool32                                 alphaToCoverageEnable
-      VK_FALSE                     // VkBool32                                 alphaToOneEnable
+      static_cast<bool>(state.per_sample_shading),  // VkBool32 sampleShadingEnable
+      1.0f,      // float                                    minSampleShading
+      nullptr,   // const VkSampleMask*                      pSampleMask;
+      VK_FALSE,  // VkBool32                                 alphaToCoverageEnable
+      VK_FALSE   // VkBool32                                 alphaToOneEnable
   };
 }
 
@@ -82,100 +83,109 @@ static VkPipelineDepthStencilStateCreateInfo GetVulkanDepthStencilState(const De
 {
   // Less/greater are swapped due to inverted depth.
   VkCompareOp compare_op;
-  bool inverted_depth = !g_ActiveConfig.backend_info.bSupportsReversedDepthRange;
+  bool inverted_depth = !g_backend_info.bSupportsReversedDepthRange;
   switch (state.func)
   {
-  case ZMode::NEVER:
+  case CompareMode::Never:
     compare_op = VK_COMPARE_OP_NEVER;
     break;
-  case ZMode::LESS:
+  case CompareMode::Less:
     compare_op = inverted_depth ? VK_COMPARE_OP_GREATER : VK_COMPARE_OP_LESS;
     break;
-  case ZMode::EQUAL:
+  case CompareMode::Equal:
     compare_op = VK_COMPARE_OP_EQUAL;
     break;
-  case ZMode::LEQUAL:
+  case CompareMode::LEqual:
     compare_op = inverted_depth ? VK_COMPARE_OP_GREATER_OR_EQUAL : VK_COMPARE_OP_LESS_OR_EQUAL;
     break;
-  case ZMode::GREATER:
+  case CompareMode::Greater:
     compare_op = inverted_depth ? VK_COMPARE_OP_LESS : VK_COMPARE_OP_GREATER;
     break;
-  case ZMode::NEQUAL:
+  case CompareMode::NEqual:
     compare_op = VK_COMPARE_OP_NOT_EQUAL;
     break;
-  case ZMode::GEQUAL:
+  case CompareMode::GEqual:
     compare_op = inverted_depth ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_GREATER_OR_EQUAL;
     break;
-  case ZMode::ALWAYS:
+  case CompareMode::Always:
     compare_op = VK_COMPARE_OP_ALWAYS;
     break;
   default:
+    PanicAlertFmt("Invalid compare mode {}", state.func);
     compare_op = VK_COMPARE_OP_ALWAYS;
     break;
   }
 
   return {
       VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,  // VkStructureType sType
-      nullptr,             // const void*                               pNext
-      0,                   // VkPipelineDepthStencilStateCreateFlags    flags
-      state.testenable,    // VkBool32                                  depthTestEnable
-      state.updateenable,  // VkBool32                                  depthWriteEnable
-      compare_op,          // VkCompareOp                               depthCompareOp
-      VK_FALSE,            // VkBool32                                  depthBoundsTestEnable
-      VK_FALSE,            // VkBool32                                  stencilTestEnable
-      {},                  // VkStencilOpState                          front
-      {},                  // VkStencilOpState                          back
-      0.0f,                // float                                     minDepthBounds
-      1.0f                 // float                                     maxDepthBounds
+      nullptr,              // const void*                               pNext
+      0,                    // VkPipelineDepthStencilStateCreateFlags    flags
+      state.test_enable,    // VkBool32                                  depthTestEnable
+      state.update_enable,  // VkBool32                                  depthWriteEnable
+      compare_op,           // VkCompareOp                               depthCompareOp
+      VK_FALSE,             // VkBool32                                  depthBoundsTestEnable
+      VK_FALSE,             // VkBool32                                  stencilTestEnable
+      {},                   // VkStencilOpState                          front
+      {},                   // VkStencilOpState                          back
+      0.0f,                 // float                                     minDepthBounds
+      1.0f                  // float                                     maxDepthBounds
   };
 }
 
-static VkPipelineColorBlendAttachmentState GetVulkanAttachmentBlendState(const BlendingState& state)
+static VkPipelineColorBlendAttachmentState
+GetVulkanAttachmentBlendState(const BlendingState& state, AbstractPipelineUsage usage)
 {
   VkPipelineColorBlendAttachmentState vk_state = {};
-  vk_state.blendEnable = static_cast<VkBool32>(state.blendenable);
+
+  bool use_dual_source = state.use_dual_src;
+
+  vk_state.blendEnable = static_cast<VkBool32>(state.blend_enable);
   vk_state.colorBlendOp = state.subtract ? VK_BLEND_OP_REVERSE_SUBTRACT : VK_BLEND_OP_ADD;
-  vk_state.alphaBlendOp = state.subtractAlpha ? VK_BLEND_OP_REVERSE_SUBTRACT : VK_BLEND_OP_ADD;
+  vk_state.alphaBlendOp = state.subtract_alpha ? VK_BLEND_OP_REVERSE_SUBTRACT : VK_BLEND_OP_ADD;
 
-  if (state.usedualsrc && g_ActiveConfig.backend_info.bSupportsDualSourceBlend)
+  if (use_dual_source)
   {
-    static constexpr std::array<VkBlendFactor, 8> src_factors = {
-        {VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_DST_COLOR,
-         VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR, VK_BLEND_FACTOR_SRC1_ALPHA,
-         VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA, VK_BLEND_FACTOR_DST_ALPHA,
-         VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA}};
-    static constexpr std::array<VkBlendFactor, 8> dst_factors = {
-        {VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_SRC_COLOR,
-         VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR, VK_BLEND_FACTOR_SRC1_ALPHA,
-         VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA, VK_BLEND_FACTOR_DST_ALPHA,
-         VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA}};
+    static constexpr Common::EnumMap<VkBlendFactor, SrcBlendFactor::InvDstAlpha> src_factors{
+        VK_BLEND_FACTOR_ZERO,       VK_BLEND_FACTOR_ONE,
+        VK_BLEND_FACTOR_DST_COLOR,  VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR,
+        VK_BLEND_FACTOR_SRC1_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA,
+        VK_BLEND_FACTOR_DST_ALPHA,  VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA,
+    };
+    static constexpr Common::EnumMap<VkBlendFactor, DstBlendFactor::InvDstAlpha> dst_factors{
+        VK_BLEND_FACTOR_ZERO,       VK_BLEND_FACTOR_ONE,
+        VK_BLEND_FACTOR_SRC_COLOR,  VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR,
+        VK_BLEND_FACTOR_SRC1_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA,
+        VK_BLEND_FACTOR_DST_ALPHA,  VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA,
+    };
 
-    vk_state.srcColorBlendFactor = src_factors[state.srcfactor];
-    vk_state.srcAlphaBlendFactor = src_factors[state.srcfactoralpha];
-    vk_state.dstColorBlendFactor = dst_factors[state.dstfactor];
-    vk_state.dstAlphaBlendFactor = dst_factors[state.dstfactoralpha];
+    vk_state.srcColorBlendFactor = src_factors[state.src_factor];
+    vk_state.srcAlphaBlendFactor = src_factors[state.src_factor_alpha];
+    vk_state.dstColorBlendFactor = dst_factors[state.dst_factor];
+    vk_state.dstAlphaBlendFactor = dst_factors[state.dst_factor_alpha];
   }
   else
   {
-    static constexpr std::array<VkBlendFactor, 8> src_factors = {
-        {VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_DST_COLOR,
-         VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR, VK_BLEND_FACTOR_SRC_ALPHA,
-         VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_FACTOR_DST_ALPHA,
-         VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA}};
+    static constexpr Common::EnumMap<VkBlendFactor, SrcBlendFactor::InvDstAlpha> src_factors{
+        VK_BLEND_FACTOR_ZERO,      VK_BLEND_FACTOR_ONE,
+        VK_BLEND_FACTOR_DST_COLOR, VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR,
+        VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        VK_BLEND_FACTOR_DST_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA,
+    };
 
-    static constexpr std::array<VkBlendFactor, 8> dst_factors = {
-        {VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_SRC_COLOR,
-         VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR, VK_BLEND_FACTOR_SRC_ALPHA,
-         VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_FACTOR_DST_ALPHA,
-         VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA}};
+    static constexpr Common::EnumMap<VkBlendFactor, DstBlendFactor::InvDstAlpha> dst_factors{
+        VK_BLEND_FACTOR_ZERO,      VK_BLEND_FACTOR_ONE,
+        VK_BLEND_FACTOR_SRC_COLOR, VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR,
+        VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        VK_BLEND_FACTOR_DST_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA,
+    };
 
-    vk_state.srcColorBlendFactor = src_factors[state.srcfactor];
-    vk_state.srcAlphaBlendFactor = src_factors[state.srcfactoralpha];
-    vk_state.dstColorBlendFactor = dst_factors[state.dstfactor];
-    vk_state.dstAlphaBlendFactor = dst_factors[state.dstfactoralpha];
+    vk_state.srcColorBlendFactor = src_factors[state.src_factor];
+    vk_state.srcAlphaBlendFactor = src_factors[state.src_factor_alpha];
+    vk_state.dstColorBlendFactor = dst_factors[state.dst_factor];
+    vk_state.dstAlphaBlendFactor = dst_factors[state.dst_factor_alpha];
   }
 
-  if (state.colorupdate)
+  if (state.color_update)
   {
     vk_state.colorWriteMask =
         VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
@@ -185,7 +195,7 @@ static VkPipelineColorBlendAttachmentState GetVulkanAttachmentBlendState(const B
     vk_state.colorWriteMask = 0;
   }
 
-  if (state.alphaupdate)
+  if (state.alpha_update)
     vk_state.colorWriteMask |= VK_COLOR_COMPONENT_A_BIT;
 
   return vk_state;
@@ -202,8 +212,8 @@ GetVulkanColorBlendState(const BlendingState& state,
        VK_LOGIC_OP_NOR, VK_LOGIC_OP_EQUIVALENT, VK_LOGIC_OP_INVERT, VK_LOGIC_OP_OR_REVERSE,
        VK_LOGIC_OP_COPY_INVERTED, VK_LOGIC_OP_OR_INVERTED, VK_LOGIC_OP_NAND, VK_LOGIC_OP_SET}};
 
-  VkBool32 vk_logic_op_enable = static_cast<VkBool32>(state.logicopenable);
-  if (vk_logic_op_enable && !g_ActiveConfig.backend_info.bSupportsLogicOp)
+  VkBool32 vk_logic_op_enable = static_cast<VkBool32>(state.logic_op_enable);
+  if (vk_logic_op_enable && !g_backend_info.bSupportsLogicOp)
   {
     // At the time of writing, Adreno and Mali drivers didn't support logic ops.
     // The "emulation" through blending path has been removed, so just disable it completely.
@@ -211,7 +221,8 @@ GetVulkanColorBlendState(const BlendingState& state,
     vk_logic_op_enable = VK_FALSE;
   }
 
-  VkLogicOp vk_logic_op = vk_logic_op_enable ? vk_logic_ops[state.logicmode] : VK_LOGIC_OP_CLEAR;
+  VkLogicOp vk_logic_op =
+      vk_logic_op_enable ? vk_logic_ops[u32(state.logic_mode.Value())] : VK_LOGIC_OP_CLEAR;
 
   VkPipelineColorBlendStateCreateInfo vk_state = {
       VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,  // VkStructureType sType
@@ -235,7 +246,14 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
   VkRenderPass render_pass = g_object_cache->GetRenderPass(
       VKTexture::GetVkFormatForHostTextureFormat(config.framebuffer_state.color_texture_format),
       VKTexture::GetVkFormatForHostTextureFormat(config.framebuffer_state.depth_texture_format),
-      config.framebuffer_state.samples, VK_ATTACHMENT_LOAD_OP_LOAD);
+      config.framebuffer_state.samples, VK_ATTACHMENT_LOAD_OP_LOAD,
+      config.framebuffer_state.additional_color_attachment_count);
+
+  if (render_pass == VK_NULL_HANDLE)
+  {
+    PanicAlertFmt("Failed to get render pass");
+    return nullptr;
+  }
 
   // Get pipeline layout.
   VkPipelineLayout pipeline_layout;
@@ -244,11 +262,14 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
   case AbstractPipelineUsage::GX:
     pipeline_layout = g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_STANDARD);
     break;
+  case AbstractPipelineUsage::GXUber:
+    pipeline_layout = g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_UBER);
+    break;
   case AbstractPipelineUsage::Utility:
     pipeline_layout = g_object_cache->GetPipelineLayout(PIPELINE_LAYOUT_UTILITY);
     break;
   default:
-    PanicAlert("Unknown pipeline layout.");
+    PanicAlertFmt("Unknown pipeline layout.");
     return nullptr;
   }
 
@@ -283,7 +304,7 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
   // VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY,
   // VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY or VK_PRIMITIVE_TOPOLOGY_PATCH_LIST,
   // primitiveRestartEnable must be VK_FALSE
-  if (g_ActiveConfig.backend_info.bSupportsPrimitiveRestart &&
+  if (g_backend_info.bSupportsPrimitiveRestart &&
       IsStripPrimitiveTopology(input_assembly_state.topology))
   {
     input_assembly_state.primitiveRestartEnable = VK_TRUE;
@@ -331,16 +352,33 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
   VkPipelineDepthStencilStateCreateInfo depth_stencil_state =
       GetVulkanDepthStencilState(config.depth_state);
   VkPipelineColorBlendAttachmentState blend_attachment_state =
-      GetVulkanAttachmentBlendState(config.blending_state);
+      GetVulkanAttachmentBlendState(config.blending_state, config.usage);
+
+  std::vector<VkPipelineColorBlendAttachmentState> blend_attachment_states;
+  blend_attachment_states.push_back(blend_attachment_state);
+  // Right now all our attachments have the same state
+  for (u8 i = 0; i < static_cast<u8>(config.framebuffer_state.additional_color_attachment_count);
+       i++)
+  {
+    blend_attachment_states.push_back(blend_attachment_state);
+  }
   VkPipelineColorBlendStateCreateInfo blend_state =
-      GetVulkanColorBlendState(config.blending_state, &blend_attachment_state, 1);
+      GetVulkanColorBlendState(config.blending_state, blend_attachment_states.data(),
+                               static_cast<uint32_t>(blend_attachment_states.size()));
+
+  static const VkDepthClampRangeEXT clamp_range = {0.0f, MAX_EFB_DEPTH};
+  static const VkPipelineViewportDepthClampControlCreateInfoEXT depth_clamp_state = {
+      VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_DEPTH_CLAMP_CONTROL_CREATE_INFO_EXT, nullptr,
+      VK_DEPTH_CLAMP_MODE_USER_DEFINED_RANGE_EXT,  // VkDepthClampModeEXT            depthClampMode
+      &clamp_range  // const VkDepthClampRangeEXT*    pDepthClampRange
+  };
 
   // This viewport isn't used, but needs to be specified anyway.
   static const VkViewport viewport = {0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f};
   static const VkRect2D scissor = {{0, 0}, {1, 1}};
   static const VkPipelineViewportStateCreateInfo viewport_state = {
       VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-      nullptr,
+      g_backend_info.bSupportsUnrestrictedDepthRange ? &depth_clamp_state : nullptr,
       0,          // VkPipelineViewportStateCreateFlags    flags;
       1,          // uint32_t                              viewportCount
       &viewport,  // const VkViewport*                     pViewports
@@ -393,6 +431,6 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
     return VK_NULL_HANDLE;
   }
 
-  return std::make_unique<VKPipeline>(pipeline, pipeline_layout, config.usage);
+  return std::make_unique<VKPipeline>(config, pipeline, pipeline_layout, config.usage);
 }
 }  // namespace Vulkan
